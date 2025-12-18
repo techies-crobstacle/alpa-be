@@ -7,7 +7,7 @@ exports.authenticateSeller = async (request, reply) => {
     const header = request.headers.authorization;
 
     if (!header || !header.startsWith("Bearer ")) {
-      return reply.status(401).json({ 
+      return reply.status(401).send({ 
         success: false, 
         message: "No token provided" 
       });
@@ -25,7 +25,7 @@ exports.authenticateSeller = async (request, reply) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         request.sellerId = decoded.sellerId || decoded.uid;
       } catch (jwtError) {
-        return reply.status(401).json({ 
+        return reply.status(401).send({ 
           success: false, 
           message: "Invalid or expired token" 
         });
@@ -35,7 +35,7 @@ exports.authenticateSeller = async (request, reply) => {
     // Check if seller exists
     const sellerDoc = await db.collection("sellers").doc(request.sellerId).get();
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -44,7 +44,7 @@ exports.authenticateSeller = async (request, reply) => {
     request.seller = { id: sellerDoc.id, ...sellerDoc.data() };
   } catch (error) {
     console.error("Auth error:", error);
-    reply.status(401).json({ 
+    reply.status(401).send({ 
       success: false, 
       message: "Authentication failed" 
     });
@@ -57,7 +57,7 @@ exports.authenticateUser = async (request, reply) => {
     const header = request.headers.authorization;
 
     if (!header || !header.startsWith("Bearer ")) {
-      return reply.status(401).json({ 
+      return reply.status(401).send({ 
         success: false, 
         message: "No token provided" 
       });
@@ -76,7 +76,7 @@ exports.authenticateUser = async (request, reply) => {
         request.userId = decoded.userId || decoded.uid;
       } catch (jwtError) {
         console.error("Token verification failed:", jwtError.message);
-        return reply.status(401).json({ 
+        return reply.status(401).send({ 
           success: false, 
           message: "Invalid or expired token" 
         });
@@ -85,7 +85,7 @@ exports.authenticateUser = async (request, reply) => {
 
     // Validate userId exists
     if (!request.userId) {
-      return reply.status(401).json({ 
+      return reply.status(401).send({ 
         success: false, 
         message: "Invalid token - user ID not found" 
       });
@@ -94,7 +94,7 @@ exports.authenticateUser = async (request, reply) => {
     // Check if user exists
     const userDoc = await db.collection("users").doc(request.userId).get();
     if (!userDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "User not found" 
       });
@@ -103,7 +103,7 @@ exports.authenticateUser = async (request, reply) => {
     request.user = { id: userDoc.id, ...userDoc.data() };
   } catch (error) {
     console.error("User auth error:", error);
-    reply.status(401).json({ 
+    reply.status(401).send({ 
       success: false, 
       message: "Authentication failed",
       details: error.message 
@@ -117,7 +117,7 @@ exports.isAdmin = async (request, reply) => {
     const header = request.headers.authorization;
 
     if (!header || !header.startsWith("Bearer ")) {
-      return reply.status(401).json({ 
+      return reply.status(401).send({ 
         success: false, 
         message: "No token provided" 
       });
@@ -138,7 +138,7 @@ exports.isAdmin = async (request, reply) => {
     // Check if user is admin
     const userDoc = await db.collection("users").doc(request.userId).get();
     if (!userDoc.exists || userDoc.data().role !== "admin") {
-      return reply.status(403).json({ 
+      return reply.status(403).send({ 
         success: false, 
         message: "Admin access required" 
       });
@@ -146,12 +146,14 @@ exports.isAdmin = async (request, reply) => {
 
   } catch (error) {
     console.error("Admin auth error:", error);
-    reply.status(401).json({ 
+    reply.status(401).send({ 
       success: false, 
       message: "Authentication failed" 
     });
   }
 };
+
+
 
 
 

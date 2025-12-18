@@ -8,7 +8,7 @@ exports.submitContactForm = async (request, reply) => {
 
     // Validation
     if (!name || !email || !subject || !message) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "Name, email, subject, and message are required" 
       });
@@ -34,14 +34,14 @@ exports.submitContactForm = async (request, reply) => {
     // Send confirmation email to user
     await sendContactFormEmail(email, name, subject, message);
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Your message has been submitted successfully. We'll get back to you soon!",
       ticketId: contactRef.id
     });
   } catch (err) {
     console.error("Contact form submission error:", err);
-    return reply.status(500).json({ 
+    return reply.status(500).send({ 
       success: false, 
       error: err.message 
     });
@@ -94,13 +94,13 @@ exports.getReturnPolicy = async (request, reply) => {
       ]
     };
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       policy: returnPolicy 
     });
   } catch (err) {
     console.error("Get return policy error:", err);
-    return reply.status(500).json({ 
+    return reply.status(500).send({ 
       success: false, 
       error: err.message 
     });
@@ -128,16 +128,18 @@ exports.getMyTickets = async (request, reply) => {
         return dateB - dateA; // Descending order (newest first)
       });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       tickets,
       count: tickets.length 
     });
   } catch (err) {
     console.error("Get my tickets error:", err);
-    return reply.status(500).json({ 
+    return reply.status(500).send({ 
       success: false, 
       error: err.message 
     });
   }
 };
+
+

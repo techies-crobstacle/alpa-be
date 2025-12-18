@@ -39,3 +39,5 @@ async function adminRoutes(fastify, options) {
 }
 
 module.exports = adminRoutes;
+
+

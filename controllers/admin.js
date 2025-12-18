@@ -9,9 +9,9 @@ exports.getAllUsers = async (request, reply) => {
       return { id: data.uid || doc.id, ...data };
     });
 
-    return reply.status(200).json({ success: true, users, count: users.length });
+    return reply.status(200).send({ success: true, users, count: users.length });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -48,13 +48,13 @@ exports.getAllSellers = async (request, reply) => {
       };
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       sellers,
       count: sellers.length 
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -66,7 +66,7 @@ exports.getSellerDetails = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -96,7 +96,7 @@ exports.getSellerDetails = async (request, reply) => {
       }
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       seller: {
         id: sellerDoc.id,
@@ -112,7 +112,7 @@ exports.getSellerDetails = async (request, reply) => {
       }
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -124,7 +124,7 @@ exports.getProductsBySeller = async (request, reply) => {
     // Check if seller exists
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -139,7 +139,7 @@ exports.getProductsBySeller = async (request, reply) => {
       ...doc.data() 
     }));
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       products,
       count: products.length,
@@ -150,7 +150,7 @@ exports.getProductsBySeller = async (request, reply) => {
       }
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -166,13 +166,13 @@ exports.getPendingSellers = async (request, reply) => {
       ...doc.data()
     }));
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       sellers: pendingSellers,
       count: pendingSellers.length 
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -184,7 +184,7 @@ exports.approveSeller = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -197,12 +197,12 @@ exports.approveSeller = async (request, reply) => {
       updatedAt: new Date().toISOString()
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Seller approved successfully" 
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -215,7 +215,7 @@ exports.rejectSeller = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -229,12 +229,12 @@ exports.rejectSeller = async (request, reply) => {
       updatedAt: new Date().toISOString()
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Seller rejected" 
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -247,7 +247,7 @@ exports.suspendSeller = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -261,12 +261,12 @@ exports.suspendSeller = async (request, reply) => {
       updatedAt: new Date().toISOString()
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Seller suspended" 
     });
   } catch (err) {
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -279,7 +279,7 @@ exports.updateSellerNotes = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(id).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -290,13 +290,13 @@ exports.updateSellerNotes = async (request, reply) => {
       updatedAt: new Date().toISOString()
     });
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Notes updated successfully"
     });
   } catch (error) {
     console.error("Update seller notes error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -324,7 +324,7 @@ exports.culturalApproval = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(id).get();
 
     if (!sellerDoc.exists) {
-      return reply.status(404).json({
+      return reply.status(404).send({
         success: false,
         message: "Seller not found"
       });
@@ -334,7 +334,7 @@ exports.culturalApproval = async (request, reply) => {
     console.log("Seller status:", seller.status);
 
     if (seller.status !== "approved") {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Seller must be approved before cultural approval"
       });
@@ -358,7 +358,7 @@ exports.culturalApproval = async (request, reply) => {
 
     const updatedSeller = await db.collection("sellers").doc(id).get();
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: isApproved 
         ? "Cultural approval granted. Seller can now go live if minimum products are uploaded." 
@@ -369,7 +369,7 @@ exports.culturalApproval = async (request, reply) => {
     console.error("Cultural approval error:", error);
     console.error("Error message:", error.message);
     console.error("Error stack:", error.stack);
-    reply.status(500).json({ success: false, message: "Server error", error: error.message });
+    reply.status(500).send({ success: false, message: "Server error", error: error.message });
   }
 };
 
@@ -382,7 +382,7 @@ exports.activateSeller = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(id).get();
 
     if (!sellerDoc.exists) {
-      return reply.status(404).json({
+      return reply.status(404).send({
         success: false,
         message: "Seller not found"
       });
@@ -392,21 +392,21 @@ exports.activateSeller = async (request, reply) => {
 
     // Validation checks
     if (seller.status !== "approved") {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Seller must be approved before activation"
       });
     }
 
     if (seller.productCount < 1) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Seller must upload at least 1-2 products before going live. 5+ products recommended."
       });
     }
 
     if (seller.culturalApprovalStatus !== "approved") {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Cultural approval is required before activation"
       });
@@ -443,7 +443,7 @@ exports.activateSeller = async (request, reply) => {
     const updatedSeller = await db.collection("sellers").doc(id).get();
     const seller_data = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: `Seller is now LIVE! ${activatedCount} products activated and visible to customers.`,
       seller: seller_data,
@@ -451,9 +451,11 @@ exports.activateSeller = async (request, reply) => {
     });
   } catch (error) {
     console.error("Activate seller error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
+
+
 
 
 

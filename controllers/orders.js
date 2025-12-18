@@ -11,7 +11,7 @@
 //     const { shippingAddress, paymentMethod } = request.body;
 
 //     if (!shippingAddress || !paymentMethod) {
-//       return reply.status(400).json({ success: false, message: "All fields are required" });
+//       return reply.status(400).send({ success: false, message: "All fields are required" });
 //     }
 
 //     // Get user's cart
@@ -19,7 +19,7 @@
 //     const cartSnap = await cartRef.get();
 
 //     if (!cartSnap.exists || !cartSnap.data().products || cartSnap.data().products.length === 0) {
-//       return reply.status(400).json({ success: false, message: "Cart is empty" });
+//       return reply.status(400).send({ success: false, message: "Cart is empty" });
 //     }
 
 //     const cartProducts = cartSnap.data().products;
@@ -32,14 +32,14 @@
 //       const productSnap = await productRef.get();
 
 //       if (!productSnap.exists) {
-//         return reply.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
+//         return reply.status(404).send({ success: false, message: `Product not found: ${item.productId}` });
 //       }
 
 //       const product = productSnap.data();
 
 //       // Check stock
 //       if (product.stock < item.quantity) {
-//         return reply.status(400).json({
+//         return reply.status(400).send({
 //           success: false,
 //           message: `Insufficient stock for product: ${product.title}`
 //         });
@@ -88,7 +88,7 @@
 //     // Clear cart after order
 //     await cartRef.delete();
 
-//     return reply.status(200).json({
+//     return reply.status(200).send({
 //       success: true,
 //       message: "Order placed successfully",
 //       orderId: orderRef.id,
@@ -96,7 +96,7 @@
 //     });
 
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -108,9 +108,9 @@
 //     const snapshot = await db.collection("orders").where("userId", "==", userId).get();
 //     const orders = snapshot.docs.map((doc) => doc.data());
 
-//     return reply.status(200).json({ success: true, orders });
+//     return reply.status(200).send({ success: true, orders });
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -123,21 +123,21 @@
 //     const orderRef = db.collection("orders").doc(orderId);
 //     const snap = await orderRef.get();
 
-//     if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
+//     if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
 
 //     const order = snap.data();
-//     if (order.userId !== userId) return reply.status(403).json({ success: false, message: "Not authorized" });
+//     if (order.userId !== userId) return reply.status(403).send({ success: false, message: "Not authorized" });
 
 //     if (order.status !== "pending") {
-//       return reply.status(400).json({ success: false, message: "Order cannot be cancelled" });
+//       return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
 //     }
 
 //     await orderRef.update({ status: "cancelled" });
 
-//     return reply.status(200).json({ success: true, message: "Order cancelled successfully" });
+//     return reply.status(200).send({ success: true, message: "Order cancelled successfully" });
 
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -157,9 +157,9 @@
 //       if (containsSellerItem) sellerOrders.push(order);
 //     });
 
-//     return reply.status(200).json({ success: true, orders: sellerOrders });
+//     return reply.status(200).send({ success: true, orders: sellerOrders });
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -172,27 +172,27 @@
 
 //     const allowed = ["pending", "packed", "shipped", "delivered", "cancelled"];
 //     if (!allowed.includes(status)) {
-//       return reply.status(400).json({ success: false, message: "Invalid status" });
+//       return reply.status(400).send({ success: false, message: "Invalid status" });
 //     }
 
 //     const orderRef = db.collection("orders").doc(orderId);
 //     const snap = await orderRef.get();
 
-//     if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
+//     if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
 
 //     const order = snap.data();
 //     const containsSellerItem = order.products.some((p) => p.sellerId === sellerId);
 
 //     if (!containsSellerItem) {
-//       return reply.status(403).json({ success: false, message: "Unauthorized seller" });
+//       return reply.status(403).send({ success: false, message: "Unauthorized seller" });
 //     }
 
 //     await orderRef.update({ status, updatedAt: new Date() });
 
-//     return reply.status(200).json({ success: true, message: "Status updated successfully" });
+//     return reply.status(200).send({ success: true, message: "Status updated successfully" });
 
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -206,13 +206,13 @@
 //     const orderRef = db.collection("orders").doc(orderId);
 //     const snap = await orderRef.get();
 
-//     if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
+//     if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
 
 //     const order = snap.data();
 //     const containsSellerItem = order.products.some((p) => p.sellerId === sellerId);
 
 //     if (!containsSellerItem) {
-//       return reply.status(403).json({ success: false, message: "Unauthorized seller" });
+//       return reply.status(403).send({ success: false, message: "Unauthorized seller" });
 //     }
 
 //     await orderRef.update({
@@ -221,10 +221,10 @@
 //       updatedAt: new Date(),
 //     });
 
-//     return reply.status(200).json({ success: true, message: "Tracking info updated" });
+//     return reply.status(200).send({ success: true, message: "Tracking info updated" });
 
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -235,7 +235,7 @@
 //     const updates = request.body;
 
 //     if (!Array.isArray(updates) || updates.length === 0) {
-//       return reply.status(400).json({ success: false, message: "Updates array is required" });
+//       return reply.status(400).send({ success: false, message: "Updates array is required" });
 //     }
 
 //     let results = [];
@@ -282,14 +282,14 @@
 //       });
 //     }
 
-//     return reply.status(200).json({
+//     return reply.status(200).send({
 //       success: true,
 //       message: "Bulk stock update completed",
 //       results
 //     });
 
 //   } catch (error) {
-//     return reply.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).send({ success: false, message: error.message });
 //   }
 // };
 
@@ -309,13 +309,13 @@ exports.createOrder = async (request, reply) => {
     const { shippingAddress, paymentMethod } = request.body;
 
     if (!shippingAddress || !paymentMethod) {
-      return reply.status(400).json({ success: false, message: "All fields are required" });
+      return reply.status(400).send({ success: false, message: "All fields are required" });
     }
 
     // Get user details for SMS
     const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
-      return reply.status(404).json({ success: false, message: "User not found" });
+      return reply.status(404).send({ success: false, message: "User not found" });
     }
     const user = userDoc.data();
 
@@ -324,7 +324,7 @@ exports.createOrder = async (request, reply) => {
     const cartSnap = await cartRef.get();
 
     if (!cartSnap.exists || !cartSnap.data().products || cartSnap.data().products.length === 0) {
-      return reply.status(400).json({ success: false, message: "Cart is empty" });
+      return reply.status(400).send({ success: false, message: "Cart is empty" });
     }
 
     const cartProducts = cartSnap.data().products;
@@ -338,14 +338,14 @@ exports.createOrder = async (request, reply) => {
       const productSnap = await productRef.get();
 
       if (!productSnap.exists) {
-        return reply.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
+        return reply.status(404).send({ success: false, message: `Product not found: ${item.productId}` });
       }
 
       const product = productSnap.data();
 
       // Check stock
       if (product.stock < item.quantity) {
-        return reply.status(400).json({
+        return reply.status(400).send({
           success: false,
           message: `Insufficient stock for product: ${product.title}`
         });
@@ -460,7 +460,7 @@ exports.createOrder = async (request, reply) => {
       }
     }
 
-    return reply.status(200).json({
+    return reply.status(200).send({
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
       orderId: orderRef.id,
@@ -469,7 +469,7 @@ exports.createOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Create order error:", error);
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
@@ -480,9 +480,9 @@ exports.getMyOrders = async (request, reply) => {
     const snapshot = await db.collection("orders").where("userId", "==", userId).get();
     const orders = snapshot.docs.map((doc) => doc.data());
 
-    return reply.status(200).json({ success: true, orders });
+    return reply.status(200).send({ success: true, orders });
   } catch (error) {
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
@@ -495,13 +495,13 @@ exports.cancelOrder = async (request, reply) => {
     const orderRef = db.collection("orders").doc(orderId);
     const snap = await orderRef.get();
 
-    if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
+    if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
 
     const order = snap.data();
-    if (order.userId !== userId) return reply.status(403).json({ success: false, message: "Not authorized" });
+    if (order.userId !== userId) return reply.status(403).send({ success: false, message: "Not authorized" });
 
     if (order.status !== "pending") {
-      return reply.status(400).json({ success: false, message: "Order cannot be cancelled" });
+      return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
     }
 
     await orderRef.update({ status: "cancelled" });
@@ -523,10 +523,12 @@ exports.cancelOrder = async (request, reply) => {
       }
     }
 
-    return reply.status(200).json({ success: true, message: "Order cancelled successfully. Email notification sent." });
+    return reply.status(200).send({ success: true, message: "Order cancelled successfully. Email notification sent." });
 
   } catch (error) {
     console.error("Cancel order error:", error);
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
+

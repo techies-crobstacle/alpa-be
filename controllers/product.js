@@ -11,13 +11,13 @@ exports.addProduct = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ success: false, message: "Seller account not found" });
+      return reply.status(404).send({ success: false, message: "Seller account not found" });
     }
 
     const seller = sellerDoc.data();
 
     if (seller.status !== "approved" && seller.status !== "active") {
-      return reply.status(403).json({ 
+      return reply.status(403).send({ 
         success: false, 
         message: "Your seller account must be approved before adding products. Current status: " + seller.status 
       });
@@ -52,7 +52,7 @@ exports.addProduct = async (request, reply) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Product added successfully",
       productId: productRef.id,
@@ -71,7 +71,7 @@ exports.addProduct = async (request, reply) => {
     });
   } catch (err) {
     console.error("Add product error:", err);
-    return reply.status(500).json({ success: false, error: err.message });
+    return reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -89,14 +89,14 @@ exports.getMyProducts = async (request, reply) => {
       ...doc.data()
     }));
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       products,
       count: products.length 
     });
   } catch (err) {
     console.error("Get my products error:", err);
-    return reply.status(500).json({ success: false, error: err.message });
+    return reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -107,13 +107,13 @@ exports.getProductById = async (request, reply) => {
     const docSnap = await productRef.get();
 
     if (!docSnap.exists) {
-      return reply.status(404).json({ success: false, message: "Product not found" });
+      return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    reply.status(200).json({ success: true, product: { id: docSnap.id, ...docSnap.data() } });
+    reply.status(200).send({ success: true, product: { id: docSnap.id, ...docSnap.data() } });
   } catch (err) {
     console.error("Get product by ID error:", err);
-    reply.status(500).json({ success: false, error: err.message });
+    reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -125,14 +125,14 @@ exports.updateProduct = async (request, reply) => {
     const docSnap = await productRef.get();
 
     if (!docSnap.exists) {
-      return reply.status(404).json({ success: false, message: "Product not found" });
+      return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
     const product = docSnap.data();
 
     // Check if the logged-in seller is the owner
     if (product.sellerId !== sellerId) {
-      return reply.status(403).json({ success: false, message: "You are not authorized to update this product" });
+      return reply.status(403).send({ success: false, message: "You are not authorized to update this product" });
     }
 
     const { title, description, price, stock, category, images } = request.body;
@@ -150,14 +150,14 @@ exports.updateProduct = async (request, reply) => {
 
     await productRef.update(updatedData);
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Product updated successfully", 
       product: { id: request.params.id, ...updatedData }
     });
   } catch (err) {
     console.error("Update product error:", err);
-    return reply.status(500).json({ success: false, error: err.message });
+    return reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -169,14 +169,14 @@ exports.deleteProduct = async (request, reply) => {
     const docSnap = await productRef.get();
 
     if (!docSnap.exists) {
-      return reply.status(404).json({ success: false, message: "Product not found" });
+      return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
     const product = docSnap.data();
 
     // Check if the logged-in seller is the owner
     if (product.sellerId !== sellerId) {
-      return reply.status(403).json({ success: false, message: "You are not authorized to delete this product" });
+      return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
     }
 
     await productRef.delete();
@@ -190,14 +190,14 @@ exports.deleteProduct = async (request, reply) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    return reply.status(200).json({ 
+    return reply.status(200).send({ 
       success: true, 
       message: "Product deleted successfully",
       totalProducts: Math.max(0, currentCount - 1)
     });
   } catch (err) {
     console.error("Delete product error:", err);
-    return reply.status(500).json({ success: false, error: err.message });
+    return reply.status(500).send({ success: false, error: err.message });
   }
 };
 
@@ -222,10 +222,12 @@ exports.getAllProducts = async (request, reply) => {
     const allProducts = await Promise.all(productPromises);
     const products = allProducts.filter(p => p !== null);
 
-    return reply.status(200).json({ success: true, products, count: products.length });
+    return reply.status(200).send({ success: true, products, count: products.length });
   } catch (err) {
     console.error("Get all products error:", err);
-    return reply.status(500).json({ success: false, error: err.message });
+    return reply.status(500).send({ success: false, error: err.message });
   }
 };
+
+
 

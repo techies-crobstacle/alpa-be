@@ -8,3 +8,5 @@ async function authRoutes(fastify, options) {
 }
 
 module.exports = authRoutes;
+
+

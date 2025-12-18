@@ -272,3 +272,4 @@ const verifyIdentityDocument = async (documentData) => {
 };
 
 module.exports = { validateABNWithVigil, verifyIdentityDocument };
+

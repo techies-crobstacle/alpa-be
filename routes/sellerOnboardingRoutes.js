@@ -52,3 +52,5 @@ async function sellerOnboardingRoutes(fastify, options) {
 }
 
 module.exports = sellerOnboardingRoutes;
+
+

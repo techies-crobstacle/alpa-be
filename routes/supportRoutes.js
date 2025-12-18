@@ -15,3 +15,5 @@ async function supportRoutes(fastify, options) {
 }
 
 module.exports = supportRoutes;
+
+

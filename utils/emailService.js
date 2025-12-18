@@ -24,11 +24,16 @@ let transporter = null;
 try {
   if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
     transporter = nodemailer.createTransport({
-      service: "gmail", // You can use gmail, outlook, etc.
+      host: "smtp.gmail.com",
+      port: 587, // Use 587 instead of 465 (more reliable)
+      secure: false, // Use STARTTLS
       auth: {
         user: process.env.EMAIL_USER, // Your email
         pass: process.env.EMAIL_PASSWORD, // Your email password or app password
       },
+      tls: {
+        rejectUnauthorized: false // Allow self-signed certificates (dev only)
+      }
     });
     console.log("✅ Email service initialized");
   } else {
@@ -599,5 +604,6 @@ module.exports = {
   sendSellerOrderNotificationEmail,
   sendContactFormEmail
 };
+
 
 

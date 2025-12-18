@@ -98,3 +98,4 @@ const checkEmailExists = async (email) => {
 };
 
 module.exports = { checkEmailExists };
+

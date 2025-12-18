@@ -13,10 +13,12 @@ router.post("/add-user", async (req, res) => {
       email,
       createdAt: new Date(),
     });
-    res.json({ success: true, message: "User added" });
+    res.send({ success: true, message: "User added" });
   } catch (error) {
-    res.json({ success: false, error: error.message });
+    res.send({ success: false, error: error.message });
   }
 });
 
 module.exports = router;
+
+

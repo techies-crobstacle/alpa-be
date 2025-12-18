@@ -22,3 +22,5 @@ async function productRoutes(fastify, options) {
 }
 
 module.exports = productRoutes;
+
+

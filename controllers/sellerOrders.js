@@ -23,10 +23,10 @@ exports.getSellerOrders = async (request, reply) => {
       if (containsSellerItem) sellerOrders.push(order);
     });
 
-    return reply.status(200).json({ success: true, orders: sellerOrders, count: sellerOrders.length });
+    return reply.status(200).send({ success: true, orders: sellerOrders, count: sellerOrders.length });
   } catch (error) {
     console.error("Get seller orders error:", error);
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
@@ -39,19 +39,19 @@ exports.updateOrderStatus = async (request, reply) => {
 
     const allowed = ["pending", "packed", "shipped", "delivered", "cancelled"];
     if (!allowed.includes(status)) {
-      return reply.status(400).json({ success: false, message: "Invalid status" });
+      return reply.status(400).send({ success: false, message: "Invalid status" });
     }
 
     const orderRef = db.collection("orders").doc(orderId);
     const snap = await orderRef.get();
 
-    if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
+    if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
 
     const order = snap.data();
     const containsSellerItem = order.products && order.products.some((p) => p.sellerId === sellerId);
 
     if (!containsSellerItem) {
-      return reply.status(403).json({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
     }
 
     await orderRef.update({ 
@@ -81,10 +81,10 @@ exports.updateOrderStatus = async (request, reply) => {
       console.error("Error sending status email (non-blocking):", emailError.message);
     }
 
-    return reply.status(200).json({ success: true, message: "Order status updated successfully. Customer notified via email." });
+    return reply.status(200).send({ success: true, message: "Order status updated successfully. Customer notified via email." });
   } catch (error) {
     console.error("Update order status error:", error);
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
@@ -98,13 +98,13 @@ exports.updateTrackingInfo = async (request, reply) => {
     const orderRef = db.collection("orders").doc(orderId);
     const snap = await orderRef.get();
 
-    if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
+    if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
 
     const order = snap.data();
     const containsSellerItem = order.products && order.products.some((p) => p.sellerId === sellerId);
 
     if (!containsSellerItem) {
-      return reply.status(403).json({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
     }
 
     await orderRef.update({
@@ -137,11 +137,11 @@ exports.updateTrackingInfo = async (request, reply) => {
       console.error("Error sending tracking email (non-blocking):", emailError.message);
     }
 
-    return reply.status(200).json({ success: true, message: "Tracking info updated successfully. Customer notified via email." });
+    return reply.status(200).send({ success: true, message: "Tracking info updated successfully. Customer notified via email." });
 
   } catch (error) {
     console.error("Update tracking info error:", error);
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
@@ -152,7 +152,7 @@ exports.bulkUpdateStock = async (request, reply) => {
     const updates = request.body;
 
     if (!Array.isArray(updates) || updates.length === 0) {
-      return reply.status(400).json({ success: false, message: "Updates array is required" });
+      return reply.status(400).send({ success: false, message: "Updates array is required" });
     }
 
     let results = [];
@@ -199,14 +199,14 @@ exports.bulkUpdateStock = async (request, reply) => {
       });
     }
 
-    return reply.status(200).json({
+    return reply.status(200).send({
       success: true,
       message: "Bulk stock update completed",
       results
     });
 
   } catch (error) {
-    return reply.status(500).json({ success: false, message: error.message });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
@@ -277,7 +277,7 @@ exports.exportSalesReport = async (request, reply) => {
     }
 
     if (sellerOrders.length === 0) {
-      return reply.status(404).json({
+      return reply.status(404).send({
         success: false,
         message: "No sales data found for the specified period"
       });
@@ -307,7 +307,7 @@ exports.exportSalesReport = async (request, reply) => {
 
   } catch (error) {
     console.error("Export sales report error:", error);
-    return reply.status(500).json({ 
+    return reply.status(500).send({ 
       success: false, 
       message: error.message || "Failed to generate sales report" 
     });
@@ -402,16 +402,18 @@ exports.getSalesAnalytics = async (request, reply) => {
 
     console.log(`✅ Analytics generated for seller: ${sellerId}`);
 
-    return reply.status(200).json({
+    return reply.status(200).send({
       success: true,
       analytics
     });
 
   } catch (error) {
     console.error("Get sales analytics error:", error);
-    return reply.status(500).json({ 
+    return reply.status(500).send({ 
       success: false, 
       message: error.message || "Failed to fetch analytics" 
     });
   }
 };
+
+

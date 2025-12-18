@@ -18,7 +18,7 @@ exports.applyAsSeller = async (request, reply) => {
     const { email, phone, contactPerson } = request.body;
 
     if (!email || !phone || !contactPerson) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Email, phone, and contact person are required"
       });
@@ -45,7 +45,7 @@ exports.applyAsSeller = async (request, reply) => {
 
         await sendOTPEmail(email, otp, contactPerson);
 
-        return reply.status(200).json({
+        return reply.status(200).send({
           success: true,
           message: "OTP sent to your email. Please verify to continue.",
           sellerId
@@ -53,7 +53,7 @@ exports.applyAsSeller = async (request, reply) => {
       }
       
       // Email exists elsewhere - reject
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: emailCheck.message
       });
@@ -92,14 +92,14 @@ exports.applyAsSeller = async (request, reply) => {
     // Send OTP email
     await sendOTPEmail(email, otp, contactPerson);
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "OTP sent to your email. Please verify to continue.",
       sellerId
     });
   } catch (error) {
     console.error("Apply as seller error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -109,14 +109,14 @@ exports.verifyOTP = async (request, reply) => {
     const { sellerId, otp, password } = request.body;
 
     if (!sellerId || !otp) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Seller ID and OTP are required"
       });
     }
 
     if (!password || password.length < 6) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Password is required and must be at least 6 characters"
       });
@@ -130,7 +130,7 @@ exports.verifyOTP = async (request, reply) => {
       .get();
 
     if (otpSnapshot.empty) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "Invalid OTP" 
       });
@@ -142,7 +142,7 @@ exports.verifyOTP = async (request, reply) => {
     // Check if OTP is expired
     if (otpData.expiresAt.toDate() < new Date()) {
       await otpDoc.ref.delete();
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "OTP has expired. Please request a new one." 
       });
@@ -170,7 +170,7 @@ exports.verifyOTP = async (request, reply) => {
     // Generate JWT token for authentication
     const token = generateSellerToken(sellerId);
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Email verified and password set successfully. You can now continue with your application.",
       seller,
@@ -178,7 +178,7 @@ exports.verifyOTP = async (request, reply) => {
     });
   } catch (error) {
     console.error("Verify OTP error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -188,7 +188,7 @@ exports.sellerLogin = async (request, reply) => {
     const { email, password } = request.body;
 
     if (!email || !password) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Email and password are required"
       });
@@ -200,7 +200,7 @@ exports.sellerLogin = async (request, reply) => {
       .get();
 
     if (sellerSnapshot.empty) {
-      return reply.status(401).json({
+      return reply.status(401).send({
         success: false,
         message: "Invalid email or password"
       });
@@ -211,7 +211,7 @@ exports.sellerLogin = async (request, reply) => {
 
     // Check if seller has set password
     if (!seller.password) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Please complete your registration first by verifying OTP and setting a password"
       });
@@ -221,7 +221,7 @@ exports.sellerLogin = async (request, reply) => {
     const isPasswordValid = await bcrypt.compare(password, seller.password);
 
     if (!isPasswordValid) {
-      return reply.status(401).json({
+      return reply.status(401).send({
         success: false,
         message: "Invalid email or password"
       });
@@ -229,7 +229,7 @@ exports.sellerLogin = async (request, reply) => {
 
     // Check if seller is active
     if (seller.status === "rejected") {
-      return reply.status(403).json({
+      return reply.status(403).send({
         success: false,
         message: "Your seller account has been rejected. Please contact support."
       });
@@ -241,7 +241,7 @@ exports.sellerLogin = async (request, reply) => {
     // Remove sensitive data
     delete seller.password;
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Login successful",
       seller,
@@ -249,7 +249,7 @@ exports.sellerLogin = async (request, reply) => {
     });
   } catch (error) {
     console.error("Seller login error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -260,13 +260,13 @@ exports.resendOTP = async (request, reply) => {
 
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ success: false, message: "Seller not found" });
+      return reply.status(404).send({ success: false, message: "Seller not found" });
     }
 
     const seller = sellerDoc.data();
 
     if (seller.emailVerified) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Email already verified"
       });
@@ -295,13 +295,13 @@ exports.resendOTP = async (request, reply) => {
     // Send OTP
     await sendOTPEmail(seller.email, otp, seller.contactPerson);
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "New OTP sent to your email"
     });
   } catch (error) {
     console.error("Resend OTP error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -312,7 +312,7 @@ exports.submitBusinessDetails = async (request, reply) => {
     const sellerId = req.sellerId;
 
     if (!businessName || !abn) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Business name and ABN are required"
       });
@@ -324,7 +324,7 @@ exports.submitBusinessDetails = async (request, reply) => {
       .get();
 
     if (!abnSnapshot.empty && abnSnapshot.docs[0].id !== sellerId) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "This ABN is already registered by another seller" 
       });
@@ -346,14 +346,14 @@ exports.submitBusinessDetails = async (request, reply) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Business details saved successfully",
       seller
     });
   } catch (error) {
     console.error("Submit business details error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -364,7 +364,7 @@ exports.validateABN = async (request, reply) => {
     const sellerId = req.sellerId;
 
     if (!abn) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "ABN is required"
       });
@@ -374,7 +374,7 @@ exports.validateABN = async (request, reply) => {
     const abnValidation = await validateABNWithVigil(abn);
 
     if (!abnValidation.isValid) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: abnValidation.message || "Invalid ABN or business not found"
       });
@@ -387,14 +387,14 @@ exports.validateABN = async (request, reply) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "ABN verified successfully",
       businessInfo: abnValidation.data
     });
   } catch (error) {
     console.error("ABN validation error:", error);
-    reply.status(500).json({ 
+    reply.status(500).send({ 
       success: false, 
       message: "ABN validation failed. Please try again." 
     });
@@ -421,14 +421,14 @@ exports.submitCulturalInfo = async (request, reply) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Cultural information saved successfully",
       seller
     });
   } catch (error) {
     console.error("Submit cultural info error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -440,7 +440,7 @@ exports.submitStoreProfile = async (request, reply) => {
     const file = request.file;
 
     if (!storeName) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Store name is required"
       });
@@ -452,7 +452,7 @@ exports.submitStoreProfile = async (request, reply) => {
       .get();
     
     if (!storeSnapshot.empty && storeSnapshot.docs[0].id !== sellerId) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "Store name already taken. Please choose another." 
       });
@@ -480,7 +480,7 @@ exports.submitStoreProfile = async (request, reply) => {
         storeLogo = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
       } catch (uploadError) {
         console.error("File upload error:", uploadError);
-        return reply.status(500).json({
+        return reply.status(500).send({
           success: false,
           message: "Failed to upload logo. Please try again."
         });
@@ -506,14 +506,14 @@ exports.submitStoreProfile = async (request, reply) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Store profile saved successfully",
       seller
     });
   } catch (error) {
     console.error("Submit store profile error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -525,21 +525,21 @@ exports.uploadKYC = async (request, reply) => {
     const file = request.file;
 
     if (!file) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "Document file is required" 
       });
     }
 
     if (!documentType) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Document type is required (passport, drivers_license, or medicare)"
       });
     }
 
     if (!firstName || !lastName || !dateOfBirth) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "First name, last name, and date of birth are required for verification"
       });
@@ -558,7 +558,7 @@ exports.uploadKYC = async (request, reply) => {
       });
       
       if (!verification.success) {
-        return reply.status(400).json({
+        return reply.status(400).send({
           success: false,
           message: "Identity verification failed"
         });
@@ -612,7 +612,7 @@ exports.uploadKYC = async (request, reply) => {
       const updatedSeller = await db.collection("sellers").doc(sellerId).get();
       const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-      reply.status(200).json({
+      reply.status(200).send({
         success: true,
         message: "KYC document uploaded and verified successfully",
         seller,
@@ -625,14 +625,14 @@ exports.uploadKYC = async (request, reply) => {
       });
     } catch (uploadError) {
       console.error("File upload error:", uploadError);
-      return reply.status(500).json({
+      return reply.status(500).send({
         success: false,
         message: uploadError.message || "Failed to upload document. Please try again."
       });
     }
   } catch (error) {
     console.error("Upload KYC error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -643,7 +643,7 @@ exports.submitBankDetails = async (request, reply) => {
     const sellerId = req.sellerId;
 
     if (!accountName || !bsb || !accountNumber) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Account name, BSB, and account number are required"
       });
@@ -663,14 +663,14 @@ exports.submitBankDetails = async (request, reply) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Bank details saved. You can update these later if needed.",
       seller
     });
   } catch (error) {
     console.error("Submit bank details error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -683,28 +683,28 @@ exports.submitForReview = async (request, reply) => {
 
     // Validation checks
     if (!seller.emailVerified) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "Email verification is required before submission" 
       });
     }
 
     if (!seller.abnVerified) {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "ABN verification is required before submission" 
       });
     }
 
     if (seller.kycStatus !== "submitted") {
-      return reply.status(400).json({ 
+      return reply.status(400).send({ 
         success: false, 
         message: "KYC documents must be uploaded before submission" 
       });
     }
 
     if (!seller.storeName) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "Store profile must be completed before submission"
       });
@@ -728,7 +728,7 @@ exports.submitForReview = async (request, reply) => {
       message += " Note: After approval, you'll need to upload at least 1-2 products to start, with 5+ products recommended for going live. Each product should have 3-5 high-quality images.";
     }
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message,
       seller: { id: updatedSeller.id, ...updatedSeller.data() },
@@ -739,7 +739,7 @@ exports.submitForReview = async (request, reply) => {
     });
   } catch (error) {
     console.error("Submit for review error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -750,7 +750,7 @@ exports.getProfile = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return reply.status(404).json({ 
+      return reply.status(404).send({ 
         success: false, 
         message: "Seller profile not found" 
       });
@@ -763,10 +763,10 @@ exports.getProfile = async (request, reply) => {
       delete seller.idDocument.documentUrl;
     }
 
-    reply.status(200).json({ success: true, seller });
+    reply.status(200).send({ success: true, seller });
   } catch (error) {
     console.error("Get profile error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -784,7 +784,7 @@ exports.updateProfile = async (request, reply) => {
     }
 
     if (Object.keys(updates).length === 0) {
-      return reply.status(400).json({
+      return reply.status(400).send({
         success: false,
         message: "No valid fields to update"
       });
@@ -797,14 +797,14 @@ exports.updateProfile = async (request, reply) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       message: "Profile updated successfully",
       seller
     });
   } catch (error) {
     console.error("Update profile error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -816,7 +816,7 @@ exports.getGoLiveStatus = async (request, reply) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
 
     if (!sellerDoc.exists) {
-      return reply.status(404).json({
+      return reply.status(404).send({
         success: false,
         message: "Seller not found"
       });
@@ -833,7 +833,7 @@ exports.getGoLiveStatus = async (request, reply) => {
 
     const canGoLive = checks.approved && checks.minimumProducts && checks.culturalApproval && !checks.isLive;
 
-    reply.status(200).json({
+    reply.status(200).send({
       success: true,
       canGoLive,
       isLive: checks.isLive,
@@ -854,7 +854,7 @@ exports.getGoLiveStatus = async (request, reply) => {
     });
   } catch (error) {
     console.error("Get go-live status error:", error);
-    reply.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
@@ -890,3 +890,5 @@ exports.updateProductCount = async (sellerId, increment = true) => {
     throw error;
   }
 };
+
+
