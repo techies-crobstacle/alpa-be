@@ -311,6 +311,16 @@ exports.submitBusinessDetails = async (request, reply) => {
     const { businessName, abn, businessAddress } = request.body;
     const sellerId = request.sellerId;
 
+    console.log("📝 Submit business details - sellerId:", sellerId);
+
+    if (!sellerId) {
+      console.error("❌ Seller ID is undefined");
+      return reply.status(401).send({
+        success: false,
+        message: "Authentication error: Seller ID not found"
+      });
+    }
+
     if (!businessName || !abn) {
       return reply.status(400).send({
         success: false,

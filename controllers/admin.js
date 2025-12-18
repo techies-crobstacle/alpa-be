@@ -61,7 +61,7 @@ exports.getAllSellers = async (request, reply) => {
 // GET SINGLE SELLER DETAILS
 exports.getSellerDetails = async (request, reply) => {
   try {
-    const { sellerId } = request.params;
+    const sellerId = request.params.id;
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
@@ -179,7 +179,16 @@ exports.getPendingSellers = async (request, reply) => {
 // APPROVE SELLER
 exports.approveSeller = async (request, reply) => {
   try {
-    const { sellerId } = request.params;
+    const sellerId = request.params.id;
+    
+    console.log("📝 Approve seller - ID:", sellerId);
+    
+    if (!sellerId) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Seller ID is required" 
+      });
+    }
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
@@ -209,8 +218,17 @@ exports.approveSeller = async (request, reply) => {
 // REJECT SELLER
 exports.rejectSeller = async (request, reply) => {
   try {
-    const { sellerId } = request.params;
+    const sellerId = request.params.id;
     const { reason } = request.body;
+    
+    console.log("📝 Reject seller - ID:", sellerId);
+    
+    if (!sellerId) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Seller ID is required" 
+      });
+    }
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
@@ -273,7 +291,7 @@ exports.suspendSeller = async (request, reply) => {
 // UPDATE SELLER NOTES
 exports.updateSellerNotes = async (request, reply) => {
   try {
-    const { id } = request.params;
+    const sellerId = request.params.id;
     const { notes } = request.body;
 
     const sellerDoc = await db.collection("sellers").doc(id).get();

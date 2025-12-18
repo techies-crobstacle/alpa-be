@@ -32,6 +32,15 @@ exports.authenticateSeller = async (request, reply) => {
       }
     }
 
+    // Validate sellerId
+    if (!request.sellerId) {
+      console.error("❌ Seller ID is undefined after token decode");
+      return reply.status(401).send({ 
+        success: false, 
+        message: "Invalid token: seller ID not found" 
+      });
+    }
+
     // Check if seller exists
     const sellerDoc = await db.collection("sellers").doc(request.sellerId).get();
     if (!sellerDoc.exists) {
@@ -43,10 +52,11 @@ exports.authenticateSeller = async (request, reply) => {
 
     request.seller = { id: sellerDoc.id, ...sellerDoc.data() };
   } catch (error) {
-    console.error("Auth error:", error);
+    console.error("❌ Auth error:", error.message);
     reply.status(401).send({ 
       success: false, 
-      message: "Authentication failed" 
+      message: "Authentication failed",
+      error: error.message 
     });
   }
 };
