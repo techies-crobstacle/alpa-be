@@ -6,21 +6,27 @@ const { checkEmailExists } = require("../utils/emailValidation");
 // SIGNUP - Send OTP for verification
 exports.register = async (request, reply) => {
   try {
+    console.log("📝 Register request received:", { email: request.body?.email });
+    
     const { name, email, password, mobile, role } = request.body;
 
     if (!name || !email || !password || !mobile || !role) {
+      console.log("❌ Missing required fields");
       return reply.status(400).send({ success: false, message: "All fields are required" });
     }
 
+    console.log("🔍 Checking if email exists...");
     // Check if email exists across all collections
     const emailCheck = await checkEmailExists(email);
     
     if (emailCheck.exists) {
       // Allow resending OTP if pending registration expired
       if (emailCheck.location === "pending_registrations" && emailCheck.allowResend) {
+        console.log("♻️ Deleting expired pending registration");
         // Delete expired pending registration and continue
         await db.collection("pending_registrations").doc(email.toLowerCase()).delete();
       } else {
+        console.log("❌ Email already exists:", emailCheck.message);
         return reply.status(400).send({ 
           success: false, 
           message: emailCheck.message 
@@ -28,10 +34,12 @@ exports.register = async (request, reply) => {
       }
     }
 
+    console.log("🔑 Generating OTP...");
     // Generate OTP
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
+    console.log("💾 Storing pending registration in Firestore...");
     // Store pending registration in Firestore
     await db.collection("pending_registrations").doc(email.toLowerCase()).set({
       name,
@@ -44,22 +52,27 @@ exports.register = async (request, reply) => {
       createdAt: new Date(),
     });
 
+    console.log("📧 Sending OTP email...");
     // Send OTP email
     const emailResult = await sendOTPEmail(email, otp, name);
 
     if (!emailResult.success) {
+      console.error("❌ Email sending failed:", emailResult.error);
       return reply.status(500).send({ 
         success: false, 
-        message: "Failed to send OTP email. Please try again." 
+        message: "Failed to send OTP email. Please try again.",
+        details: emailResult.error 
       });
     }
 
+    console.log("✅ Registration successful, OTP sent");
     return reply.status(200).send({ 
       success: true, 
       message: "OTP sent to your email. Please verify to complete registration.",
       email 
     });
   } catch (error) {
+    console.error("❌ Register error:", error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };

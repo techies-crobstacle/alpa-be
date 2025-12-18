@@ -11,17 +11,31 @@ const sellerOnboardingRoutes = require("./routes/sellerOnboardingRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 
-const app = fastify({ logger: false });
+const app = fastify({ 
+  logger: process.env.NODE_ENV === 'production' ? false : true,
+  requestTimeout: 30000 // 30 second timeout
+});
 
 // Register plugins
 app.register(require("@fastify/cors"), {
-  origin: true // Allow all origins (configure as needed)
+  origin: true, // Allow all origins (configure as needed)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 });
 app.register(require("@fastify/formbody"));
 app.register(require("@fastify/multipart"), {
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
   }
+});
+
+// Global error handler
+app.setErrorHandler((error, request, reply) => {
+  console.error("❌ Fastify error:", error);
+  reply.status(error.statusCode || 500).send({
+    success: false,
+    error: error.message || "Internal server error"
+  });
 });
 
 // Health check endpoint

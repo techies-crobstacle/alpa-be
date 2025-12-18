@@ -86,11 +86,27 @@ const sendOTPEmail = async (email, otp, name) => {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    // Add timeout to prevent hanging (15 seconds)
+    const sendMailWithTimeout = Promise.race([
+      transporter.sendMail(mailOptions),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Email sending timeout - network issue")), 15000)
+      )
+    ]);
+    
+    await sendMailWithTimeout;
+    console.log("✅ Email sent successfully to:", email);
     return { success: true };
   } catch (error) {
-    console.error("Email sending error:", error);
-    console.error("Error details:", error.message);
+    console.error("❌ Email sending error:", error.message);
+    
+    // Return success in development/testing to not block user registration
+    if (process.env.NODE_ENV === 'development') {
+      console.log("⚠️ Development mode: Returning success despite email error");
+      console.log("📝 OTP for testing:", otp);
+      return { success: true };
+    }
+    
     return { success: false, error: error.message };
   }
 };
