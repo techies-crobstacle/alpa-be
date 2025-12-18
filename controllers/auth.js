@@ -133,8 +133,9 @@ exports.verifyOTP = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Email and OTP are required" });
     }
 
-    // Get pending registration
-    const pendingDoc = await db.collection("pending_registrations").doc(email).get();
+    // Get pending registration (case-insensitive)
+    const normalizedEmail = email.toLowerCase();
+    const pendingDoc = await db.collection("pending_registrations").doc(normalizedEmail).get();
 
     if (!pendingDoc.exists) {
       return reply.status(404).send({ 
@@ -147,7 +148,7 @@ exports.verifyOTP = async (request, reply) => {
 
     // Check if OTP has expired
     if (new Date() > pendingData.otpExpiry.toDate()) {
-      await db.collection("pending_registrations").doc(email).delete();
+      await db.collection("pending_registrations").doc(normalizedEmail).delete();
       return reply.status(400).send({ 
         success: false, 
         message: "OTP has expired. Please register again." 
@@ -185,7 +186,7 @@ exports.verifyOTP = async (request, reply) => {
     });
 
     // Delete pending registration
-    await db.collection("pending_registrations").doc(email).delete();
+    await db.collection("pending_registrations").doc(normalizedEmail).delete();
 
     // Generate JWT token
     const token = jwt.sign(
@@ -224,8 +225,9 @@ exports.resendOTP = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Email is required" });
     }
 
-    // Get pending registration
-    const pendingDoc = await db.collection("pending_registrations").doc(email).get();
+    // Get pending registration (case-insensitive)
+    const normalizedEmail = email.toLowerCase();
+    const pendingDoc = await db.collection("pending_registrations").doc(normalizedEmail).get();
 
     if (!pendingDoc.exists) {
       return reply.status(404).send({ 
@@ -241,7 +243,7 @@ exports.resendOTP = async (request, reply) => {
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Update OTP in Firestore
-    await db.collection("pending_registrations").doc(email).update({
+    await db.collection("pending_registrations").doc(normalizedEmail).update({
       otp,
       otpExpiry,
     });

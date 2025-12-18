@@ -10,7 +10,7 @@ const {
 // SELLER — VIEW ORDERS
 exports.getSellerOrders = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
     const snapshot = await db.collection("orders").get();
 
     let sellerOrders = [];

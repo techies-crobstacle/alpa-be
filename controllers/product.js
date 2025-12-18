@@ -5,7 +5,7 @@ exports.addProduct = async (request, reply) => {
   const { title, description, price, stock, category, images } = request.body;
 
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
 
     // Check if seller is approved and active
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
@@ -78,7 +78,7 @@ exports.addProduct = async (request, reply) => {
 // GET MY PRODUCTS (Seller only)
 exports.getMyProducts = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
 
     const productsSnap = await db.collection("products")
       .where("sellerId", "==", sellerId)
@@ -120,7 +120,7 @@ exports.getProductById = async (request, reply) => {
 // UPDATE PRODUCT (Seller only)
 exports.updateProduct = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
     const productRef = db.collection("products").doc(request.params.id);
     const docSnap = await productRef.get();
 
@@ -164,7 +164,7 @@ exports.updateProduct = async (request, reply) => {
 // DELETE PRODUCT (Seller only)
 exports.deleteProduct = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
     const productRef = db.collection("products").doc(request.params.id);
     const docSnap = await productRef.get();
 
