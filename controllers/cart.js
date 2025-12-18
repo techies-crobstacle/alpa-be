@@ -1,12 +1,12 @@
 const { db } = require("../config/firebase");
 
-exports.addToCart = async (req, res) => {
+exports.addToCart = async (request, reply) => {
   try {
-    const { productId, quantity } = req.body;
-    const userId = req.user.uid; // from auth middleware
+    const { productId, quantity } = request.body;
+    const userId = request.user.uid; // from auth middleware
 
     if (!productId) {
-      return res.status(400).json({ success: false, message: "productId is required" });
+      return reply.status(400).json({ success: false, message: "productId is required" });
     }
 
     const cartRef = db.collection("carts").doc(userId);
@@ -37,48 +37,48 @@ exports.addToCart = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    return reply.status(200).json({
       success: true,
       message: "Product added to cart successfully",
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
 
 // VIEW CART (User only)
-exports.getMyCart = async (req, res) => {
+exports.getMyCart = async (request, reply) => {
   try {
-    const userId = req.user.uid; // from auth middleware
+    const userId = request.user.uid; // from auth middleware
 
     const cartRef = db.collection("carts").doc(userId);
     const cartSnap = await cartRef.get();
 
     if (!cartSnap.exists) {
-      return res.status(200).json({
+      return reply.status(200).json({
         success: true,
         cart: [],
         message: "Cart is empty",
       });
     }
 
-    return res.status(200).json({
+    return reply.status(200).json({
       success: true,
       cart: cartSnap.data().products || [],
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
-exports.updateCartQuantity = async (req, res) => {
+exports.updateCartQuantity = async (request, reply) => {
   try {
-    const userId = req.user.uid;
-    const { productId, quantity } = req.body;
+    const userId = request.user.uid;
+    const { productId, quantity } = request.body;
 
     if (!productId || quantity === undefined) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "productId and quantity are required"
       });
@@ -88,7 +88,7 @@ exports.updateCartQuantity = async (req, res) => {
     const cartDoc = await cartRef.get();
 
     if (!cartDoc.exists) {
-      return res.status(404).json({
+      return reply.status(404).json({
         success: false,
         message: "Cart not found"
       });
@@ -98,7 +98,7 @@ exports.updateCartQuantity = async (req, res) => {
 
     let itemIndex = items.findIndex(item => item.productId === productId);
     if (itemIndex === -1) {
-      return res.status(404).json({
+      return reply.status(404).json({
         success: false,
         message: "Product not found in cart"
       });
@@ -109,13 +109,13 @@ exports.updateCartQuantity = async (req, res) => {
 
     await cartRef.update({ products: items });
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Cart quantity updated successfully",
       items
     });
   } catch (err) {
-    res.status(500).json({
+    reply.status(500).json({
       success: false,
       message: err.message
     });
@@ -123,16 +123,16 @@ exports.updateCartQuantity = async (req, res) => {
 };
 
 
-exports.removeFromCart = async (req, res) => {
+exports.removeFromCart = async (request, reply) => {
   try {
-    const userId = req.user.uid;
-    const productId = req.params.productId;
+    const userId = request.user.uid;
+    const productId = request.params.productId;
 
     const cartRef = db.collection("carts").doc(userId);
     const cartSnap = await cartRef.get();
 
     if (!cartSnap.exists) {
-      return res.status(404).json({ success: false, message: "Cart not found" });
+      return reply.status(404).json({ success: false, message: "Cart not found" });
     }
 
     const cartData = cartSnap.data();
@@ -145,12 +145,13 @@ exports.removeFromCart = async (req, res) => {
       updatedAt: new Date()
     });
 
-    return res.status(200).json({
+    return reply.status(200).json({
       success: true,
       message: "Product removed from cart",
       cart: newItems,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
+

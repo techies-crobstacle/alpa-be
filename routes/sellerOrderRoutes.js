@@ -1,28 +1,26 @@
-const express = require("express");
-const router = express.Router();
 const sellerOrderController = require("../controllers/sellerOrders");
 const { authenticateSeller } = require("../middlewares/authMiddleware");
 
-// ---------------- SELLER ORDER ROUTES ----------------
+async function sellerOrderRoutes(fastify, options) {
+  // ---------------- SELLER ORDER ROUTES ----------------
 
-// Get all orders received by seller
-router.get("/", authenticateSeller, sellerOrderController.getSellerOrders);
+  // Get all orders received by seller
+  fastify.get("/", { preHandler: authenticateSeller }, sellerOrderController.getSellerOrders);
 
-// Update order status (Packed, Shipped, Delivered etc.)
-router.put("/update-status/:orderId", authenticateSeller, sellerOrderController.updateOrderStatus);
+  // Update order status (Packed, Shipped, Delivered etc.)
+  fastify.put("/update-status/:orderId", { preHandler: authenticateSeller }, sellerOrderController.updateOrderStatus);
 
-// Update tracking number & estimated delivery
-router.put("/tracking/:orderId", authenticateSeller, sellerOrderController.updateTrackingInfo);
+  // Update tracking number & estimated delivery
+  fastify.put("/tracking/:orderId", { preHandler: authenticateSeller }, sellerOrderController.updateTrackingInfo);
 
-// Seller Stock bulk update
-router.put("/products/bulk-stock", authenticateSeller, sellerOrderController.bulkUpdateStock);
+  // Seller Stock bulk update
+  fastify.put("/products/bulk-stock", { preHandler: authenticateSeller }, sellerOrderController.bulkUpdateStock);
 
+  // Export sales report (CSV)
+  fastify.get("/export-sales", { preHandler: authenticateSeller }, sellerOrderController.exportSalesReport);
 
-// Export sales report (CSV)
-router.get("/export-sales", authenticateSeller, sellerOrderController.exportSalesReport);
+  // Get sales analytics
+  fastify.get("/analytics", { preHandler: authenticateSeller }, sellerOrderController.getSalesAnalytics);
+}
 
-// Get sales analytics
-router.get("/analytics", authenticateSeller, sellerOrderController.getSalesAnalytics);
-
-
-module.exports = router;
+module.exports = sellerOrderRoutes;

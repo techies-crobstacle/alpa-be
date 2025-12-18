@@ -1,8 +1,8 @@
 const { db, admin } = require("../config/firebase");
 
 // ADD PRODUCT (Seller only)
-exports.addProduct = async (req, res) => {
-  const { title, description, price, stock, category, images } = req.body;
+exports.addProduct = async (request, reply) => {
+  const { title, description, price, stock, category, images } = request.body;
 
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
@@ -11,13 +11,13 @@ exports.addProduct = async (req, res) => {
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ success: false, message: "Seller account not found" });
+      return reply.status(404).json({ success: false, message: "Seller account not found" });
     }
 
     const seller = sellerDoc.data();
 
     if (seller.status !== "approved" && seller.status !== "active") {
-      return res.status(403).json({ 
+      return reply.status(403).json({ 
         success: false, 
         message: "Your seller account must be approved before adding products. Current status: " + seller.status 
       });
@@ -52,7 +52,7 @@ exports.addProduct = async (req, res) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Product added successfully",
       productId: productRef.id,
@@ -71,12 +71,12 @@ exports.addProduct = async (req, res) => {
     });
   } catch (err) {
     console.error("Add product error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET MY PRODUCTS (Seller only)
-exports.getMyProducts = async (req, res) => {
+exports.getMyProducts = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
 
@@ -89,53 +89,53 @@ exports.getMyProducts = async (req, res) => {
       ...doc.data()
     }));
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       products,
       count: products.length 
     });
   } catch (err) {
     console.error("Get my products error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET PRODUCT BY ID (Public)
-exports.getProductById = async (req, res) => {
+exports.getProductById = async (request, reply) => {
   try {
-    const productRef = db.collection("products").doc(req.params.id);
+    const productRef = db.collection("products").doc(request.params.id);
     const docSnap = await productRef.get();
 
     if (!docSnap.exists) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+      return reply.status(404).json({ success: false, message: "Product not found" });
     }
 
-    res.status(200).json({ success: true, product: { id: docSnap.id, ...docSnap.data() } });
+    reply.status(200).json({ success: true, product: { id: docSnap.id, ...docSnap.data() } });
   } catch (err) {
     console.error("Get product by ID error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // UPDATE PRODUCT (Seller only)
-exports.updateProduct = async (req, res) => {
+exports.updateProduct = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
-    const productRef = db.collection("products").doc(req.params.id);
+    const productRef = db.collection("products").doc(request.params.id);
     const docSnap = await productRef.get();
 
     if (!docSnap.exists) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+      return reply.status(404).json({ success: false, message: "Product not found" });
     }
 
     const product = docSnap.data();
 
     // Check if the logged-in seller is the owner
     if (product.sellerId !== sellerId) {
-      return res.status(403).json({ success: false, message: "You are not authorized to update this product" });
+      return reply.status(403).json({ success: false, message: "You are not authorized to update this product" });
     }
 
-    const { title, description, price, stock, category, images } = req.body;
+    const { title, description, price, stock, category, images } = request.body;
 
     // Update only the provided fields
     const updatedData = {
@@ -150,33 +150,33 @@ exports.updateProduct = async (req, res) => {
 
     await productRef.update(updatedData);
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Product updated successfully", 
-      product: { id: req.params.id, ...updatedData }
+      product: { id: request.params.id, ...updatedData }
     });
   } catch (err) {
     console.error("Update product error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // DELETE PRODUCT (Seller only)
-exports.deleteProduct = async (req, res) => {
+exports.deleteProduct = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
-    const productRef = db.collection("products").doc(req.params.id);
+    const productRef = db.collection("products").doc(request.params.id);
     const docSnap = await productRef.get();
 
     if (!docSnap.exists) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+      return reply.status(404).json({ success: false, message: "Product not found" });
     }
 
     const product = docSnap.data();
 
     // Check if the logged-in seller is the owner
     if (product.sellerId !== sellerId) {
-      return res.status(403).json({ success: false, message: "You are not authorized to delete this product" });
+      return reply.status(403).json({ success: false, message: "You are not authorized to delete this product" });
     }
 
     await productRef.delete();
@@ -190,19 +190,19 @@ exports.deleteProduct = async (req, res) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Product deleted successfully",
       totalProducts: Math.max(0, currentCount - 1)
     });
   } catch (err) {
     console.error("Delete product error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET ALL PRODUCTS (Public - only active sellers' products)
-exports.getAllProducts = async (req, res) => {
+exports.getAllProducts = async (request, reply) => {
   try {
     const productsSnap = await db.collection("products")
       .where("status", "==", "active")
@@ -222,9 +222,10 @@ exports.getAllProducts = async (req, res) => {
     const allProducts = await Promise.all(productPromises);
     const products = allProducts.filter(p => p !== null);
 
-    return res.status(200).json({ success: true, products, count: products.length });
+    return reply.status(200).json({ success: true, products, count: products.length });
   } catch (err) {
     console.error("Get all products error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return reply.status(500).json({ success: false, error: err.message });
   }
 };
+

@@ -1,7 +1,7 @@
 const { db } = require("../config/firebase");
 
 // GET ALL USERS (role: "user")
-exports.getAllUsers = async (req, res) => {
+exports.getAllUsers = async (request, reply) => {
   try {
     const snap = await db.collection("users").where("role", "==", "user").get();
     const users = snap.docs.map(doc => {
@@ -9,14 +9,14 @@ exports.getAllUsers = async (req, res) => {
       return { id: data.uid || doc.id, ...data };
     });
 
-    return res.status(200).json({ success: true, users, count: users.length });
+    return reply.status(200).json({ success: true, users, count: users.length });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET ALL SELLERS (from sellers collection)
-exports.getAllSellers = async (req, res) => {
+exports.getAllSellers = async (request, reply) => {
   try {
     const snap = await db.collection("sellers").get();
     const sellers = snap.docs.map(doc => {
@@ -48,25 +48,25 @@ exports.getAllSellers = async (req, res) => {
       };
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       sellers,
       count: sellers.length 
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET SINGLE SELLER DETAILS
-exports.getSellerDetails = async (req, res) => {
+exports.getSellerDetails = async (request, reply) => {
   try {
-    const { sellerId } = req.params;
+    const { sellerId } = request.params;
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -96,7 +96,7 @@ exports.getSellerDetails = async (req, res) => {
       }
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       seller: {
         id: sellerDoc.id,
@@ -112,19 +112,19 @@ exports.getSellerDetails = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET PRODUCTS OF A SPECIFIC SELLER
-exports.getProductsBySeller = async (req, res) => {
+exports.getProductsBySeller = async (request, reply) => {
   try {
-    const { sellerId } = req.params;
+    const { sellerId } = request.params;
     
     // Check if seller exists
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -139,7 +139,7 @@ exports.getProductsBySeller = async (req, res) => {
       ...doc.data() 
     }));
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       products,
       count: products.length,
@@ -150,12 +150,12 @@ exports.getProductsBySeller = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // GET PENDING SELLER APPROVALS
-exports.getPendingSellers = async (req, res) => {
+exports.getPendingSellers = async (request, reply) => {
   try {
     const snap = await db.collection("sellers")
       .where("status", "==", "pending")
@@ -166,25 +166,25 @@ exports.getPendingSellers = async (req, res) => {
       ...doc.data()
     }));
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       sellers: pendingSellers,
       count: pendingSellers.length 
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // APPROVE SELLER
-exports.approveSeller = async (req, res) => {
+exports.approveSeller = async (request, reply) => {
   try {
-    const { sellerId } = req.params;
+    const { sellerId } = request.params;
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -197,25 +197,25 @@ exports.approveSeller = async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Seller approved successfully" 
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // REJECT SELLER
-exports.rejectSeller = async (req, res) => {
+exports.rejectSeller = async (request, reply) => {
   try {
-    const { sellerId } = req.params;
-    const { reason } = req.body;
+    const { sellerId } = request.params;
+    const { reason } = request.body;
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -229,25 +229,25 @@ exports.rejectSeller = async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Seller rejected" 
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // SUSPEND SELLER
-exports.suspendSeller = async (req, res) => {
+exports.suspendSeller = async (request, reply) => {
   try {
-    const { sellerId } = req.params;
-    const { reason } = req.body;
+    const { sellerId } = request.params;
+    const { reason } = request.body;
     
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -261,25 +261,25 @@ exports.suspendSeller = async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Seller suspended" 
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    reply.status(500).json({ success: false, error: err.message });
   }
 };
 
 // UPDATE SELLER NOTES
-exports.updateSellerNotes = async (req, res) => {
+exports.updateSellerNotes = async (request, reply) => {
   try {
-    const { id } = req.params;
-    const { notes } = req.body;
+    const { id } = request.params;
+    const { notes } = request.body;
 
     const sellerDoc = await db.collection("sellers").doc(id).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller not found" 
       });
@@ -290,28 +290,28 @@ exports.updateSellerNotes = async (req, res) => {
       updatedAt: new Date().toISOString()
     });
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Notes updated successfully"
     });
   } catch (error) {
     console.error("Update seller notes error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // CULTURAL APPROVAL
-exports.culturalApproval = async (req, res) => {
+exports.culturalApproval = async (request, reply) => {
   try {
-    const { id } = req.params;
-    const { approved, feedback } = req.body;
-    const adminId = req.userId || req.user?.uid || "admin";
+    const { id } = request.params;
+    const { approved, feedback } = request.body;
+    const adminId = request.userId || request.user?.uid || "admin";
 
     console.log("Cultural approval request - ID:", id);
     console.log("Approved value:", approved, "Type:", typeof approved);
     console.log("Admin ID:", adminId);
-    console.log("req.userId:", req.userId);
-    console.log("req.user:", req.user);
+    console.log("request.userId:", request.userId);
+    console.log("request.user:", request.user);
 
     // Convert string "yes"/"no" to boolean
     let isApproved = false;
@@ -324,7 +324,7 @@ exports.culturalApproval = async (req, res) => {
     const sellerDoc = await db.collection("sellers").doc(id).get();
 
     if (!sellerDoc.exists) {
-      return res.status(404).json({
+      return reply.status(404).json({
         success: false,
         message: "Seller not found"
       });
@@ -334,7 +334,7 @@ exports.culturalApproval = async (req, res) => {
     console.log("Seller status:", seller.status);
 
     if (seller.status !== "approved") {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Seller must be approved before cultural approval"
       });
@@ -358,7 +358,7 @@ exports.culturalApproval = async (req, res) => {
 
     const updatedSeller = await db.collection("sellers").doc(id).get();
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: isApproved 
         ? "Cultural approval granted. Seller can now go live if minimum products are uploaded." 
@@ -369,20 +369,20 @@ exports.culturalApproval = async (req, res) => {
     console.error("Cultural approval error:", error);
     console.error("Error message:", error.message);
     console.error("Error stack:", error.stack);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    reply.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
 
 // ACTIVATE SELLER (GO LIVE)
-exports.activateSeller = async (req, res) => {
+exports.activateSeller = async (request, reply) => {
   try {
-    const { id } = req.params;
-    const adminId = req.userId;
+    const { id } = request.params;
+    const adminId = request.userId;
 
     const sellerDoc = await db.collection("sellers").doc(id).get();
 
     if (!sellerDoc.exists) {
-      return res.status(404).json({
+      return reply.status(404).json({
         success: false,
         message: "Seller not found"
       });
@@ -392,21 +392,21 @@ exports.activateSeller = async (req, res) => {
 
     // Validation checks
     if (seller.status !== "approved") {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Seller must be approved before activation"
       });
     }
 
     if (seller.productCount < 1) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Seller must upload at least 1-2 products before going live. 5+ products recommended."
       });
     }
 
     if (seller.culturalApprovalStatus !== "approved") {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Cultural approval is required before activation"
       });
@@ -443,7 +443,7 @@ exports.activateSeller = async (req, res) => {
     const updatedSeller = await db.collection("sellers").doc(id).get();
     const seller_data = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: `Seller is now LIVE! ${activatedCount} products activated and visible to customers.`,
       seller: seller_data,
@@ -451,8 +451,9 @@ exports.activateSeller = async (req, res) => {
     });
   } catch (error) {
     console.error("Activate seller error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 

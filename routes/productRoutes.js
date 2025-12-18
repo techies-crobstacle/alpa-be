@@ -1,24 +1,24 @@
-const express = require("express");
-const router = express.Router();
 const { authenticateSeller } = require("../middlewares/authMiddleware");
 const { addProduct, getMyProducts, getAllProducts, getProductById, deleteProduct, updateProduct } = require("../controllers/product");
 
-// ADD PRODUCT (Seller only - must be approved)
-router.post("/add", authenticateSeller, addProduct);
+async function productRoutes(fastify, options) {
+  // ADD PRODUCT (Seller only - must be approved)
+  fastify.post("/add", { preHandler: authenticateSeller }, addProduct);
 
-// GET ALL PRODUCTS (Public)
-router.get("/all", getAllProducts);
+  // GET ALL PRODUCTS (Public)
+  fastify.get("/all", getAllProducts);
 
-// GET MY PRODUCTS (Seller only)
-router.get("/my-products", authenticateSeller, getMyProducts);
+  // GET MY PRODUCTS (Seller only)
+  fastify.get("/my-products", { preHandler: authenticateSeller }, getMyProducts);
 
-// GET PRODUCT BY ID (Public)
-router.get("/:id", getProductById);
+  // GET PRODUCT BY ID (Public)
+  fastify.get("/:id", getProductById);
 
-// UPDATE PRODUCT (Seller only - own products)
-router.put("/:id", authenticateSeller, updateProduct);
+  // UPDATE PRODUCT (Seller only - own products)
+  fastify.put("/:id", { preHandler: authenticateSeller }, updateProduct);
 
-// DELETE PRODUCT (Seller only - own products)
-router.delete("/:id", authenticateSeller, deleteProduct);
+  // DELETE PRODUCT (Seller only - own products)
+  fastify.delete("/:id", { preHandler: authenticateSeller }, deleteProduct);
+}
 
-module.exports = router;
+module.exports = productRoutes;

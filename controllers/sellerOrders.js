@@ -8,7 +8,7 @@ const {
 
 
 // SELLER — VIEW ORDERS
-exports.getSellerOrders = async (req, res) => {
+exports.getSellerOrders = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
     const snapshot = await db.collection("orders").get();
@@ -23,35 +23,35 @@ exports.getSellerOrders = async (req, res) => {
       if (containsSellerItem) sellerOrders.push(order);
     });
 
-    return res.status(200).json({ success: true, orders: sellerOrders, count: sellerOrders.length });
+    return reply.status(200).json({ success: true, orders: sellerOrders, count: sellerOrders.length });
   } catch (error) {
     console.error("Get seller orders error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
 // SELLER — UPDATE ORDER STATUS (with SMS notification)
-exports.updateOrderStatus = async (req, res) => {
+exports.updateOrderStatus = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
-    const { orderId } = req.params;
-    const { status } = req.body;
+    const { orderId } = request.params;
+    const { status } = request.body;
 
     const allowed = ["pending", "packed", "shipped", "delivered", "cancelled"];
     if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, message: "Invalid status" });
+      return reply.status(400).json({ success: false, message: "Invalid status" });
     }
 
     const orderRef = db.collection("orders").doc(orderId);
     const snap = await orderRef.get();
 
-    if (!snap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
 
     const order = snap.data();
     const containsSellerItem = order.products && order.products.some((p) => p.sellerId === sellerId);
 
     if (!containsSellerItem) {
-      return res.status(403).json({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      return reply.status(403).json({ success: false, message: "Unauthorized - this order doesn't contain your products" });
     }
 
     await orderRef.update({ 
@@ -81,30 +81,30 @@ exports.updateOrderStatus = async (req, res) => {
       console.error("Error sending status email (non-blocking):", emailError.message);
     }
 
-    return res.status(200).json({ success: true, message: "Order status updated successfully. Customer notified via email." });
+    return reply.status(200).json({ success: true, message: "Order status updated successfully. Customer notified via email." });
   } catch (error) {
     console.error("Update order status error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
 // SELLER — UPDATE TRACKING INFO (with SMS notification)
-exports.updateTrackingInfo = async (req, res) => {
+exports.updateTrackingInfo = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
-    const { orderId } = req.params;
-    const { trackingNumber, estimatedDelivery } = req.body;
+    const { orderId } = request.params;
+    const { trackingNumber, estimatedDelivery } = request.body;
 
     const orderRef = db.collection("orders").doc(orderId);
     const snap = await orderRef.get();
 
-    if (!snap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
 
     const order = snap.data();
     const containsSellerItem = order.products && order.products.some((p) => p.sellerId === sellerId);
 
     if (!containsSellerItem) {
-      return res.status(403).json({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      return reply.status(403).json({ success: false, message: "Unauthorized - this order doesn't contain your products" });
     }
 
     await orderRef.update({
@@ -137,22 +137,22 @@ exports.updateTrackingInfo = async (req, res) => {
       console.error("Error sending tracking email (non-blocking):", emailError.message);
     }
 
-    return res.status(200).json({ success: true, message: "Tracking info updated successfully. Customer notified via email." });
+    return reply.status(200).json({ success: true, message: "Tracking info updated successfully. Customer notified via email." });
 
   } catch (error) {
     console.error("Update tracking info error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
 // SELLER — BULK UPDATE STOCK
-exports.bulkUpdateStock = async (req, res) => {
+exports.bulkUpdateStock = async (request, reply) => {
   try {
     const sellerId = req.sellerId; // From authenticateSeller middleware
-    const updates = req.body;
+    const updates = request.body;
 
     if (!Array.isArray(updates) || updates.length === 0) {
-      return res.status(400).json({ success: false, message: "Updates array is required" });
+      return reply.status(400).json({ success: false, message: "Updates array is required" });
     }
 
     let results = [];
@@ -199,14 +199,14 @@ exports.bulkUpdateStock = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    return reply.status(200).json({
       success: true,
       message: "Bulk stock update completed",
       results
     });
 
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -215,10 +215,10 @@ exports.bulkUpdateStock = async (req, res) => {
 
 
 // SELLER — EXPORT SALES REPORT (CSV)
-exports.exportSalesReport = async (req, res) => {
+exports.exportSalesReport = async (request, reply) => {
   try {
     const sellerId = req.sellerId;
-    const { startDate, endDate, reportType } = req.query;
+    const { startDate, endDate, reportType } = request.query;
 
     console.log(`📊 Generating ${reportType || 'detailed'} sales report for seller: ${sellerId}`);
 
@@ -277,7 +277,7 @@ exports.exportSalesReport = async (req, res) => {
     }
 
     if (sellerOrders.length === 0) {
-      return res.status(404).json({
+      return reply.status(404).json({
         success: false,
         message: "No sales data found for the specified period"
       });
@@ -303,11 +303,11 @@ exports.exportSalesReport = async (req, res) => {
 
     console.log(`📥 Sending CSV file: ${filename}`);
 
-    return res.status(200).send(csv);
+    return reply.status(200).send(csv);
 
   } catch (error) {
     console.error("Export sales report error:", error);
-    return res.status(500).json({ 
+    return reply.status(500).json({ 
       success: false, 
       message: error.message || "Failed to generate sales report" 
     });
@@ -315,10 +315,10 @@ exports.exportSalesReport = async (req, res) => {
 };
 
 // SELLER — GET SALES ANALYTICS
-exports.getSalesAnalytics = async (req, res) => {
+exports.getSalesAnalytics = async (request, reply) => {
   try {
     const sellerId = req.sellerId;
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate } = request.query;
 
     console.log(`📊 Fetching sales analytics for seller: ${sellerId}`);
 
@@ -402,14 +402,14 @@ exports.getSalesAnalytics = async (req, res) => {
 
     console.log(`✅ Analytics generated for seller: ${sellerId}`);
 
-    return res.status(200).json({
+    return reply.status(200).json({
       success: true,
       analytics
     });
 
   } catch (error) {
     console.error("Get sales analytics error:", error);
-    return res.status(500).json({ 
+    return reply.status(500).json({ 
       success: false, 
       message: error.message || "Failed to fetch analytics" 
     });

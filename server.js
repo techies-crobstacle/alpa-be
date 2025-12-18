@@ -1,5 +1,4 @@
-const express = require("express");
-const cors = require("cors");
+const fastify = require("fastify");
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -12,37 +11,40 @@ const sellerOnboardingRoutes = require("./routes/sellerOnboardingRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const app = fastify({ logger: false });
 
-// Auth Routes
-app.use("/api/auth", authRoutes);
-
-// Product Routes
-app.use("/api/products", productRoutes);
-
-// User Routes
-app.use("/api/cart", cartRoutes);
-app.use("/api/orders", orderRoutes);
-
-// Seller Routes
-app.use("/api/seller/orders", sellerOrderRoutes);
-app.use("/api/sellers", sellerOnboardingRoutes);
-
-// Support Routes
-app.use("/api/support", supportRoutes);
-
-// Admin Routes
-app.use("/api/admin", adminRoutes);
-
-// Health check endpoint
-app.get("/", (req, res) => {
-  res.json({ status: "Server is running", timestamp: new Date().toISOString() });
+// Register plugins
+app.register(require("@fastify/cors"), {
+  origin: true // Allow all origins (configure as needed)
+});
+app.register(require("@fastify/formbody"));
+app.register(require("@fastify/multipart"), {
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
 });
 
+// Health check endpoint
+app.get("/", async (request, reply) => {
+  return { status: "Server is running", timestamp: new Date().toISOString() };
+});
+
+// Register routes
+app.register(authRoutes, { prefix: "/api/auth" });
+app.register(productRoutes, { prefix: "/api/products" });
+app.register(cartRoutes, { prefix: "/api/cart" });
+app.register(orderRoutes, { prefix: "/api/orders" });
+app.register(sellerOrderRoutes, { prefix: "/api/seller/orders" });
+app.register(sellerOnboardingRoutes, { prefix: "/api/sellers" });
+app.register(supportRoutes, { prefix: "/api/support" });
+app.register(adminRoutes, { prefix: "/api/admin" });
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+
+app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`Server running on ${address}`);
 });

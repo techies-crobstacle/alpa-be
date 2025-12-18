@@ -13,12 +13,12 @@ const generateSellerToken = (sellerId) => {
 };
 
 // Step 1: Apply as Seller
-exports.applyAsSeller = async (req, res) => {
+exports.applyAsSeller = async (request, reply) => {
   try {
-    const { email, phone, contactPerson } = req.body;
+    const { email, phone, contactPerson } = request.body;
 
     if (!email || !phone || !contactPerson) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Email, phone, and contact person are required"
       });
@@ -45,7 +45,7 @@ exports.applyAsSeller = async (req, res) => {
 
         await sendOTPEmail(email, otp, contactPerson);
 
-        return res.status(200).json({
+        return reply.status(200).json({
           success: true,
           message: "OTP sent to your email. Please verify to continue.",
           sellerId
@@ -53,7 +53,7 @@ exports.applyAsSeller = async (req, res) => {
       }
       
       // Email exists elsewhere - reject
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: emailCheck.message
       });
@@ -92,31 +92,31 @@ exports.applyAsSeller = async (req, res) => {
     // Send OTP email
     await sendOTPEmail(email, otp, contactPerson);
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "OTP sent to your email. Please verify to continue.",
       sellerId
     });
   } catch (error) {
     console.error("Apply as seller error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Step 2: Verify OTP & Set Password
-exports.verifyOTP = async (req, res) => {
+exports.verifyOTP = async (request, reply) => {
   try {
-    const { sellerId, otp, password } = req.body;
+    const { sellerId, otp, password } = request.body;
 
     if (!sellerId || !otp) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Seller ID and OTP are required"
       });
     }
 
     if (!password || password.length < 6) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Password is required and must be at least 6 characters"
       });
@@ -130,7 +130,7 @@ exports.verifyOTP = async (req, res) => {
       .get();
 
     if (otpSnapshot.empty) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "Invalid OTP" 
       });
@@ -142,7 +142,7 @@ exports.verifyOTP = async (req, res) => {
     // Check if OTP is expired
     if (otpData.expiresAt.toDate() < new Date()) {
       await otpDoc.ref.delete();
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "OTP has expired. Please request a new one." 
       });
@@ -170,7 +170,7 @@ exports.verifyOTP = async (req, res) => {
     // Generate JWT token for authentication
     const token = generateSellerToken(sellerId);
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Email verified and password set successfully. You can now continue with your application.",
       seller,
@@ -178,17 +178,17 @@ exports.verifyOTP = async (req, res) => {
     });
   } catch (error) {
     console.error("Verify OTP error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Seller Login
-exports.sellerLogin = async (req, res) => {
+exports.sellerLogin = async (request, reply) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = request.body;
 
     if (!email || !password) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Email and password are required"
       });
@@ -200,7 +200,7 @@ exports.sellerLogin = async (req, res) => {
       .get();
 
     if (sellerSnapshot.empty) {
-      return res.status(401).json({
+      return reply.status(401).json({
         success: false,
         message: "Invalid email or password"
       });
@@ -211,7 +211,7 @@ exports.sellerLogin = async (req, res) => {
 
     // Check if seller has set password
     if (!seller.password) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Please complete your registration first by verifying OTP and setting a password"
       });
@@ -221,7 +221,7 @@ exports.sellerLogin = async (req, res) => {
     const isPasswordValid = await bcrypt.compare(password, seller.password);
 
     if (!isPasswordValid) {
-      return res.status(401).json({
+      return reply.status(401).json({
         success: false,
         message: "Invalid email or password"
       });
@@ -229,7 +229,7 @@ exports.sellerLogin = async (req, res) => {
 
     // Check if seller is active
     if (seller.status === "rejected") {
-      return res.status(403).json({
+      return reply.status(403).json({
         success: false,
         message: "Your seller account has been rejected. Please contact support."
       });
@@ -241,7 +241,7 @@ exports.sellerLogin = async (req, res) => {
     // Remove sensitive data
     delete seller.password;
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Login successful",
       seller,
@@ -249,24 +249,24 @@ exports.sellerLogin = async (req, res) => {
     });
   } catch (error) {
     console.error("Seller login error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Resend OTP
-exports.resendOTP = async (req, res) => {
+exports.resendOTP = async (request, reply) => {
   try {
-    const { sellerId } = req.body;
+    const { sellerId } = request.body;
 
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     if (!sellerDoc.exists) {
-      return res.status(404).json({ success: false, message: "Seller not found" });
+      return reply.status(404).json({ success: false, message: "Seller not found" });
     }
 
     const seller = sellerDoc.data();
 
     if (seller.emailVerified) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Email already verified"
       });
@@ -295,24 +295,24 @@ exports.resendOTP = async (req, res) => {
     // Send OTP
     await sendOTPEmail(seller.email, otp, seller.contactPerson);
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "New OTP sent to your email"
     });
   } catch (error) {
     console.error("Resend OTP error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Step 3: Submit Business Details & ABN
-exports.submitBusinessDetails = async (req, res) => {
+exports.submitBusinessDetails = async (request, reply) => {
   try {
-    const { businessName, abn, businessAddress } = req.body;
+    const { businessName, abn, businessAddress } = request.body;
     const sellerId = req.sellerId;
 
     if (!businessName || !abn) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Business name and ABN are required"
       });
@@ -324,7 +324,7 @@ exports.submitBusinessDetails = async (req, res) => {
       .get();
 
     if (!abnSnapshot.empty && abnSnapshot.docs[0].id !== sellerId) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "This ABN is already registered by another seller" 
       });
@@ -346,25 +346,25 @@ exports.submitBusinessDetails = async (req, res) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Business details saved successfully",
       seller
     });
   } catch (error) {
     console.error("Submit business details error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Validate ABN with Vigil API
-exports.validateABN = async (req, res) => {
+exports.validateABN = async (request, reply) => {
   try {
-    const { abn } = req.body;
+    const { abn } = request.body;
     const sellerId = req.sellerId;
 
     if (!abn) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "ABN is required"
       });
@@ -374,7 +374,7 @@ exports.validateABN = async (req, res) => {
     const abnValidation = await validateABNWithVigil(abn);
 
     if (!abnValidation.isValid) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: abnValidation.message || "Invalid ABN or business not found"
       });
@@ -387,14 +387,14 @@ exports.validateABN = async (req, res) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "ABN verified successfully",
       businessInfo: abnValidation.data
     });
   } catch (error) {
     console.error("ABN validation error:", error);
-    res.status(500).json({ 
+    reply.status(500).json({ 
       success: false, 
       message: "ABN validation failed. Please try again." 
     });
@@ -402,9 +402,9 @@ exports.validateABN = async (req, res) => {
 };
 
 // Step 4: Submit Cultural Information
-exports.submitCulturalInfo = async (req, res) => {
+exports.submitCulturalInfo = async (request, reply) => {
   try {
-    const { artistName, clanAffiliation, culturalStory } = req.body;
+    const { artistName, clanAffiliation, culturalStory } = request.body;
     const sellerId = req.sellerId;
 
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
@@ -421,26 +421,26 @@ exports.submitCulturalInfo = async (req, res) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Cultural information saved successfully",
       seller
     });
   } catch (error) {
     console.error("Submit cultural info error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Step 5: Submit Store Profile with Logo Upload
-exports.submitStoreProfile = async (req, res) => {
+exports.submitStoreProfile = async (request, reply) => {
   try {
-    const { storeName, storeBio } = req.body;
+    const { storeName, storeBio } = request.body;
     const sellerId = req.sellerId;
-    const file = req.file;
+    const file = request.file;
 
     if (!storeName) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Store name is required"
       });
@@ -452,7 +452,7 @@ exports.submitStoreProfile = async (req, res) => {
       .get();
     
     if (!storeSnapshot.empty && storeSnapshot.docs[0].id !== sellerId) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "Store name already taken. Please choose another." 
       });
@@ -480,7 +480,7 @@ exports.submitStoreProfile = async (req, res) => {
         storeLogo = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
       } catch (uploadError) {
         console.error("File upload error:", uploadError);
-        return res.status(500).json({
+        return reply.status(500).json({
           success: false,
           message: "Failed to upload logo. Please try again."
         });
@@ -506,40 +506,40 @@ exports.submitStoreProfile = async (req, res) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Store profile saved successfully",
       seller
     });
   } catch (error) {
     console.error("Submit store profile error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Step 6: Upload KYC Documents with Vigil Integration
-exports.uploadKYC = async (req, res) => {
+exports.uploadKYC = async (request, reply) => {
   try {
-    const { documentType, firstName, lastName, dateOfBirth } = req.body;
+    const { documentType, firstName, lastName, dateOfBirth } = request.body;
     const sellerId = req.sellerId;
-    const file = req.file;
+    const file = request.file;
 
     if (!file) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "Document file is required" 
       });
     }
 
     if (!documentType) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Document type is required (passport, drivers_license, or medicare)"
       });
     }
 
     if (!firstName || !lastName || !dateOfBirth) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "First name, last name, and date of birth are required for verification"
       });
@@ -558,7 +558,7 @@ exports.uploadKYC = async (req, res) => {
       });
       
       if (!verification.success) {
-        return res.status(400).json({
+        return reply.status(400).json({
           success: false,
           message: "Identity verification failed"
         });
@@ -612,7 +612,7 @@ exports.uploadKYC = async (req, res) => {
       const updatedSeller = await db.collection("sellers").doc(sellerId).get();
       const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-      res.status(200).json({
+      reply.status(200).json({
         success: true,
         message: "KYC document uploaded and verified successfully",
         seller,
@@ -625,25 +625,25 @@ exports.uploadKYC = async (req, res) => {
       });
     } catch (uploadError) {
       console.error("File upload error:", uploadError);
-      return res.status(500).json({
+      return reply.status(500).json({
         success: false,
         message: uploadError.message || "Failed to upload document. Please try again."
       });
     }
   } catch (error) {
     console.error("Upload KYC error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Step 7: Submit Bank Details (Optional - can be added later)
-exports.submitBankDetails = async (req, res) => {
+exports.submitBankDetails = async (request, reply) => {
   try {
-    const { accountName, bsb, accountNumber } = req.body;
+    const { accountName, bsb, accountNumber } = request.body;
     const sellerId = req.sellerId;
 
     if (!accountName || !bsb || !accountNumber) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Account name, BSB, and account number are required"
       });
@@ -663,19 +663,19 @@ exports.submitBankDetails = async (req, res) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Bank details saved. You can update these later if needed.",
       seller
     });
   } catch (error) {
     console.error("Submit bank details error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Submit for Admin Review
-exports.submitForReview = async (req, res) => {
+exports.submitForReview = async (request, reply) => {
   try {
     const sellerId = req.sellerId;
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
@@ -683,28 +683,28 @@ exports.submitForReview = async (req, res) => {
 
     // Validation checks
     if (!seller.emailVerified) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "Email verification is required before submission" 
       });
     }
 
     if (!seller.abnVerified) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "ABN verification is required before submission" 
       });
     }
 
     if (seller.kycStatus !== "submitted") {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "KYC documents must be uploaded before submission" 
       });
     }
 
     if (!seller.storeName) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "Store profile must be completed before submission"
       });
@@ -728,7 +728,7 @@ exports.submitForReview = async (req, res) => {
       message += " Note: After approval, you'll need to upload at least 1-2 products to start, with 5+ products recommended for going live. Each product should have 3-5 high-quality images.";
     }
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message,
       seller: { id: updatedSeller.id, ...updatedSeller.data() },
@@ -739,18 +739,18 @@ exports.submitForReview = async (req, res) => {
     });
   } catch (error) {
     console.error("Submit for review error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Get Seller Profile
-exports.getProfile = async (req, res) => {
+exports.getProfile = async (request, reply) => {
   try {
     const sellerId = req.sellerId;
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "Seller profile not found" 
       });
@@ -763,28 +763,28 @@ exports.getProfile = async (req, res) => {
       delete seller.idDocument.documentUrl;
     }
 
-    res.status(200).json({ success: true, seller });
+    reply.status(200).json({ success: true, seller });
   } catch (error) {
     console.error("Get profile error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Update Seller Profile
-exports.updateProfile = async (req, res) => {
+exports.updateProfile = async (request, reply) => {
   try {
     const sellerId = req.sellerId;
     const allowedUpdates = ["phone", "businessAddress", "storeBio", "culturalStory", "artistName", "clanAffiliation"];
     
     const updates = {};
     for (const key of allowedUpdates) {
-      if (req.body[key] !== undefined) {
-        updates[key] = req.body[key];
+      if (request.body[key] !== undefined) {
+        updates[key] = request.body[key];
       }
     }
 
     if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
+      return reply.status(400).json({
         success: false,
         message: "No valid fields to update"
       });
@@ -797,26 +797,26 @@ exports.updateProfile = async (req, res) => {
     const updatedSeller = await db.collection("sellers").doc(sellerId).get();
     const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       message: "Profile updated successfully",
       seller
     });
   } catch (error) {
     console.error("Update profile error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 // Get Go-Live Status (Check if seller can go live)
-exports.getGoLiveStatus = async (req, res) => {
+exports.getGoLiveStatus = async (request, reply) => {
   try {
     const sellerId = req.sellerId;
 
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
 
     if (!sellerDoc.exists) {
-      return res.status(404).json({
+      return reply.status(404).json({
         success: false,
         message: "Seller not found"
       });
@@ -833,7 +833,7 @@ exports.getGoLiveStatus = async (req, res) => {
 
     const canGoLive = checks.approved && checks.minimumProducts && checks.culturalApproval && !checks.isLive;
 
-    res.status(200).json({
+    reply.status(200).json({
       success: true,
       canGoLive,
       isLive: checks.isLive,
@@ -854,7 +854,7 @@ exports.getGoLiveStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Get go-live status error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    reply.status(500).json({ success: false, message: "Server error" });
   }
 };
 

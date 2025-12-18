@@ -5,13 +5,13 @@
 
 
 // // Stock Management and Inventory Alert
-// exports.createOrder = async (req, res) => {
+// exports.createOrder = async (request, reply) => {
 //   try {
-//     const userId = req.user.uid;
-//     const { shippingAddress, paymentMethod } = req.body;
+//     const userId = request.user.uid;
+//     const { shippingAddress, paymentMethod } = request.body;
 
 //     if (!shippingAddress || !paymentMethod) {
-//       return res.status(400).json({ success: false, message: "All fields are required" });
+//       return reply.status(400).json({ success: false, message: "All fields are required" });
 //     }
 
 //     // Get user's cart
@@ -19,7 +19,7 @@
 //     const cartSnap = await cartRef.get();
 
 //     if (!cartSnap.exists || !cartSnap.data().products || cartSnap.data().products.length === 0) {
-//       return res.status(400).json({ success: false, message: "Cart is empty" });
+//       return reply.status(400).json({ success: false, message: "Cart is empty" });
 //     }
 
 //     const cartProducts = cartSnap.data().products;
@@ -32,14 +32,14 @@
 //       const productSnap = await productRef.get();
 
 //       if (!productSnap.exists) {
-//         return res.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
+//         return reply.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
 //       }
 
 //       const product = productSnap.data();
 
 //       // Check stock
 //       if (product.stock < item.quantity) {
-//         return res.status(400).json({
+//         return reply.status(400).json({
 //           success: false,
 //           message: `Insufficient stock for product: ${product.title}`
 //         });
@@ -88,7 +88,7 @@
 //     // Clear cart after order
 //     await cartRef.delete();
 
-//     return res.status(200).json({
+//     return reply.status(200).json({
 //       success: true,
 //       message: "Order placed successfully",
 //       orderId: orderRef.id,
@@ -96,55 +96,55 @@
 //     });
 
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
 
 // // USER — VIEW MY ORDERS
-// exports.getMyOrders = async (req, res) => {
+// exports.getMyOrders = async (request, reply) => {
 //   try {
-//     const userId = req.user.uid;
+//     const userId = request.user.uid;
 //     const snapshot = await db.collection("orders").where("userId", "==", userId).get();
 //     const orders = snapshot.docs.map((doc) => doc.data());
 
-//     return res.status(200).json({ success: true, orders });
+//     return reply.status(200).json({ success: true, orders });
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
 // // USER — CANCEL ORDER
-// exports.cancelOrder = async (req, res) => {
+// exports.cancelOrder = async (request, reply) => {
 //   try {
-//     const orderId = req.params.id;
-//     const userId = req.user.uid;
+//     const orderId = request.params.id;
+//     const userId = request.user.uid;
 
 //     const orderRef = db.collection("orders").doc(orderId);
 //     const snap = await orderRef.get();
 
-//     if (!snap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+//     if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
 
 //     const order = snap.data();
-//     if (order.userId !== userId) return res.status(403).json({ success: false, message: "Not authorized" });
+//     if (order.userId !== userId) return reply.status(403).json({ success: false, message: "Not authorized" });
 
 //     if (order.status !== "pending") {
-//       return res.status(400).json({ success: false, message: "Order cannot be cancelled" });
+//       return reply.status(400).json({ success: false, message: "Order cannot be cancelled" });
 //     }
 
 //     await orderRef.update({ status: "cancelled" });
 
-//     return res.status(200).json({ success: true, message: "Order cancelled successfully" });
+//     return reply.status(200).json({ success: true, message: "Order cancelled successfully" });
 
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
 // // SELLER — VIEW ORDERS
-// exports.getSellerOrders = async (req, res) => {
+// exports.getSellerOrders = async (request, reply) => {
 //   try {
-//     const sellerId = req.user.uid;
+//     const sellerId = request.user.uid;
 //     const snapshot = await db.collection("orders").get();
 
 //     let sellerOrders = [];
@@ -157,62 +157,62 @@
 //       if (containsSellerItem) sellerOrders.push(order);
 //     });
 
-//     return res.status(200).json({ success: true, orders: sellerOrders });
+//     return reply.status(200).json({ success: true, orders: sellerOrders });
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
 // // SELLER — UPDATE ORDER STATUS
-// exports.updateOrderStatus = async (req, res) => {
+// exports.updateOrderStatus = async (request, reply) => {
 //   try {
-//     const sellerId = req.user.uid;
-//     const { orderId } = req.params;
-//     const { status } = req.body;
+//     const sellerId = request.user.uid;
+//     const { orderId } = request.params;
+//     const { status } = request.body;
 
 //     const allowed = ["pending", "packed", "shipped", "delivered", "cancelled"];
 //     if (!allowed.includes(status)) {
-//       return res.status(400).json({ success: false, message: "Invalid status" });
+//       return reply.status(400).json({ success: false, message: "Invalid status" });
 //     }
 
 //     const orderRef = db.collection("orders").doc(orderId);
 //     const snap = await orderRef.get();
 
-//     if (!snap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+//     if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
 
 //     const order = snap.data();
 //     const containsSellerItem = order.products.some((p) => p.sellerId === sellerId);
 
 //     if (!containsSellerItem) {
-//       return res.status(403).json({ success: false, message: "Unauthorized seller" });
+//       return reply.status(403).json({ success: false, message: "Unauthorized seller" });
 //     }
 
 //     await orderRef.update({ status, updatedAt: new Date() });
 
-//     return res.status(200).json({ success: true, message: "Status updated successfully" });
+//     return reply.status(200).json({ success: true, message: "Status updated successfully" });
 
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
 // // SELLER — UPDATE TRACKING INFO
-// exports.updateTrackingInfo = async (req, res) => {
+// exports.updateTrackingInfo = async (request, reply) => {
 //   try {
-//     const sellerId = req.user.uid;
-//     const { orderId } = req.params;
-//     const { trackingNumber, estimatedDelivery } = req.body;
+//     const sellerId = request.user.uid;
+//     const { orderId } = request.params;
+//     const { trackingNumber, estimatedDelivery } = request.body;
 
 //     const orderRef = db.collection("orders").doc(orderId);
 //     const snap = await orderRef.get();
 
-//     if (!snap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+//     if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
 
 //     const order = snap.data();
 //     const containsSellerItem = order.products.some((p) => p.sellerId === sellerId);
 
 //     if (!containsSellerItem) {
-//       return res.status(403).json({ success: false, message: "Unauthorized seller" });
+//       return reply.status(403).json({ success: false, message: "Unauthorized seller" });
 //     }
 
 //     await orderRef.update({
@@ -221,21 +221,21 @@
 //       updatedAt: new Date(),
 //     });
 
-//     return res.status(200).json({ success: true, message: "Tracking info updated" });
+//     return reply.status(200).json({ success: true, message: "Tracking info updated" });
 
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
 
-// exports.bulkUpdateStock = async (req, res) => {
+// exports.bulkUpdateStock = async (request, reply) => {
 //   try {
-//     const sellerId = req.user.uid;
-//     const updates = req.body;
+//     const sellerId = request.user.uid;
+//     const updates = request.body;
 
 //     if (!Array.isArray(updates) || updates.length === 0) {
-//       return res.status(400).json({ success: false, message: "Updates array is required" });
+//       return reply.status(400).json({ success: false, message: "Updates array is required" });
 //     }
 
 //     let results = [];
@@ -282,14 +282,14 @@
 //       });
 //     }
 
-//     return res.status(200).json({
+//     return reply.status(200).json({
 //       success: true,
 //       message: "Bulk stock update completed",
 //       results
 //     });
 
 //   } catch (error) {
-//     return res.status(500).json({ success: false, message: error.message });
+//     return reply.status(500).json({ success: false, message: error.message });
 //   }
 // };
 
@@ -303,19 +303,19 @@ const {
 } = require("../utils/emailService");
 
 // Stock Management and Inventory Alert with SMS Notification
-exports.createOrder = async (req, res) => {
+exports.createOrder = async (request, reply) => {
   try {
-    const userId = req.user.uid;
-    const { shippingAddress, paymentMethod } = req.body;
+    const userId = request.user.uid;
+    const { shippingAddress, paymentMethod } = request.body;
 
     if (!shippingAddress || !paymentMethod) {
-      return res.status(400).json({ success: false, message: "All fields are required" });
+      return reply.status(400).json({ success: false, message: "All fields are required" });
     }
 
     // Get user details for SMS
     const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return reply.status(404).json({ success: false, message: "User not found" });
     }
     const user = userDoc.data();
 
@@ -324,7 +324,7 @@ exports.createOrder = async (req, res) => {
     const cartSnap = await cartRef.get();
 
     if (!cartSnap.exists || !cartSnap.data().products || cartSnap.data().products.length === 0) {
-      return res.status(400).json({ success: false, message: "Cart is empty" });
+      return reply.status(400).json({ success: false, message: "Cart is empty" });
     }
 
     const cartProducts = cartSnap.data().products;
@@ -338,14 +338,14 @@ exports.createOrder = async (req, res) => {
       const productSnap = await productRef.get();
 
       if (!productSnap.exists) {
-        return res.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
+        return reply.status(404).json({ success: false, message: `Product not found: ${item.productId}` });
       }
 
       const product = productSnap.data();
 
       // Check stock
       if (product.stock < item.quantity) {
-        return res.status(400).json({
+        return reply.status(400).json({
           success: false,
           message: `Insufficient stock for product: ${product.title}`
         });
@@ -460,7 +460,7 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    return res.status(200).json({
+    return reply.status(200).json({
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
       orderId: orderRef.id,
@@ -469,39 +469,39 @@ exports.createOrder = async (req, res) => {
 
   } catch (error) {
     console.error("Create order error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
 // USER — VIEW MY ORDERS
-exports.getMyOrders = async (req, res) => {
+exports.getMyOrders = async (request, reply) => {
   try {
-    const userId = req.user.uid;
+    const userId = request.user.uid;
     const snapshot = await db.collection("orders").where("userId", "==", userId).get();
     const orders = snapshot.docs.map((doc) => doc.data());
 
-    return res.status(200).json({ success: true, orders });
+    return reply.status(200).json({ success: true, orders });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };
 
 // USER — CANCEL ORDER (with SMS notification)
-exports.cancelOrder = async (req, res) => {
+exports.cancelOrder = async (request, reply) => {
   try {
-    const orderId = req.params.id;
-    const userId = req.user.uid;
+    const orderId = request.params.id;
+    const userId = request.user.uid;
 
     const orderRef = db.collection("orders").doc(orderId);
     const snap = await orderRef.get();
 
-    if (!snap.exists) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!snap.exists) return reply.status(404).json({ success: false, message: "Order not found" });
 
     const order = snap.data();
-    if (order.userId !== userId) return res.status(403).json({ success: false, message: "Not authorized" });
+    if (order.userId !== userId) return reply.status(403).json({ success: false, message: "Not authorized" });
 
     if (order.status !== "pending") {
-      return res.status(400).json({ success: false, message: "Order cannot be cancelled" });
+      return reply.status(400).json({ success: false, message: "Order cannot be cancelled" });
     }
 
     await orderRef.update({ status: "cancelled" });
@@ -523,10 +523,10 @@ exports.cancelOrder = async (req, res) => {
       }
     }
 
-    return res.status(200).json({ success: true, message: "Order cancelled successfully. Email notification sent." });
+    return reply.status(200).json({ success: true, message: "Order cancelled successfully. Email notification sent." });
 
   } catch (error) {
     console.error("Cancel order error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+    return reply.status(500).json({ success: false, message: error.message });
   }
 };

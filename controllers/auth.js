@@ -4,12 +4,12 @@ const { generateOTP, sendOTPEmail } = require("../utils/emailService");
 const { checkEmailExists } = require("../utils/emailValidation");
 
 // SIGNUP - Send OTP for verification
-exports.register = async (req, res) => {
+exports.register = async (request, reply) => {
   try {
-    const { name, email, password, mobile, role } = req.body;
+    const { name, email, password, mobile, role } = request.body;
 
     if (!name || !email || !password || !mobile || !role) {
-      return res.status(400).json({ success: false, message: "All fields are required" });
+      return reply.status(400).json({ success: false, message: "All fields are required" });
     }
 
     // Check if email exists across all collections
@@ -21,7 +21,7 @@ exports.register = async (req, res) => {
         // Delete expired pending registration and continue
         await db.collection("pending_registrations").doc(email.toLowerCase()).delete();
       } else {
-        return res.status(400).json({ 
+        return reply.status(400).json({ 
           success: false, 
           message: emailCheck.message 
         });
@@ -48,19 +48,19 @@ exports.register = async (req, res) => {
     const emailResult = await sendOTPEmail(email, otp, name);
 
     if (!emailResult.success) {
-      return res.status(500).json({ 
+      return reply.status(500).json({ 
         success: false, 
         message: "Failed to send OTP email. Please try again." 
       });
     }
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "OTP sent to your email. Please verify to complete registration.",
       email 
     });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return reply.status(500).json({ success: false, error: error.message });
   }
 };
 
@@ -68,12 +68,12 @@ exports.register = async (req, res) => {
 // LOGIN - Simplified: Generate JWT after verifying user exists in Firebase Auth
 // Note: Firebase Admin SDK cannot verify passwords, so we trust Firebase Auth user exists
 // For production, use client-side Firebase SDK to authenticate and send ID token
-exports.login = async (req, res) => {
+exports.login = async (request, reply) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = request.body;
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: "Email & password are required" });
+      return reply.status(400).json({ success: false, message: "Email & password are required" });
     }
 
     // Get user by email from Firebase Auth
@@ -81,7 +81,7 @@ exports.login = async (req, res) => {
     try {
       userRecord = await admin.auth().getUserByEmail(email);
     } catch (error) {
-      return res.status(404).json({ success: false, message: "User not found or invalid credentials" });
+      return reply.status(404).json({ success: false, message: "User not found or invalid credentials" });
     }
 
     const uid = userRecord.uid;
@@ -90,7 +90,7 @@ exports.login = async (req, res) => {
     const userDoc = await db.collection("users").doc(uid).get();
 
     if (!userDoc.exists) {
-      return res.status(404).json({ success: false, message: "User data not found" });
+      return reply.status(404).json({ success: false, message: "User data not found" });
     }
 
     const user = userDoc.data();
@@ -112,7 +112,7 @@ exports.login = async (req, res) => {
       createdAt: user.createdAt || null,
     };
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Login successful", 
       token, 
@@ -120,24 +120,24 @@ exports.login = async (req, res) => {
       user: userResponse 
     });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return reply.status(500).json({ success: false, error: error.message });
   }
 };
 
 // VERIFY OTP - Complete registration after OTP verification
-exports.verifyOTP = async (req, res) => {
+exports.verifyOTP = async (request, reply) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp } = request.body;
 
     if (!email || !otp) {
-      return res.status(400).json({ success: false, message: "Email and OTP are required" });
+      return reply.status(400).json({ success: false, message: "Email and OTP are required" });
     }
 
     // Get pending registration
     const pendingDoc = await db.collection("pending_registrations").doc(email).get();
 
     if (!pendingDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "No pending registration found. Please register first." 
       });
@@ -148,7 +148,7 @@ exports.verifyOTP = async (req, res) => {
     // Check if OTP has expired
     if (new Date() > pendingData.otpExpiry.toDate()) {
       await db.collection("pending_registrations").doc(email).delete();
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "OTP has expired. Please register again." 
       });
@@ -156,7 +156,7 @@ exports.verifyOTP = async (req, res) => {
 
     // Verify OTP
     if (pendingData.otp !== otp) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "Invalid OTP. Please try again." 
       });
@@ -204,31 +204,31 @@ exports.verifyOTP = async (req, res) => {
       createdAt,
     };
 
-    return res.status(201).json({ 
+    return reply.status(201).json({ 
       success: true, 
       message: "Email verified successfully. Registration complete!", 
       token,
       user: userResponse 
     });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return reply.status(500).json({ success: false, error: error.message });
   }
 };
 
 // RESEND OTP
-exports.resendOTP = async (req, res) => {
+exports.resendOTP = async (request, reply) => {
   try {
-    const { email } = req.body;
+    const { email } = request.body;
 
     if (!email) {
-      return res.status(400).json({ success: false, message: "Email is required" });
+      return reply.status(400).json({ success: false, message: "Email is required" });
     }
 
     // Get pending registration
     const pendingDoc = await db.collection("pending_registrations").doc(email).get();
 
     if (!pendingDoc.exists) {
-      return res.status(404).json({ 
+      return reply.status(404).json({ 
         success: false, 
         message: "No pending registration found. Please register first." 
       });
@@ -250,17 +250,18 @@ exports.resendOTP = async (req, res) => {
     const emailResult = await sendOTPEmail(email, otp, pendingData.name);
 
     if (!emailResult.success) {
-      return res.status(500).json({ 
+      return reply.status(500).json({ 
         success: false, 
         message: "Failed to send OTP email. Please try again." 
       });
     }
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "New OTP sent to your email." 
     });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
+    return reply.status(500).json({ success: false, error: error.message });
   }
 };
+

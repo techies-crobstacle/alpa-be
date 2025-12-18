@@ -1,41 +1,41 @@
-const express = require("express");
-const router = express.Router();
 const auth = require("../middlewares/auth");
 const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
 
-// Apply admin middleware to all routes
-const adminAuth = [auth, checkRole("admin")];
+async function adminRoutes(fastify, options) {
+  // Apply admin middleware to all routes
+  const adminAuth = [auth, checkRole("admin")];
 
-// ---------------- USER MANAGEMENT ----------------
-router.get("/users", adminAuth, adminController.getAllUsers);
+  // ---------------- USER MANAGEMENT ----------------
+  fastify.get("/users", { preHandler: adminAuth }, adminController.getAllUsers);
 
-// ---------------- SELLER MANAGEMENT ----------------
+  // ---------------- SELLER MANAGEMENT ----------------
 
-// Get all sellers (with optional status filter)
-router.get("/sellers", adminAuth, adminController.getAllSellers);
+  // Get all sellers (with optional status filter)
+  fastify.get("/sellers", { preHandler: adminAuth }, adminController.getAllSellers);
 
-// Get pending sellers for review
-router.get("/sellers/pending", adminAuth, adminController.getPendingSellers);
+  // Get pending sellers for review
+  fastify.get("/sellers/pending", { preHandler: adminAuth }, adminController.getPendingSellers);
 
-// Get seller details by ID
-router.get("/sellers/:id", adminAuth, adminController.getSellerDetails);
+  // Get seller details by ID
+  fastify.get("/sellers/:id", { preHandler: adminAuth }, adminController.getSellerDetails);
 
-// Get seller's products
-router.get("/sellers/:sellerId/products", adminAuth, adminController.getProductsBySeller);
+  // Get seller's products
+  fastify.get("/sellers/:sellerId/products", { preHandler: adminAuth }, adminController.getProductsBySeller);
 
-// Seller approval actions
-router.post("/sellers/approve/:id", adminAuth, adminController.approveSeller);
-router.post("/sellers/reject/:id", adminAuth, adminController.rejectSeller);
-router.put("/sellers/suspend/:sellerId", adminAuth, adminController.suspendSeller);
+  // Seller approval actions
+  fastify.post("/sellers/approve/:id", { preHandler: adminAuth }, adminController.approveSeller);
+  fastify.post("/sellers/reject/:id", { preHandler: adminAuth }, adminController.rejectSeller);
+  fastify.put("/sellers/suspend/:sellerId", { preHandler: adminAuth }, adminController.suspendSeller);
 
-// Update seller notes
-router.put("/sellers/notes/:id", adminAuth, adminController.updateSellerNotes);
+  // Update seller notes
+  fastify.put("/sellers/notes/:id", { preHandler: adminAuth }, adminController.updateSellerNotes);
 
-// Cultural approval (SOW Requirement)
-router.post("/sellers/cultural-approval/:id", adminAuth, adminController.culturalApproval);
+  // Cultural approval (SOW Requirement)
+  fastify.post("/sellers/cultural-approval/:id", { preHandler: adminAuth }, adminController.culturalApproval);
 
-// Activate seller (Go Live - SOW Requirement)
-router.post("/sellers/activate/:id", adminAuth, adminController.activateSeller);
+  // Activate seller (Go Live - SOW Requirement)
+  fastify.post("/sellers/activate/:id", { preHandler: adminAuth }, adminController.activateSeller);
+}
 
-module.exports = router;
+module.exports = adminRoutes;

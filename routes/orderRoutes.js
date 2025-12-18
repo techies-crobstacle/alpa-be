@@ -28,27 +28,21 @@
 
 
 
-// // Seller Stock 
-// router.put("/products/bulk-stock", auth, roleMiddleware("seller"), orderController.bulkUpdateStock);
-
-
-// module.exports = router;
-
-const express = require("express");
-const router = express.Router();
 const orderController = require("../controllers/orders");
 const auth = require("../middlewares/auth");
 const roleMiddleware = require("../middlewares/checkRole");
 
-// ---------------- USER ORDER ROUTES ----------------
+async function orderRoutes(fastify, options) {
+  // ---------------- USER ORDER ROUTES ----------------
 
-// Place a new order
-router.post("/create", auth, roleMiddleware("user"), orderController.createOrder);
+  // Place a new order
+  fastify.post("/create", { preHandler: [auth, roleMiddleware("user")] }, orderController.createOrder);
 
-// Get logged-in user's orders
-router.get("/my-orders", auth, roleMiddleware("user"), orderController.getMyOrders);
+  // Get logged-in user's orders
+  fastify.get("/my-orders", { preHandler: [auth, roleMiddleware("user")] }, orderController.getMyOrders);
 
-// Cancel order
-router.put("/cancel/:id", auth, roleMiddleware("user"), orderController.cancelOrder);
+  // Cancel order
+  fastify.put("/cancel/:id", { preHandler: [auth, roleMiddleware("user")] }, orderController.cancelOrder);
+}
 
-module.exports = router;
+module.exports = orderRoutes;

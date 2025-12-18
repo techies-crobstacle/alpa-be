@@ -1,14 +1,13 @@
-const express = require("express");
-const router = express.Router();
 const auth = require("../middlewares/auth");
-const { addToCart, getMyCart,updateCartQuantity ,removeFromCart } = require("../controllers/cart");
+const { addToCart, getMyCart, updateCartQuantity, removeFromCart } = require("../controllers/cart");
 
-// ADD TO CART
-router.post("/add", auth, addToCart);
-router.get("/view", auth, addToCart);
-router.get("/my-cart", auth, getMyCart);
-router.delete("/remove/:productId", auth, removeFromCart);
-router.put("/update", auth, updateCartQuantity);
+async function cartRoutes(fastify, options) {
+  // ADD TO CART
+  fastify.post("/add", { preHandler: auth }, addToCart);
+  fastify.get("/view", { preHandler: auth }, addToCart);
+  fastify.get("/my-cart", { preHandler: auth }, getMyCart);
+  fastify.delete("/remove/:productId", { preHandler: auth }, removeFromCart);
+  fastify.put("/update", { preHandler: auth }, updateCartQuantity);
+}
 
-
-module.exports = router;
+module.exports = cartRoutes;

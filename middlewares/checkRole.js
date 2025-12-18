@@ -1,9 +1,11 @@
 module.exports = function checkRole(requiredRole) {
-  return (req, res, next) => {
-    const role = req.user.role;
+  return async (request, reply) => {
+    const role = request.user?.role;
     if (role !== requiredRole) {
-      return res.status(403).json({ error: "Unauthorized access" });
+      return reply.status(403).send({ error: "Unauthorized access" });
     }
-    next();
   };
 };
+
+
+

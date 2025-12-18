@@ -1,64 +1,54 @@
-const express = require("express");
-const router = express.Router();
 const sellerController = require("../controllers/sellerOnboarding");
-const upload = require("../middlewares/upload");
+const { handleFileUpload } = require("../middlewares/upload");
 const { authenticateSeller, isAdmin } = require("../middlewares/authMiddleware");
 
-// ==================== PUBLIC ROUTES (No Auth Required) ====================
+async function sellerOnboardingRoutes(fastify, options) {
+  // ==================== PUBLIC ROUTES (No Auth Required) ====================
 
-// Step 1: Initial Application
-router.post("/apply", sellerController.applyAsSeller);
+  // Step 1: Initial Application
+  fastify.post("/apply", sellerController.applyAsSeller);
 
-// Step 2: Verify OTP & Set Password
-router.post("/verify-otp", sellerController.verifyOTP);
+  // Step 2: Verify OTP & Set Password
+  fastify.post("/verify-otp", sellerController.verifyOTP);
 
-// Resend OTP
-router.post("/resend-otp", sellerController.resendOTP);
+  // Resend OTP
+  fastify.post("/resend-otp", sellerController.resendOTP);
 
-// Seller Login (with email + password)
-router.post("/login", sellerController.sellerLogin);
+  // Seller Login (with email + password)
+  fastify.post("/login", sellerController.sellerLogin);
 
-// ==================== SELLER ROUTES (Auth Required) ====================
+  // ==================== SELLER ROUTES (Auth Required) ====================
 
-// Step 3: Business Details & ABN
-router.post("/business-details", authenticateSeller, sellerController.submitBusinessDetails);
-router.post("/validate-abn", authenticateSeller, sellerController.validateABN);
+  // Step 3: Business Details & ABN
+  fastify.post("/business-details", { preHandler: authenticateSeller }, sellerController.submitBusinessDetails);
+  fastify.post("/validate-abn", { preHandler: authenticateSeller }, sellerController.validateABN);
 
-// Step 4: Cultural Identity
-router.post("/cultural-info", authenticateSeller, sellerController.submitCulturalInfo);
+  // Step 4: Cultural Identity
+  fastify.post("/cultural-info", { preHandler: authenticateSeller }, sellerController.submitCulturalInfo);
 
-// Step 5: Store Profile with Logo Upload
-router.post(
-  "/store-profile", 
-  authenticateSeller, 
-  upload.single("logo"), 
-  sellerController.submitStoreProfile
-);
+  // Step 5: Store Profile with Logo Upload
+  fastify.post("/store-profile", { preHandler: [authenticateSeller, handleFileUpload] }, sellerController.submitStoreProfile);
 
-// Step 6: KYC Documents Upload
-router.post(
-  "/kyc-upload", 
-  authenticateSeller, 
-  upload.single("idDocument"), 
-  sellerController.uploadKYC
-);
+  // Step 6: KYC Documents Upload
+  fastify.post("/kyc-upload", { preHandler: [authenticateSeller, handleFileUpload] }, sellerController.uploadKYC);
 
-// Step 7: Bank Details (Optional - can be added later)
-router.post("/bank-details", authenticateSeller, sellerController.submitBankDetails);
+  // Step 7: Bank Details (Optional - can be added later)
+  fastify.post("/bank-details", { preHandler: authenticateSeller }, sellerController.submitBankDetails);
 
-// Submit Application for Review
-router.post("/submit-for-review", authenticateSeller, sellerController.submitForReview);
+  // Submit Application for Review
+  fastify.post("/submit-for-review", { preHandler: authenticateSeller }, sellerController.submitForReview);
 
-// Get Seller Profile
-router.get("/profile", authenticateSeller, sellerController.getProfile);
+  // Get Seller Profile
+  fastify.get("/profile", { preHandler: authenticateSeller }, sellerController.getProfile);
 
-// Update Seller Profile
-router.put("/profile", authenticateSeller, sellerController.updateProfile);
+  // Update Seller Profile
+  fastify.put("/profile", { preHandler: authenticateSeller }, sellerController.updateProfile);
 
-// Get Go-Live Status
-router.get("/go-live-status", authenticateSeller, sellerController.getGoLiveStatus);
+  // Get Go-Live Status
+  fastify.get("/go-live-status", { preHandler: authenticateSeller }, sellerController.getGoLiveStatus);
 
-// Update product count (internal - called from product controller)
-router.post("/update-product-count/:id", sellerController.updateProductCount);
+  // Update product count (internal - called from product controller)
+  fastify.post("/update-product-count/:id", sellerController.updateProductCount);
+}
 
-module.exports = router;
+module.exports = sellerOnboardingRoutes;

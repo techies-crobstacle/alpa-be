@@ -2,13 +2,13 @@ const { db, admin } = require("../config/firebase");
 const { sendContactFormEmail } = require("../utils/emailService");
 
 // Submit Contact Form
-exports.submitContactForm = async (req, res) => {
+exports.submitContactForm = async (request, reply) => {
   try {
-    const { name, email, phone, subject, message } = req.body;
+    const { name, email, phone, subject, message } = request.body;
 
     // Validation
     if (!name || !email || !subject || !message) {
-      return res.status(400).json({ 
+      return reply.status(400).json({ 
         success: false, 
         message: "Name, email, subject, and message are required" 
       });
@@ -24,7 +24,7 @@ exports.submitContactForm = async (req, res) => {
       subject,
       message,
       status: "pending", // pending, in-progress, resolved
-      userId: req.userId || null, // If authenticated user
+      userId: request.userId || null, // If authenticated user
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
@@ -34,14 +34,14 @@ exports.submitContactForm = async (req, res) => {
     // Send confirmation email to user
     await sendContactFormEmail(email, name, subject, message);
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       message: "Your message has been submitted successfully. We'll get back to you soon!",
       ticketId: contactRef.id
     });
   } catch (err) {
     console.error("Contact form submission error:", err);
-    return res.status(500).json({ 
+    return reply.status(500).json({ 
       success: false, 
       error: err.message 
     });
@@ -49,7 +49,7 @@ exports.submitContactForm = async (req, res) => {
 };
 
 // Get Return Policy (Static)
-exports.getReturnPolicy = async (req, res) => {
+exports.getReturnPolicy = async (request, reply) => {
   try {
     const returnPolicy = {
       title: "Return & Refund Policy",
@@ -94,13 +94,13 @@ exports.getReturnPolicy = async (req, res) => {
       ]
     };
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       policy: returnPolicy 
     });
   } catch (err) {
     console.error("Get return policy error:", err);
-    return res.status(500).json({ 
+    return reply.status(500).json({ 
       success: false, 
       error: err.message 
     });
@@ -108,9 +108,9 @@ exports.getReturnPolicy = async (req, res) => {
 };
 
 // Get My Support Tickets (Authenticated User)
-exports.getMyTickets = async (req, res) => {
+exports.getMyTickets = async (request, reply) => {
   try {
-    const userId = req.userId; // From auth middleware
+    const userId = request.userId; // From auth middleware
 
     const ticketsSnap = await db.collection("contactForms")
       .where("userId", "==", userId)
@@ -128,14 +128,14 @@ exports.getMyTickets = async (req, res) => {
         return dateB - dateA; // Descending order (newest first)
       });
 
-    return res.status(200).json({ 
+    return reply.status(200).json({ 
       success: true, 
       tickets,
       count: tickets.length 
     });
   } catch (err) {
     console.error("Get my tickets error:", err);
-    return res.status(500).json({ 
+    return reply.status(500).json({ 
       success: false, 
       error: err.message 
     });
