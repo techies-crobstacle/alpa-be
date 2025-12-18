@@ -309,7 +309,7 @@ exports.resendOTP = async (request, reply) => {
 exports.submitBusinessDetails = async (request, reply) => {
   try {
     const { businessName, abn, businessAddress } = request.body;
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
 
     if (!businessName || !abn) {
       return reply.status(400).send({
@@ -361,7 +361,7 @@ exports.submitBusinessDetails = async (request, reply) => {
 exports.validateABN = async (request, reply) => {
   try {
     const { abn } = request.body;
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
 
     if (!abn) {
       return reply.status(400).send({
@@ -405,7 +405,7 @@ exports.validateABN = async (request, reply) => {
 exports.submitCulturalInfo = async (request, reply) => {
   try {
     const { artistName, clanAffiliation, culturalStory } = request.body;
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
 
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     const currentStep = sellerDoc.data().onboardingStep || 3;
@@ -436,7 +436,7 @@ exports.submitCulturalInfo = async (request, reply) => {
 exports.submitStoreProfile = async (request, reply) => {
   try {
     const { storeName, storeBio } = request.body;
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const file = request.file;
 
     if (!storeName) {
@@ -521,7 +521,7 @@ exports.submitStoreProfile = async (request, reply) => {
 exports.uploadKYC = async (request, reply) => {
   try {
     const { documentType, firstName, lastName, dateOfBirth } = request.body;
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const file = request.file;
 
     if (!file) {
@@ -640,7 +640,7 @@ exports.uploadKYC = async (request, reply) => {
 exports.submitBankDetails = async (request, reply) => {
   try {
     const { accountName, bsb, accountNumber } = request.body;
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
 
     if (!accountName || !bsb || !accountNumber) {
       return reply.status(400).send({
@@ -677,7 +677,7 @@ exports.submitBankDetails = async (request, reply) => {
 // Submit for Admin Review
 exports.submitForReview = async (request, reply) => {
   try {
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     const seller = sellerDoc.data();
 
@@ -746,7 +746,7 @@ exports.submitForReview = async (request, reply) => {
 // Get Seller Profile
 exports.getProfile = async (request, reply) => {
   try {
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
     
     if (!sellerDoc.exists) {
@@ -773,7 +773,7 @@ exports.getProfile = async (request, reply) => {
 // Update Seller Profile
 exports.updateProfile = async (request, reply) => {
   try {
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const allowedUpdates = ["phone", "businessAddress", "storeBio", "culturalStory", "artistName", "clanAffiliation"];
     
     const updates = {};
@@ -811,7 +811,7 @@ exports.updateProfile = async (request, reply) => {
 // Get Go-Live Status (Check if seller can go live)
 exports.getGoLiveStatus = async (request, reply) => {
   try {
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
 
     const sellerDoc = await db.collection("sellers").doc(sellerId).get();
 
@@ -890,5 +890,6 @@ exports.updateProductCount = async (sellerId, increment = true) => {
     throw error;
   }
 };
+
 
 

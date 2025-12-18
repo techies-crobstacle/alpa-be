@@ -1,24 +1,24 @@
-const express = require("express");
-const router = express.Router();
 const { db } = require("../config/firebase");
 
-// POST: Add a new user
-router.post("/add-user", async (req, res) => {
-  const { uid, name, email } = req.body;
+// POST: Add a new user (Fastify route)
+async function userRoutes(fastify, options) {
+  fastify.post("/add-user", async (request, reply) => {
+    const { uid, name, email } = request.body;
 
-  try {
-    await db.collection("users").doc(uid).set({
-      uid,
-      name,
-      email,
-      createdAt: new Date(),
-    });
-    res.send({ success: true, message: "User added" });
-  } catch (error) {
-    res.send({ success: false, error: error.message });
-  }
-});
+    try {
+      await db.collection("users").doc(uid).set({
+        uid,
+        name,
+        email,
+        createdAt: new Date(),
+      });
+      reply.send({ success: true, message: "User added" });
+    } catch (error) {
+      reply.send({ success: false, error: error.message });
+    }
+  });
+}
 
-module.exports = router;
+module.exports = userRoutes;
 
 

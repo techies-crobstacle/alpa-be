@@ -33,7 +33,7 @@ exports.getSellerOrders = async (request, reply) => {
 // SELLER — UPDATE ORDER STATUS (with SMS notification)
 exports.updateOrderStatus = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
     const { orderId } = request.params;
     const { status } = request.body;
 
@@ -91,7 +91,7 @@ exports.updateOrderStatus = async (request, reply) => {
 // SELLER — UPDATE TRACKING INFO (with SMS notification)
 exports.updateTrackingInfo = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
     const { orderId } = request.params;
     const { trackingNumber, estimatedDelivery } = request.body;
 
@@ -148,7 +148,7 @@ exports.updateTrackingInfo = async (request, reply) => {
 // SELLER — BULK UPDATE STOCK
 exports.bulkUpdateStock = async (request, reply) => {
   try {
-    const sellerId = req.sellerId; // From authenticateSeller middleware
+    const sellerId = request.sellerId; // From authenticateSeller middleware
     const updates = request.body;
 
     if (!Array.isArray(updates) || updates.length === 0) {
@@ -217,7 +217,7 @@ exports.bulkUpdateStock = async (request, reply) => {
 // SELLER — EXPORT SALES REPORT (CSV)
 exports.exportSalesReport = async (request, reply) => {
   try {
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const { startDate, endDate, reportType } = request.query;
 
     console.log(`📊 Generating ${reportType || 'detailed'} sales report for seller: ${sellerId}`);
@@ -317,7 +317,7 @@ exports.exportSalesReport = async (request, reply) => {
 // SELLER — GET SALES ANALYTICS
 exports.getSalesAnalytics = async (request, reply) => {
   try {
-    const sellerId = req.sellerId;
+    const sellerId = request.sellerId;
     const { startDate, endDate } = request.query;
 
     console.log(`📊 Fetching sales analytics for seller: ${sellerId}`);
@@ -415,5 +415,6 @@ exports.getSalesAnalytics = async (request, reply) => {
     });
   }
 };
+
 
 
