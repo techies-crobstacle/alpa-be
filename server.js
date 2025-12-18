@@ -37,5 +37,12 @@ app.use("/api/support", supportRoutes);
 // Admin Routes
 app.use("/api/admin", adminRoutes);
 
+// Health check endpoint
+app.get("/", (req, res) => {
+  res.json({ status: "Server is running", timestamp: new Date().toISOString() });
+});
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+});
