@@ -1,0 +1,40 @@
+const express = require("express");
+const cors = require("cors");
+const dotenv = require("dotenv");
+dotenv.config();
+
+const authRoutes = require("./routes/authRoutes");
+const productRoutes = require("./routes/productRoutes");
+const cartRoutes = require("./routes/cart");
+const orderRoutes = require("./routes/orderRoutes");
+const sellerOrderRoutes = require("./routes/sellerOrderRoutes");
+const sellerOnboardingRoutes = require("./routes/sellerOnboardingRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const supportRoutes = require("./routes/supportRoutes");
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Auth Routes
+app.use("/api/auth", authRoutes);
+
+// Product Routes
+app.use("/api/products", productRoutes);
+
+// User Routes
+app.use("/api/cart", cartRoutes);
+app.use("/api/orders", orderRoutes);
+
+// Seller Routes
+app.use("/api/seller/orders", sellerOrderRoutes);
+app.use("/api/sellers", sellerOnboardingRoutes);
+
+// Support Routes
+app.use("/api/support", supportRoutes);
+
+// Admin Routes
+app.use("/api/admin", adminRoutes);
+
+app.listen(5000, () => console.log("Server running on port 5000"));
