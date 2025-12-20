@@ -298,12 +298,12 @@ exports.exportSalesReport = async (request, reply) => {
     }
 
     // Set headers for CSV download
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    reply.header('Content-Type', 'text/csv');
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
 
     console.log(`📥 Sending CSV file: ${filename}`);
 
-    return reply.status(200).send(csv);
+    return reply.send(csv);
 
   } catch (error) {
     console.error("Export sales report error:", error);

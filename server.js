@@ -11,6 +11,7 @@ const sellerOnboardingRoutes = require("./routes/sellerOnboardingRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 const ratingRoutes = require("./routes/ratingRoutes");
+const locationRoutes = require("./routes/locationRoutes.js");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -54,6 +55,7 @@ app.register(sellerOnboardingRoutes, { prefix: "/api/sellers" });
 app.register(supportRoutes, { prefix: "/api/support" });
 app.register(adminRoutes, { prefix: "/api/admin" });
 app.register(ratingRoutes, { prefix: "/api/ratings" });
+app.register(locationRoutes, { prefix: "/api" });
 
 const PORT = process.env.PORT || 5000;
 
