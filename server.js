@@ -23,10 +23,14 @@ const app = fastify({
 
 // Register plugins
 app.register(require("@fastify/cors"), {
-  origin: true, // Allow all origins (configure as needed)
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.ALLOWED_ORIGINS?.split(',') || []
+    : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
 });
+
+
 app.register(require("@fastify/formbody"));
 app.register(require("@fastify/multipart"), {
   limits: {

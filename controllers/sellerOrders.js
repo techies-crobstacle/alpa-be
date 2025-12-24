@@ -240,7 +240,7 @@ exports.bulkUpdateStock = async (request, reply) => {
 
 
 
-// SELLER — EXPORT SALES REPORT (CSV)
+// SELLER — EXPORT SALES REPORT (CSV) [PRISMA VERSION]
 exports.exportSalesReport = async (request, reply) => {
   try {
     const sellerId = request.user.userId;
@@ -248,59 +248,67 @@ exports.exportSalesReport = async (request, reply) => {
 
     console.log(`📊 Generating ${reportType || 'detailed'} sales report for seller: ${sellerId}`);
 
-    // Build query
-    let query = db.collection("orders");
-
-    // Date filtering
-    if (startDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      query = query.where("createdAt", ">=", start);
-    }
-
-    if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      query = query.where("createdAt", "<=", end);
-    }
-
-    const snapshot = await query.get();
-    
-    // Filter orders containing seller's products and enrich with customer data
-    const sellerOrders = [];
-    
-    for (const doc of snapshot.docs) {
-      const order = { id: doc.id, ...doc.data() };
-      const sellerProducts = order.products.filter(p => p.sellerId === sellerId);
-      
-      if (sellerProducts.length > 0) {
-        // Fetch customer data to enrich order information
-        try {
-          const userDoc = await db.collection("users").doc(order.userId).get();
-          if (userDoc.exists) {
-            const userData = userDoc.data();
-            
-            // Enrich order with customer details
-            order.customerName = userData.name || userData.displayName || 'N/A';
-            order.customerEmail = userData.email || 'N/A';
-            order.customerPhone = userData.phone || userData.mobile || 'N/A';
-            
-            // If shipping address doesn't have phone, use customer's phone
-            if (order.shippingAddress && !order.shippingAddress.phone) {
-              order.shippingAddress.phone = order.customerPhone;
-            }
+    // Build Prisma query for orders containing seller's products
+    const orderWhere = {
+      items: {
+        some: {
+          product: {
+            sellerId: sellerId
           }
-        } catch (userError) {
-          console.error(`Error fetching user data for order ${order.id}:`, userError.message);
         }
-        
-        // Only include seller's products in this order
-        sellerOrders.push({
-          ...order,
-          products: sellerProducts
-        });
+      }
+    };
+    if (startDate || endDate) {
+      orderWhere.createdAt = {};
+      if (startDate) {
+        orderWhere.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        orderWhere.createdAt.lte = end;
       }
     }
+
+    const orders = await prisma.order.findMany({
+      where: orderWhere,
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        user: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Filter and format orders to only include seller's products
+    const sellerOrders = orders.map(order => {
+      const sellerProducts = order.items.filter(item => item.product.sellerId === sellerId);
+      if (sellerProducts.length === 0) return null;
+      // Enrich order with customer details
+      const customerName = order.user?.name || 'N/A';
+      const customerEmail = order.user?.email || 'N/A';
+      const customerPhone = order.user?.phone || 'N/A';
+      // If shippingAddress is an object, add phone if missing
+      let shippingAddress = order.shippingAddress;
+      if (shippingAddress && typeof shippingAddress === 'object' && !shippingAddress.phone) {
+        shippingAddress.phone = customerPhone;
+      }
+      return {
+        ...order,
+        products: sellerProducts.map(item => ({
+          ...item.product,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        customerName,
+        customerEmail,
+        customerPhone,
+        shippingAddress
+      };
+    }).filter(Boolean);
 
     if (sellerOrders.length === 0) {
       return reply.status(404).send({
@@ -340,7 +348,7 @@ exports.exportSalesReport = async (request, reply) => {
   }
 };
 
-// SELLER — GET SALES ANALYTICS
+// SELLER — GET SALES ANALYTICS [PRISMA VERSION]
 exports.getSalesAnalytics = async (request, reply) => {
   try {
     const sellerId = request.user.userId;
@@ -348,61 +356,73 @@ exports.getSalesAnalytics = async (request, reply) => {
 
     console.log(`📊 Fetching sales analytics for seller: ${sellerId}`);
 
-    let query = db.collection("orders");
-
-    if (startDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      query = query.where("createdAt", ">=", start);
+    // Build Prisma query for orders containing seller's products
+    const orderWhere = {
+      items: {
+        some: {
+          product: {
+            sellerId: sellerId
+          }
+        }
+      }
+    };
+    if (startDate || endDate) {
+      orderWhere.createdAt = {};
+      if (startDate) {
+        orderWhere.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        orderWhere.createdAt.lte = end;
+      }
     }
 
-    if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      query = query.where("createdAt", "<=", end);
-    }
-
-    const snapshot = await query.get();
+    const orders = await prisma.order.findMany({
+      where: orderWhere,
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        }
+      }
+    });
 
     let totalRevenue = 0;
     let totalOrders = 0;
     let totalItemsSold = 0;
     const statusBreakdown = {
-      pending: 0,
-      packed: 0,
-      shipped: 0,
-      delivered: 0,
-      cancelled: 0
+      PENDING: 0,
+      CONFIRMED: 0,
+      SHIPPED: 0,
+      DELIVERED: 0,
+      CANCELLED: 0
     };
     const productPerformance = new Map();
 
-    snapshot.forEach(doc => {
-      const order = doc.data();
-      const sellerProducts = order.products.filter(p => p.sellerId === sellerId);
-
+    for (const order of orders) {
+      const sellerProducts = order.items.filter(item => item.product.sellerId === sellerId);
       if (sellerProducts.length > 0) {
         totalOrders += 1;
         statusBreakdown[order.status] = (statusBreakdown[order.status] || 0) + 1;
-
-        sellerProducts.forEach(product => {
-          totalRevenue += product.price * product.quantity;
-          totalItemsSold += product.quantity;
-
+        for (const item of sellerProducts) {
+          totalRevenue += Number(item.price) * item.quantity;
+          totalItemsSold += item.quantity;
           // Track product performance
-          if (!productPerformance.has(product.productId)) {
-            productPerformance.set(product.productId, {
-              title: product.title,
+          if (!productPerformance.has(item.productId)) {
+            productPerformance.set(item.productId, {
+              title: item.product.title,
               quantitySold: 0,
               revenue: 0
             });
           }
-
-          const perfData = productPerformance.get(product.productId);
-          perfData.quantitySold += product.quantity;
-          perfData.revenue += product.price * product.quantity;
-        });
+          const perfData = productPerformance.get(item.productId);
+          perfData.quantitySold += item.quantity;
+          perfData.revenue += Number(item.price) * item.quantity;
+        }
       }
-    });
+    }
 
     // Get top 5 performing products
     const topProducts = Array.from(productPerformance.entries())
