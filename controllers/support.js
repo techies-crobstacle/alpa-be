@@ -1,4 +1,4 @@
-const { db, admin } = require("../config/firebase");
+const prisma = require("../config/prisma");
 const { sendContactFormEmail } = require("../utils/emailService");
 
 // Submit Contact Form
@@ -14,22 +14,21 @@ exports.submitContactForm = async (request, reply) => {
       });
     }
 
-    // Save to database
-    const contactRef = db.collection("contactForms").doc();
-    const contactData = {
-      id: contactRef.id,
-      name,
-      email,
-      phone: phone || null,
-      subject,
-      message,
-      status: "pending", // pending, in-progress, resolved
-      userId: request.userId || null, // If authenticated user
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
+    // Get userId if authenticated
+    const userId = request.user?.uid || null;
 
-    await contactRef.set(contactData);
+    // Save to database
+    const ticket = await prisma.supportTicket.create({
+      data: {
+        userId: userId,
+        subject,
+        message,
+        status: "OPEN",
+        priority: "MEDIUM",
+        category: "Contact Form",
+        attachments: []
+      }
+    });
 
     // Send confirmation email to user
     await sendContactFormEmail(email, name, subject, message);
@@ -37,7 +36,7 @@ exports.submitContactForm = async (request, reply) => {
     return reply.status(200).send({ 
       success: true, 
       message: "Your message has been submitted successfully. We'll get back to you soon!",
-      ticketId: contactRef.id
+      ticketId: ticket.id
     });
   } catch (err) {
     console.error("Contact form submission error:", err);

@@ -2,6 +2,9 @@ const fastify = require("fastify");
 const dotenv = require("dotenv");
 dotenv.config();
 
+// Import Prisma client
+const prisma = require("./config/prisma");
+
 const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
 const cartRoutes = require("./routes/cart");
@@ -58,6 +61,16 @@ app.register(ratingRoutes, { prefix: "/api/ratings" });
 app.register(locationRoutes, { prefix: "/api" });
 
 const PORT = process.env.PORT || 5000;
+
+// Graceful shutdown
+const closeGracefully = async (signal) => {
+  console.log(`Received signal ${signal}, closing gracefully...`);
+  await prisma.$disconnect();
+  process.exit(0);
+};
+
+process.on('SIGINT', closeGracefully);
+process.on('SIGTERM', closeGracefully);
 
 app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   if (err) {

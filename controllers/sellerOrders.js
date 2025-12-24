@@ -1,4 +1,4 @@
-const { db, admin } = require("../config/firebase");
+const prisma = require("../config/prisma");
 const { sendOrderStatusEmail } = require("../utils/emailService");
 
 const { 
@@ -10,20 +10,37 @@ const {
 // SELLER — VIEW ORDERS
 exports.getSellerOrders = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
-    const snapshot = await db.collection("orders").get();
-
-    let sellerOrders = [];
-
-    snapshot.forEach((doc) => {
-      const order = { id: doc.id, ...doc.data() };
-      const containsSellerItem = order.products && order.products.some(
-        (p) => p.sellerId === sellerId
-      );
-      if (containsSellerItem) sellerOrders.push(order);
+    const sellerId = request.user.userId; // From authenticateSeller middleware
+    
+    const orders = await prisma.order.findMany({
+      where: {
+        items: {
+          some: {
+            product: {
+              sellerId
+            }
+          }
+        }
+      },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
-    return reply.status(200).send({ success: true, orders: sellerOrders, count: sellerOrders.length });
+    return reply.status(200).send({ success: true, orders, count: orders.length });
   } catch (error) {
     console.error("Get seller orders error:", error);
     return reply.status(500).send({ success: false, message: error.message });
@@ -33,52 +50,60 @@ exports.getSellerOrders = async (request, reply) => {
 // SELLER — UPDATE ORDER STATUS (with SMS notification)
 exports.updateOrderStatus = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
+    const sellerId = request.user.userId; // From authenticateSeller middleware
     const { orderId } = request.params;
     const { status } = request.body;
 
-    const allowed = ["pending", "packed", "shipped", "delivered", "cancelled"];
-    if (!allowed.includes(status)) {
-      return reply.status(400).send({ success: false, message: "Invalid status" });
+    const statusMap = {
+      'pending': 'PENDING',
+      'confirmed': 'CONFIRMED',
+      'packed': 'CONFIRMED',
+      'shipped': 'SHIPPED',
+      'delivered': 'DELIVERED',
+      'cancelled': 'CANCELLED'
+    };
+
+    const normalizedStatus = statusMap[status.toLowerCase()];
+    
+    if (!normalizedStatus) {
+      return reply.status(400).send({ success: false, message: "Invalid status. Use: pending, confirmed, shipped, delivered, cancelled" });
     }
 
-    const orderRef = db.collection("orders").doc(orderId);
-    const snap = await orderRef.get();
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        user: true
+      }
+    });
 
-    if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
+    if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
 
-    const order = snap.data();
-    const containsSellerItem = order.products && order.products.some((p) => p.sellerId === sellerId);
+    const containsSellerItem = order.items.some((item) => item.product.sellerId === sellerId);
 
     if (!containsSellerItem) {
       return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
     }
 
-    await orderRef.update({ 
-      status, 
-      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: normalizedStatus }
     });
 
     // Send email to customer about status update
-    try {
-      const userDoc = await db.collection("users").doc(order.userId).get();
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        const userEmail = userData.email;
-        const userName = userData.name || userData.displayName || 'Customer';
-        if (userEmail) {
-          console.log(`📧 Sending status update email to customer: ${userEmail}`);
-          
-          sendOrderStatusEmail(userEmail, userName, {
-            orderId,
-            status
-          }).catch(error => {
-            console.error("Email error (non-blocking):", error.message);
-          });
-        }
-      }
-    } catch (emailError) {
-      console.error("Error sending status email (non-blocking):", emailError.message);
+    if (order.user && order.user.email) {
+      console.log(`📧 Sending status update email to customer: ${order.user.email}`);
+      
+      sendOrderStatusEmail(order.user.email, order.user.name, {
+        orderId,
+        status
+      }).catch(error => {
+        console.error("Email error (non-blocking):", error.message);
+      });
     }
 
     return reply.status(200).send({ success: true, message: "Order status updated successfully. Customer notified via email." });
@@ -91,50 +116,50 @@ exports.updateOrderStatus = async (request, reply) => {
 // SELLER — UPDATE TRACKING INFO (with SMS notification)
 exports.updateTrackingInfo = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
+    const sellerId = request.user.userId; // From authenticateSeller middleware
     const { orderId } = request.params;
     const { trackingNumber, estimatedDelivery } = request.body;
 
-    const orderRef = db.collection("orders").doc(orderId);
-    const snap = await orderRef.get();
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        user: true
+      }
+    });
 
-    if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
+    if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
 
-    const order = snap.data();
-    const containsSellerItem = order.products && order.products.some((p) => p.sellerId === sellerId);
+    const containsSellerItem = order.items.some((item) => item.product.sellerId === sellerId);
 
     if (!containsSellerItem) {
       return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
     }
 
-    await orderRef.update({
-      trackingNumber,
-      estimatedDelivery,
-      status: "shipped", // Auto-update to shipped when tracking is added
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        trackingNumber,
+        estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
+        status: "SHIPPED" // Auto-update to shipped when tracking is added
+      }
     });
 
     // Send email with tracking info
-    try {
-      const userDoc = await db.collection("users").doc(order.userId).get();
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        const userEmail = userData.email;
-        const userName = userData.name || userData.displayName || 'Customer';
-        if (userEmail) {
-          console.log(`📧 Sending tracking info email to customer: ${userEmail}`);
-          
-          sendOrderStatusEmail(userEmail, userName, {
-            orderId,
-            status: "shipped",
-            trackingNumber
-          }).catch(error => {
-            console.error("Email error (non-blocking):", error.message);
-          });
-        }
-      }
-    } catch (emailError) {
-      console.error("Error sending tracking email (non-blocking):", emailError.message);
+    if (order.user && order.user.email) {
+      console.log(`📧 Sending tracking info email to customer: ${order.user.email}`);
+      
+      sendOrderStatusEmail(order.user.email, order.user.name, {
+        orderId,
+        status: "shipped",
+        trackingNumber
+      }).catch(error => {
+        console.error("Email error (non-blocking):", error.message);
+      });
     }
 
     return reply.status(200).send({ success: true, message: "Tracking info updated successfully. Customer notified via email." });
@@ -148,7 +173,7 @@ exports.updateTrackingInfo = async (request, reply) => {
 // SELLER — BULK UPDATE STOCK
 exports.bulkUpdateStock = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
+    const sellerId = request.user.userId; // From authenticateSeller middleware
     const updates = request.body;
 
     if (!Array.isArray(updates) || updates.length === 0) {
@@ -165,15 +190,14 @@ exports.bulkUpdateStock = async (request, reply) => {
         continue;
       }
 
-      const productRef = db.collection("products").doc(productId);
-      const productSnap = await productRef.get();
+      const product = await prisma.product.findUnique({
+        where: { id: productId }
+      });
 
-      if (!productSnap.exists) {
+      if (!product) {
         results.push({ productId, success: false, message: "Product not found" });
         continue;
       }
-
-      const product = productSnap.data();
 
       // Check seller ownership
       if (product.sellerId !== sellerId) {
@@ -182,19 +206,21 @@ exports.bulkUpdateStock = async (request, reply) => {
       }
 
       const newStock = Number(stock);
-      const isActive = newStock > 0;
+      const newStatus = newStock > 0 ? "ACTIVE" : "INACTIVE";
 
-      await productRef.update({
-        stock: newStock,
-        active: isActive,
-        updatedAt: new Date()
+      await prisma.product.update({
+        where: { id: productId },
+        data: {
+          stock: newStock,
+          status: newStatus
+        }
       });
 
       results.push({
         productId,
         success: true,
         stock: newStock,
-        active: isActive,
+        status: newStatus,
         message: "Stock updated successfully"
       });
     }
@@ -217,7 +243,7 @@ exports.bulkUpdateStock = async (request, reply) => {
 // SELLER — EXPORT SALES REPORT (CSV)
 exports.exportSalesReport = async (request, reply) => {
   try {
-    const sellerId = request.sellerId;
+    const sellerId = request.user.userId;
     const { startDate, endDate, reportType } = request.query;
 
     console.log(`📊 Generating ${reportType || 'detailed'} sales report for seller: ${sellerId}`);
@@ -317,7 +343,7 @@ exports.exportSalesReport = async (request, reply) => {
 // SELLER — GET SALES ANALYTICS
 exports.getSalesAnalytics = async (request, reply) => {
   try {
-    const sellerId = request.sellerId;
+    const sellerId = request.user.userId;
     const { startDate, endDate } = request.query;
 
     console.log(`📊 Fetching sales analytics for seller: ${sellerId}`);

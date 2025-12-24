@@ -1,7 +1,7 @@
-const { admin, db } = require("../config/firebase");
+const prisma = require("../config/prisma");
 const jwt = require("jsonwebtoken");
 
-// Authenticate Seller (supports both JWT and Firebase tokens)
+// Authenticate Seller (JWT-based with Prisma)
 exports.authenticateSeller = async (request, reply) => {
   try {
     const header = request.headers.authorization;
@@ -16,41 +16,54 @@ exports.authenticateSeller = async (request, reply) => {
     const token = header.split(" ")[1];
 
     try {
-      // Try Firebase token first
-      const decodedToken = await admin.auth().verifyIdToken(token);
-      request.sellerId = decodedToken.uid;
-    } catch (firebaseError) {
-      // Fallback to JWT token
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        request.sellerId = decoded.sellerId || decoded.uid;
-      } catch (jwtError) {
+      // Verify JWT token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      // Support both userId and sellerId for backward compatibility
+      const userId = decoded.userId || decoded.sellerId;
+      
+      if (!userId) {
         return reply.status(401).send({ 
           success: false, 
-          message: "Invalid or expired token" 
+          message: "Invalid token: user ID not found" 
         });
       }
-    }
 
-    // Validate sellerId
-    if (!request.sellerId) {
-      console.error("❌ Seller ID is undefined after token decode");
+      // Check if user exists and is a seller
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { sellerProfile: true }
+      });
+
+      if (!user) {
+        return reply.status(404).send({ 
+          success: false, 
+          message: "User not found" 
+        });
+      }
+
+      if (user.role !== 'SELLER') {
+        return reply.status(403).send({ 
+          success: false, 
+          message: "Access denied. Seller account required." 
+        });
+      }
+
+      // Attach user info to request
+      request.user = {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        sellerProfile: user.sellerProfile
+      };
+
+    } catch (error) {
+      console.error("Token verification error:", error.message);
       return reply.status(401).send({ 
         success: false, 
-        message: "Invalid token: seller ID not found" 
+        message: "Invalid or expired token" 
       });
     }
-
-    // Check if seller exists
-    const sellerDoc = await db.collection("sellers").doc(request.sellerId).get();
-    if (!sellerDoc.exists) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Seller not found" 
-      });
-    }
-
-    request.seller = { id: sellerDoc.id, ...sellerDoc.data() };
   } catch (error) {
     console.error("❌ Auth error:", error.message);
     reply.status(401).send({ 
@@ -76,41 +89,45 @@ exports.authenticateUser = async (request, reply) => {
     const token = header.split(" ")[1];
 
     try {
-      // Try Firebase token first
-      const decodedToken = await admin.auth().verifyIdToken(token);
-      request.userId = decodedToken.uid;
-    } catch (firebaseError) {
-      // Fallback to JWT token
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        request.userId = decoded.userId || decoded.uid;
-      } catch (jwtError) {
-        console.error("Token verification failed:", jwtError.message);
+      // Verify JWT token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      // Support both userId and uid for backward compatibility
+      const userId = decoded.userId || decoded.uid;
+
+      if (!userId) {
         return reply.status(401).send({ 
           success: false, 
-          message: "Invalid or expired token" 
+          message: "Invalid token - user ID not found" 
         });
       }
-    }
 
-    // Validate userId exists
-    if (!request.userId) {
+      // Check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id: userId }
+      });
+
+      if (!user) {
+        return reply.status(404).send({ 
+          success: false, 
+          message: "User not found" 
+        });
+      }
+
+      // Attach user to request
+      request.user = {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name
+      };
+
+    } catch (error) {
+      console.error("Token verification failed:", error.message);
       return reply.status(401).send({ 
         success: false, 
-        message: "Invalid token - user ID not found" 
+        message: "Invalid or expired token" 
       });
     }
-
-    // Check if user exists
-    const userDoc = await db.collection("users").doc(request.userId).get();
-    if (!userDoc.exists) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "User not found" 
-      });
-    }
-
-    request.user = { id: userDoc.id, ...userDoc.data() };
   } catch (error) {
     console.error("User auth error:", error);
     reply.status(401).send({ 
@@ -136,24 +153,44 @@ exports.isAdmin = async (request, reply) => {
     const token = header.split(" ")[1];
 
     try {
-      // Try Firebase token first
-      const decodedToken = await admin.auth().verifyIdToken(token);
-      request.userId = decodedToken.uid;
-    } catch (firebaseError) {
-      // Fallback to JWT token
+      // Verify JWT token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      request.userId = decoded.uid;
-    }
+      // Support both userId and uid for backward compatibility
+      const userId = decoded.userId || decoded.uid;
 
-    // Check if user is admin
-    const userDoc = await db.collection("users").doc(request.userId).get();
-    if (!userDoc.exists || userDoc.data().role !== "admin") {
-      return reply.status(403).send({ 
+      if (!userId) {
+        return reply.status(401).send({ 
+          success: false, 
+          message: "Invalid token" 
+        });
+      }
+
+      // Check if user is admin
+      const user = await prisma.user.findUnique({
+        where: { id: userId }
+      });
+
+      if (!user || user.role !== 'ADMIN') {
+        return reply.status(403).send({ 
+          success: false, 
+          message: "Admin access required" 
+        });
+      }
+
+      // Attach user to request
+      request.user = {
+        userId: user.id,
+        email: user.email,
+        role: user.role
+      };
+
+    } catch (error) {
+      console.error("Token verification failed:", error.message);
+      return reply.status(401).send({ 
         success: false, 
-        message: "Admin access required" 
+        message: "Invalid or expired token" 
       });
     }
-
   } catch (error) {
     console.error("Admin auth error:", error);
     reply.status(401).send({ 
@@ -162,8 +199,5 @@ exports.isAdmin = async (request, reply) => {
     });
   }
 };
-
-
-
 
 

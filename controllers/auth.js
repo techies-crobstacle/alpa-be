@@ -1,7 +1,7 @@
-const { admin, db } = require("../config/firebase");
+const prisma = require("../config/prisma");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
-const { checkEmailExists } = require("../utils/emailValidation");
 
 // SIGNUP - Send OTP for verification
 exports.register = async (request, reply) => {
@@ -15,41 +15,79 @@ exports.register = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "All fields are required" });
     }
 
-    console.log("🔍 Checking if email exists...");
-    // Check if email exists across all collections
-    const emailCheck = await checkEmailExists(email);
+    // Validate and normalize role
+    const roleMap = {
+      'customer': 'CUSTOMER',
+      'seller': 'SELLER',
+      'admin': 'ADMIN'
+    };
     
-    if (emailCheck.exists) {
-      // Allow resending OTP if pending registration expired
-      if (emailCheck.location === "pending_registrations" && emailCheck.allowResend) {
+    const normalizedRole = roleMap[role.toLowerCase()];
+    
+    if (!normalizedRole) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Invalid role. Must be 'customer', 'seller', or 'admin'" 
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    console.log("🔍 Checking if email exists...");
+    // Check if email already exists in users or pending registrations
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (existingUser) {
+      console.log("❌ Email already registered");
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Email already registered. Please login." 
+      });
+    }
+
+    // Check for expired pending registration
+    const pendingReg = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (pendingReg) {
+      // If expired, delete it and allow new registration
+      if (new Date() > pendingReg.otpExpiry) {
         console.log("♻️ Deleting expired pending registration");
-        // Delete expired pending registration and continue
-        await db.collection("pending_registrations").doc(email.toLowerCase()).delete();
+        await prisma.pendingRegistration.delete({
+          where: { email: normalizedEmail }
+        });
       } else {
-        console.log("❌ Email already exists:", emailCheck.message);
+        console.log("❌ Pending registration exists");
         return reply.status(400).send({ 
           success: false, 
-          message: emailCheck.message 
+          message: "Registration pending. Please verify your email or request a new OTP." 
         });
       }
     }
 
-    console.log("🔑 Generating OTP...");
+    console.log("🔑 Generating OTP and hashing password...");
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
     // Generate OTP
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
-    console.log("💾 Storing pending registration in Firestore...");
-    // Store pending registration in Firestore
-    await db.collection("pending_registrations").doc(email.toLowerCase()).set({
-      name,
-      email: email.toLowerCase(),
-      password,
-      mobile,
-      role,
-      otp,
-      otpExpiry,
-      createdAt: new Date(),
+    console.log("💾 Storing pending registration in database...");
+    // Store pending registration (convert role to uppercase to match Prisma enum)
+    await prisma.pendingRegistration.create({
+      data: {
+        name,
+        email: normalizedEmail,
+        password: hashedPassword,
+        mobile,
+        role: normalizedRole, // Use the validated and normalized role
+        otp,
+        otpExpiry,
+      }
     });
 
     console.log("📧 Sending OTP email...");
@@ -69,7 +107,7 @@ exports.register = async (request, reply) => {
     return reply.status(200).send({ 
       success: true, 
       message: "OTP sent to your email. Please verify to complete registration.",
-      email 
+      email: normalizedEmail
     });
   } catch (error) {
     console.error("❌ Register error:", error);
@@ -77,10 +115,7 @@ exports.register = async (request, reply) => {
   }
 };
 
-
-// LOGIN - Simplified: Generate JWT after verifying user exists in Firebase Auth
-// Note: Firebase Admin SDK cannot verify passwords, so we trust Firebase Auth user exists
-// For production, use client-side Firebase SDK to authenticate and send ID token
+// LOGIN
 exports.login = async (request, reply) => {
   try {
     const { email, password } = request.body;
@@ -89,40 +124,47 @@ exports.login = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Email & password are required" });
     }
 
-    // Get user by email from Firebase Auth
-    let userRecord;
-    try {
-      userRecord = await admin.auth().getUserByEmail(email);
-    } catch (error) {
+    const normalizedEmail = email.toLowerCase();
+
+    // Get user by email
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!user) {
       return reply.status(404).send({ success: false, message: "User not found or invalid credentials" });
     }
 
-    const uid = userRecord.uid;
-
-    // Get user data from Firestore
-    const userDoc = await db.collection("users").doc(uid).get();
-
-    if (!userDoc.exists) {
-      return reply.status(404).send({ success: false, message: "User data not found" });
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
+      return reply.status(401).send({ success: false, message: "Invalid credentials" });
     }
 
-    const user = userDoc.data();
+    // Check if email is verified
+    if (!user.emailVerified) {
+      return reply.status(403).send({ 
+        success: false, 
+        message: "Email not verified. Please verify your email first." 
+      });
+    }
 
-    // Generate JWT token for API authentication
+    // Generate JWT token
     const token = jwt.sign(
-      { uid, email: user.email, role: user.role },
+      { uid: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     const userResponse = {
-      id: uid,
-      uid,
+      id: user.id,
+      uid: user.id,
       name: user.name,
       email: user.email,
-      mobile: user.mobile,
+      mobile: user.phone,
       role: user.role,
-      createdAt: user.createdAt || null,
+      createdAt: user.createdAt,
     };
 
     return reply.status(200).send({ 
@@ -133,6 +175,7 @@ exports.login = async (request, reply) => {
       user: userResponse 
     });
   } catch (error) {
+    console.error("❌ Login error:", error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
@@ -146,22 +189,25 @@ exports.verifyOTP = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Email and OTP are required" });
     }
 
-    // Get pending registration (case-insensitive)
     const normalizedEmail = email.toLowerCase();
-    const pendingDoc = await db.collection("pending_registrations").doc(normalizedEmail).get();
 
-    if (!pendingDoc.exists) {
+    // Get pending registration
+    const pendingData = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!pendingData) {
       return reply.status(404).send({ 
         success: false, 
         message: "No pending registration found. Please register first." 
       });
     }
 
-    const pendingData = pendingDoc.data();
-
     // Check if OTP has expired
-    if (new Date() > pendingData.otpExpiry.toDate()) {
-      await db.collection("pending_registrations").doc(normalizedEmail).delete();
+    if (new Date() > pendingData.otpExpiry) {
+      await prisma.pendingRegistration.delete({
+        where: { email: normalizedEmail }
+      });
       return reply.status(400).send({ 
         success: false, 
         message: "OTP has expired. Please register again." 
@@ -176,46 +222,39 @@ exports.verifyOTP = async (request, reply) => {
       });
     }
 
-    // OTP verified - Create user in Firebase Auth
-    const userRecord = await admin.auth().createUser({
-      email: pendingData.email,
-      password: pendingData.password,
-      displayName: pendingData.name,
-      emailVerified: true, // Mark email as verified
-    });
-
-    const uid = userRecord.uid;
-    const createdAt = new Date();
-
-    // Save user data in Firestore
-    await db.collection("users").doc(uid).set({
-      uid,
-      name: pendingData.name,
-      email: pendingData.email,
-      mobile: pendingData.mobile,
-      role: pendingData.role,
-      createdAt,
-      emailVerified: true,
+    // OTP verified - Create user
+    const user = await prisma.user.create({
+      data: {
+        name: pendingData.name,
+        email: pendingData.email,
+        password: pendingData.password,
+        phone: pendingData.mobile,
+        role: pendingData.role,
+        emailVerified: true,
+        isVerified: true,
+      }
     });
 
     // Delete pending registration
-    await db.collection("pending_registrations").doc(normalizedEmail).delete();
+    await prisma.pendingRegistration.delete({
+      where: { email: normalizedEmail }
+    });
 
     // Generate JWT token
     const token = jwt.sign(
-      { uid, email: pendingData.email, role: pendingData.role },
+      { uid: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     const userResponse = {
-      id: uid,
-      uid,
-      name: pendingData.name,
-      email: pendingData.email,
-      mobile: pendingData.mobile,
-      role: pendingData.role,
-      createdAt,
+      id: user.id,
+      uid: user.id,
+      name: user.name,
+      email: user.email,
+      mobile: user.phone,
+      role: user.role,
+      createdAt: user.createdAt,
     };
 
     return reply.status(201).send({ 
@@ -225,6 +264,7 @@ exports.verifyOTP = async (request, reply) => {
       user: userResponse 
     });
   } catch (error) {
+    console.error("❌ Verify OTP error:", error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
@@ -238,27 +278,31 @@ exports.resendOTP = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Email is required" });
     }
 
-    // Get pending registration (case-insensitive)
     const normalizedEmail = email.toLowerCase();
-    const pendingDoc = await db.collection("pending_registrations").doc(normalizedEmail).get();
 
-    if (!pendingDoc.exists) {
+    // Get pending registration
+    const pendingData = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!pendingData) {
       return reply.status(404).send({ 
         success: false, 
         message: "No pending registration found. Please register first." 
       });
     }
 
-    const pendingData = pendingDoc.data();
-
     // Generate new OTP
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Update OTP in Firestore
-    await db.collection("pending_registrations").doc(normalizedEmail).update({
-      otp,
-      otpExpiry,
+    // Update OTP
+    await prisma.pendingRegistration.update({
+      where: { email: normalizedEmail },
+      data: {
+        otp,
+        otpExpiry,
+      }
     });
 
     // Send new OTP email
@@ -276,9 +320,7 @@ exports.resendOTP = async (request, reply) => {
       message: "New OTP sent to your email." 
     });
   } catch (error) {
+    console.error("❌ Resend OTP error:", error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
-
-
-

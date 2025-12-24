@@ -294,7 +294,7 @@
 // };
 
 
-const { db } = require("../config/firebase");
+const prisma = require("../config/prisma");
 const { checkInventory } = require("../utils/checkInventory");
 const { 
   sendOrderConfirmationEmail, 
@@ -305,7 +305,7 @@ const {
 // Stock Management and Inventory Alert with SMS Notification
 exports.createOrder = async (request, reply) => {
   try {
-    const userId = request.user.uid;
+    const userId = request.user.userId;
     const { shippingAddress, paymentMethod } = request.body;
 
     if (!shippingAddress || !paymentMethod) {
@@ -313,35 +313,37 @@ exports.createOrder = async (request, reply) => {
     }
 
     // Get user details for SMS
-    const userDoc = await db.collection("users").doc(userId).get();
-    if (!userDoc.exists) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
       return reply.status(404).send({ success: false, message: "User not found" });
     }
-    const user = userDoc.data();
 
-    // Get user's cart
-    const cartRef = db.collection("carts").doc(userId);
-    const cartSnap = await cartRef.get();
+    // Get user's cart with items and products
+    const cart = await prisma.cart.findUnique({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        }
+      }
+    });
 
-    if (!cartSnap.exists || !cartSnap.data().products || cartSnap.data().products.length === 0) {
+    if (!cart || cart.items.length === 0) {
       return reply.status(400).send({ success: false, message: "Cart is empty" });
     }
 
-    const cartProducts = cartSnap.data().products;
-    let orderProducts = [];
     let totalAmount = 0;
-    let sellerNotifications = new Map(); // Track sellers to notify
+    let sellerNotifications = new Map();
+    const orderItems = [];
 
     // Stock validation + price calculation
-    for (const item of cartProducts) {
-      const productRef = db.collection("products").doc(item.productId);
-      const productSnap = await productRef.get();
-
-      if (!productSnap.exists) {
-        return reply.status(404).send({ success: false, message: `Product not found: ${item.productId}` });
-      }
-
-      const product = productSnap.data();
+    for (const item of cart.items) {
+      const product = item.product;
 
       // Check stock
       if (product.stock < item.quantity) {
@@ -351,106 +353,123 @@ exports.createOrder = async (request, reply) => {
         });
       }
 
-      // Prepare order items
-      orderProducts.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        price: product.price,
-        sellerId: product.sellerId,
-        title: product.title
-      });
+      const itemPrice = Number(product.price);
+      const itemTotal = itemPrice * item.quantity;
+      totalAmount += itemTotal;
 
-      totalAmount += product.price * item.quantity;
+      orderItems.push({
+        productId: product.id,
+        quantity: item.quantity,
+        price: itemPrice
+      });
 
       // Track seller products for notification
       if (!sellerNotifications.has(product.sellerId)) {
         sellerNotifications.set(product.sellerId, {
           productCount: 0,
-          totalAmount: 0
+          totalAmount: 0,
+          products: []
         });
       }
       const sellerData = sellerNotifications.get(product.sellerId);
       sellerData.productCount += item.quantity;
-      sellerData.totalAmount += product.price * item.quantity;
-    }
-
-    // Deduct stock after validation success
-    for (const item of cartProducts) {
-      const productRef = db.collection("products").doc(item.productId);
-      const productSnap = await productRef.get();
-      const product = productSnap.data();
-
-      const newStock = product.stock - item.quantity;
-
-      await productRef.update({
-        stock: newStock,
-        active: newStock > 0 ? true : false,
-        updatedAt: new Date()
+      sellerData.totalAmount += itemTotal;
+      sellerData.products.push({
+        productId: product.id,
+        title: product.title,
+        quantity: item.quantity,
+        price: itemPrice
       });
     }
 
-    // Create order document
-    const orderRef = db.collection("orders").doc();
-    await orderRef.set({
-      id: orderRef.id,
-      userId,
-      products: orderProducts,
-      totalAmount,
-      shippingAddress,
-      paymentMethod,
-      status: "pending",
-      createdAt: new Date()
+    // Use transaction to ensure atomicity
+    const order = await prisma.$transaction(async (tx) => {
+      // Deduct stock
+      for (const item of cart.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: { decrement: item.quantity }
+          }
+        });
+      }
+
+      // Create order with items
+      const newOrder = await tx.order.create({
+        data: {
+          userId,
+          totalAmount,
+          shippingAddress,
+          paymentMethod,
+          status: "PENDING",
+          customerName: user.name,
+          customerEmail: user.email,
+          customerPhone: user.phone || '',
+          items: {
+            create: orderItems
+          }
+        },
+        include: {
+          items: {
+            include: {
+              product: true
+            }
+          }
+        }
+      });
+
+      // Clear cart
+      await tx.cartItem.deleteMany({
+        where: { cartId: cart.id }
+      });
+
+      return newOrder;
     });
 
-    console.log(`✅ Order created: ${orderRef.id}`);
+    console.log(`✅ Order created: ${order.id}`);
 
-    // Clear cart after order
-    await cartRef.delete();
-
-    // Send email to customer (don't wait for it - non-blocking)
-    const userEmail = user.email;
-    const userName = user.name || user.displayName || 'Customer';
-    const userPhone = user.phone || user.mobile || shippingAddress.phone;
-    
-    if (userEmail) {
-      console.log(`📧 Sending order confirmation email to customer: ${userEmail}`);
-      sendOrderConfirmationEmail(userEmail, userName, {
-        orderId: orderRef.id,
+    // Send email to customer (non-blocking)
+    if (user.email) {
+      console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
+      sendOrderConfirmationEmail(user.email, user.name, {
+        orderId: order.id,
         totalAmount,
-        itemCount: orderProducts.length,
-        products: orderProducts,
+        itemCount: order.items.length,
+        products: order.items.map(item => ({
+          title: item.product.title,
+          quantity: item.quantity,
+          price: item.price
+        })),
         shippingAddress,
         paymentMethod,
-        customerPhone: userPhone
+        customerPhone: user.phone
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
-    } else {
-      console.log("⚠️  User has no email. Customer notification skipped.");
     }
 
-    // Send email to each seller (don't wait for it - non-blocking)
+    // Send email to each seller (non-blocking)
     for (const [sellerId, sellerData] of sellerNotifications) {
       try {
-        const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-        if (sellerDoc.exists && sellerDoc.data().email) {
-          const sellerEmail = sellerDoc.data().email;
-          const sellerName = sellerDoc.data().storeName || sellerDoc.data().businessName || 'Seller';
-          console.log(`📧 Sending order notification email to seller: ${sellerEmail}`);
+        const seller = await prisma.user.findUnique({
+          where: { id: sellerId },
+          include: { sellerProfile: true }
+        });
+
+        if (seller && seller.email && seller.sellerProfile) {
+          const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+          console.log(`📧 Sending order notification email to seller: ${seller.email}`);
           
-          // Filter products for this specific seller
-          const sellerProducts = orderProducts.filter(p => p.sellerId === sellerId);
-          
-          sendSellerOrderNotificationEmail(sellerEmail, sellerName, {
-            orderId: orderRef.id,
+          sendSellerOrderNotificationEmail(seller.email, sellerName, {
+            orderId: order.id,
             productCount: sellerData.productCount,
             totalAmount: sellerData.totalAmount,
-            products: sellerProducts,
+            products: sellerData.products,
             shippingAddress,
             paymentMethod,
-            customerName: userName,
-            customerEmail: userEmail,
-            customerPhone: userPhone
+            customerName: user.name,
+            customerEmail: user.email,
+            customerPhone: user.phone
           }).catch(error => {
             console.error("Seller email error (non-blocking):", error.message);
           });
@@ -463,7 +482,7 @@ exports.createOrder = async (request, reply) => {
     return reply.status(200).send({
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
-      orderId: orderRef.id,
+      orderId: order.id,
       totalAmount
     });
 
@@ -476,12 +495,30 @@ exports.createOrder = async (request, reply) => {
 // USER — VIEW MY ORDERS
 exports.getMyOrders = async (request, reply) => {
   try {
-    const userId = request.user.uid;
-    const snapshot = await db.collection("orders").where("userId", "==", userId).get();
-    const orders = snapshot.docs.map((doc) => doc.data());
+    const userId = request.user.userId;
+    
+    const orders = await prisma.order.findMany({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                images: true,
+                price: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
     return reply.status(200).send({ success: true, orders });
   } catch (error) {
+    console.error("Get my orders error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
@@ -490,37 +527,38 @@ exports.getMyOrders = async (request, reply) => {
 exports.cancelOrder = async (request, reply) => {
   try {
     const orderId = request.params.id;
-    const userId = request.user.uid;
+    const userId = request.user.userId;
 
-    const orderRef = db.collection("orders").doc(orderId);
-    const snap = await orderRef.get();
+    const order = await prisma.order.findUnique({
+      where: { id: orderId }
+    });
 
-    if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
+    if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
 
-    const order = snap.data();
     if (order.userId !== userId) return reply.status(403).send({ success: false, message: "Not authorized" });
 
-    if (order.status !== "pending") {
+    if (order.status !== "PENDING") {
       return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
     }
 
-    await orderRef.update({ status: "cancelled" });
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { status: "CANCELLED" }
+    });
 
     // Send email notification about cancellation
-    const userDoc = await db.collection("users").doc(userId).get();
-    if (userDoc.exists) {
-      const userData = userDoc.data();
-      const userEmail = userData.email;
-      const userName = userData.name || userData.displayName || 'Customer';
-      if (userEmail) {
-        console.log(`📧 Sending cancellation email to customer: ${userEmail}`);
-        sendOrderStatusEmail(userEmail, userName, {
-          orderId,
-          status: "cancelled"
-        }).catch(error => {
-          console.error("Email error (non-blocking):", error.message);
-        });
-      }
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (user && user.email) {
+      console.log(`📧 Sending cancellation email to customer: ${user.email}`);
+      sendOrderStatusEmail(user.email, user.name, {
+        orderId,
+        status: "cancelled"
+      }).catch(error => {
+        console.error("Email error (non-blocking):", error.message);
+      });
     }
 
     return reply.status(200).send({ success: true, message: "Order cancelled successfully. Email notification sent." });

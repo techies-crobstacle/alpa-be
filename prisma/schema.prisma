@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String
+  phone         String?
+  role          Role     @default(CUSTOMER)
+  isVerified    Boolean  @default(false)
+  profileImage  String?
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  products      Product[]
+  orders        Order[]
+  cart          Cart?
+  ratings       Rating[]
+  supportTickets SupportTicket[]
+  sellerProfile SellerProfile?
+
+  @@map("users")
+}
+
+model PendingRegistration {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String?
+  phone     String?
+  mobile    String?
+  role      Role
+  otp       String
+  otpExpiry DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pending_registrations")
+}
+
+model SellerProfile {
+  id                      String        @id @default(cuid())
+  userId                  String        @unique
+  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactPerson           String?
+  businessName            String?
+  abn                     String?
+  businessAddress         String?
+  businessType            String?
+  yearsInBusiness         Int?
+  website                 String?
+  culturalBackground      String?
+  culturalStory           String?
+  storeName               String?
+  storeDescription        String?
+  storeLogo               String?
+  storeBanner             String?
+  storeLocation           String?
+  kycDocuments            Json?
+  kycSubmitted            Boolean       @default(false)
+  bankDetails             Json?
+  status                  SellerStatus  @default(PENDING)
+  culturalApprovalStatus  String        @default("pending")
+  culturalApprovalAt      DateTime?
+  culturalApprovalFeedback String?
+  culturalApprovalBy      String?
+  onboardingStep          Int           @default(1)
+  submittedForReviewAt    DateTime?
+  approvedAt              DateTime?
+  rejectedAt              DateTime?
+  rejectionReason         String?
+  suspendedAt             DateTime?
+  suspensionReason        String?
+  activatedAt             DateTime?
+  activatedBy             String?
+  adminNotes              String?
+  productCount            Int           @default(0)
+  minimumProductsUploaded Boolean       @default(false)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  @@map("seller_profiles")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  price       Decimal       @db.Decimal(10, 2)
+  category    String
+  stock       Int           @default(0)
+  images      String[]
+  sellerId    String
+  seller      User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerName  String?
+  status      ProductStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  ratings     Rating[]
+
+  @@index([sellerId])
+  @@index([category])
+  @@index([status])
+  @@map("products")
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                String      @id @default(cuid())
+  userId            String
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items             OrderItem[]
+  totalAmount       Decimal     @db.Decimal(10, 2)
+  status            OrderStatus @default(PENDING)
+  paymentMethod     String?
+  shippingAddress   Json
+  trackingNumber    String?
+  estimatedDelivery DateTime?
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  @@map("order_items")
+}
+
+model Rating {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+  @@index([productId])
+  @@map("ratings")
+}
+
+model SupportTicket {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject     String
+  message     String
+  status      TicketStatus  @default(OPEN)
+  priority    Priority      @default(MEDIUM)
+  category    String?
+  attachments String[]
+  response    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+enum Role {
+  CUSTOMER
+  SELLER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SellerStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  REJECTED
+  SUSPENDED
+}
+
+enum ProductStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+}

@@ -1,13 +1,13 @@
-const auth = require("../middlewares/auth");
+const { authenticateUser } = require("../middlewares/authMiddleware");
 const { addToCart, getMyCart, updateCartQuantity, removeFromCart } = require("../controllers/cart");
 
 async function cartRoutes(fastify, options) {
   // ADD TO CART
-  fastify.post("/add", { preHandler: auth }, addToCart);
-  fastify.get("/view", { preHandler: auth }, addToCart);
-  fastify.get("/my-cart", { preHandler: auth }, getMyCart);
-  fastify.delete("/remove/:productId", { preHandler: auth }, removeFromCart);
-  fastify.put("/update", { preHandler: auth }, updateCartQuantity);
+  fastify.post("/add", { preHandler: authenticateUser }, addToCart);
+  fastify.get("/view", { preHandler: authenticateUser }, addToCart);
+  fastify.get("/my-cart", { preHandler: authenticateUser }, getMyCart);
+  fastify.delete("/remove/:productId", { preHandler: authenticateUser }, removeFromCart);
+  fastify.put("/update", { preHandler: authenticateUser }, updateCartQuantity);
 }
 
 module.exports = cartRoutes;

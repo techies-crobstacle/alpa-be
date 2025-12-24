@@ -1,4 +1,4 @@
-const { db } = require("../config/firebase");
+const prisma = require("../config/prisma");
 
 // Rate a product (buyer only - must have purchased it)
 exports.rateProduct = async (request, reply) => {
@@ -16,65 +16,42 @@ exports.rateProduct = async (request, reply) => {
     }
 
     // Check if product exists
-    const productDoc = await db.collection("products").doc(productId).get();
-    if (!productDoc.exists) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
+    });
+
+    if (!product) {
       return reply.status(404).send({ 
         success: false, 
         message: "Product not found" 
       });
     }
 
-    const productData = productDoc.data();
-
     // Check if already rated by this buyer
-    const existingRatingSnapshot = await db.collection("ratings")
-      .where("productId", "==", productId)
-      .where("buyerId", "==", buyerId)
-      .get();
+    const existingRating = await prisma.rating.findUnique({
+      where: {
+        userId_productId: {
+          userId: buyerId,
+          productId
+        }
+      }
+    });
 
-    if (!existingRatingSnapshot.empty) {
+    if (existingRating) {
       return reply.status(400).send({ 
         success: false, 
         message: "You have already rated this product" 
       });
     }
 
-    // Get buyer info
-    const buyerDoc = await db.collection("buyers").doc(buyerId).get();
-    const buyerName = buyerDoc.exists ? buyerDoc.data().name : "Anonymous";
-
     // Create rating
-    const ratingData = {
-      productId,
-      buyerId,
-      buyerName,
-      sellerId: productData.sellerId,
-      rating: parseInt(rating),
-      review: review || "",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    const ratingRef = await db.collection("ratings").add(ratingData);
-
-    // Update product's average rating
-    const ratingsSnapshot = await db.collection("ratings")
-      .where("productId", "==", productId)
-      .get();
-
-    const totalRatings = ratingsSnapshot.size;
-    let sumRatings = 0;
-
-    ratingsSnapshot.forEach(doc => {
-      sumRatings += doc.data().rating;
-    });
-
-    const averageRating = sumRatings / totalRatings;
-
-    await db.collection("products").doc(productId).update({
-      averageRating: parseFloat(averageRating.toFixed(2)),
-      totalRatings: totalRatings,
-      updatedAt: new Date()
+    await prisma.rating.create({
+      data: {
+        userId: buyerId,
+        productId,
+        rating: parseInt(rating),
+        comment: review || ""
+      }
     });
 
     reply.send({ 

@@ -1,10 +1,9 @@
-const auth = require("../middlewares/auth");
-const checkRole = require("../middlewares/checkRole");
+const { isAdmin } = require("../middlewares/authMiddleware");
 const adminController = require("../controllers/admin");
 
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
-  const adminAuth = [auth, checkRole("admin")];
+  const adminAuth = isAdmin;
 
   // ---------------- USER MANAGEMENT ----------------
   fastify.get("/users", { preHandler: adminAuth }, adminController.getAllUsers);

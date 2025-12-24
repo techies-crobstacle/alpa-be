@@ -1,73 +1,71 @@
-const { db, admin } = require("../config/firebase");
+const prisma = require("../config/prisma");
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {
   const { title, description, price, stock, category, images } = request.body;
 
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
+    const sellerId = request.user.userId; // From authenticateSeller middleware
 
     // Check if seller is approved and active
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      include: { user: true }
+    });
     
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({ success: false, message: "Seller account not found" });
     }
 
-    const seller = sellerDoc.data();
-
-    if (seller.status !== "approved" && seller.status !== "active") {
+    if (seller.status !== "APPROVED" && seller.status !== "ACTIVE") {
       return reply.status(403).send({ 
         success: false, 
         message: "Your seller account must be approved before adding products. Current status: " + seller.status 
       });
     }
 
-    // Products are pending until seller goes live (status = "active")
-    const productStatus = seller.status === "active" ? "active" : "pending";
+    // Products are pending until seller goes live (status = "ACTIVE")
+    const productStatus = seller.status === "ACTIVE" ? "ACTIVE" : "PENDING";
 
-    const productRef = db.collection("products").doc();
-    const productData = {
-      id: productRef.id,
-      title,
-      description,
-      price,
-      stock,
-      category,
-      images: images || [],
-      sellerId,
-      sellerName: seller.storeName || seller.businessName,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      status: productStatus
-    };
-    
-    await productRef.set(productData);
-
-    // Update seller product count
-    const currentCount = seller.productCount || 0;
-    await db.collection("sellers").doc(sellerId).update({
-      productCount: currentCount + 1,
-      minimumProductsUploaded: currentCount + 1 >= 1,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    return reply.status(200).send({ 
-      success: true, 
-      message: "Product added successfully",
-      productId: productRef.id,
-      product: {
-        id: productRef.id,
+    const product = await prisma.product.create({
+      data: {
         title,
         description,
         price,
         stock,
         category,
         images: images || [],
+        sellerId,
+        sellerName: seller.storeName || seller.businessName,
         status: productStatus
+      }
+    });
+
+    // Update seller product count
+    await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        productCount: { increment: 1 },
+        minimumProductsUploaded: true
+      }
+    });
+
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Product added successfully",
+      productId: product.id,
+      product: {
+        id: product.id,
+        title: product.title,
+        description: product.description,
+        price: product.price,
+        stock: product.stock,
+        category: product.category,
+        images: product.images,
+        status: product.status
       },
-      note: productStatus === "pending" ? "Product will go live when your store is activated by admin" : "Product is live",
-      totalProducts: currentCount + 1
+      note: productStatus === "PENDING" ? "Product will go live when your store is activated by admin" : "Product is live",
+      totalProducts: seller.productCount + 1
     });
   } catch (err) {
     console.error("Add product error:", err);
@@ -78,16 +76,12 @@ exports.addProduct = async (request, reply) => {
 // GET MY PRODUCTS (Seller only)
 exports.getMyProducts = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
+    const sellerId = request.user.userId; // From authenticateSeller middleware
 
-    const productsSnap = await db.collection("products")
-      .where("sellerId", "==", sellerId)
-      .get();
-
-    const products = productsSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const products = await prisma.product.findMany({
+      where: { sellerId },
+      orderBy: { createdAt: 'desc' }
+    });
 
     return reply.status(200).send({ 
       success: true, 
@@ -103,14 +97,20 @@ exports.getMyProducts = async (request, reply) => {
 // GET PRODUCT BY ID (Public)
 exports.getProductById = async (request, reply) => {
   try {
-    const productRef = db.collection("products").doc(request.params.id);
-    const docSnap = await productRef.get();
+    const product = await prisma.product.findUnique({
+      where: { id: request.params.id },
+      include: {
+        seller: {
+          select: { id: true, name: true, email: true }
+        }
+      }
+    });
 
-    if (!docSnap.exists) {
+    if (!product) {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    reply.status(200).send({ success: true, product: { id: docSnap.id, ...docSnap.data() } });
+    reply.status(200).send({ success: true, product });
   } catch (err) {
     console.error("Get product by ID error:", err);
     reply.status(500).send({ success: false, error: err.message });
@@ -120,15 +120,15 @@ exports.getProductById = async (request, reply) => {
 // UPDATE PRODUCT (Seller only)
 exports.updateProduct = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
-    const productRef = db.collection("products").doc(request.params.id);
-    const docSnap = await productRef.get();
+    const sellerId = request.user.userId; // From authenticateSeller middleware
+    
+    const product = await prisma.product.findUnique({
+      where: { id: request.params.id }
+    });
 
-    if (!docSnap.exists) {
+    if (!product) {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
-
-    const product = docSnap.data();
 
     // Check if the logged-in seller is the owner
     if (product.sellerId !== sellerId) {
@@ -138,22 +138,22 @@ exports.updateProduct = async (request, reply) => {
     const { title, description, price, stock, category, images } = request.body;
 
     // Update only the provided fields
-    const updatedData = {
-      title: title ?? product.title,
-      description: description ?? product.description,
-      price: price ?? product.price,
-      stock: stock ?? product.stock,
-      category: category ?? product.category,
-      images: images ?? product.images,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    await productRef.update(updatedData);
+    const updatedProduct = await prisma.product.update({
+      where: { id: request.params.id },
+      data: {
+        ...(title !== undefined && { title }),
+        ...(description !== undefined && { description }),
+        ...(price !== undefined && { price }),
+        ...(stock !== undefined && { stock }),
+        ...(category !== undefined && { category }),
+        ...(images !== undefined && { images })
+      }
+    });
 
     return reply.status(200).send({ 
       success: true, 
       message: "Product updated successfully", 
-      product: { id: request.params.id, ...updatedData }
+      product: updatedProduct
     });
   } catch (err) {
     console.error("Update product error:", err);
@@ -164,36 +164,43 @@ exports.updateProduct = async (request, reply) => {
 // DELETE PRODUCT (Seller only)
 exports.deleteProduct = async (request, reply) => {
   try {
-    const sellerId = request.sellerId; // From authenticateSeller middleware
-    const productRef = db.collection("products").doc(request.params.id);
-    const docSnap = await productRef.get();
+    const sellerId = request.user.userId; // From authenticateSeller middleware
+    
+    const product = await prisma.product.findUnique({
+      where: { id: request.params.id }
+    });
 
-    if (!docSnap.exists) {
+    if (!product) {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
-
-    const product = docSnap.data();
 
     // Check if the logged-in seller is the owner
     if (product.sellerId !== sellerId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
     }
 
-    await productRef.delete();
+    await prisma.product.delete({
+      where: { id: request.params.id }
+    });
 
     // Update seller product count
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    const currentCount = sellerDoc.data().productCount || 0;
-    await db.collection("sellers").doc(sellerId).update({
-      productCount: Math.max(0, currentCount - 1),
-      minimumProductsUploaded: (currentCount - 1) >= 1,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId }
+    });
+
+    const newCount = Math.max(0, (seller?.productCount || 1) - 1);
+    await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        productCount: newCount,
+        minimumProductsUploaded: newCount >= 1
+      }
     });
 
     return reply.status(200).send({ 
       success: true, 
       message: "Product deleted successfully",
-      totalProducts: Math.max(0, currentCount - 1)
+      totalProducts: newCount
     });
   } catch (err) {
     console.error("Delete product error:", err);
@@ -204,23 +211,25 @@ exports.deleteProduct = async (request, reply) => {
 // GET ALL PRODUCTS (Public - only active sellers' products)
 exports.getAllProducts = async (request, reply) => {
   try {
-    const productsSnap = await db.collection("products")
-      .where("status", "==", "active")
-      .get();
-    
-    // Filter products to only include those from active (live) sellers
-    const productPromises = productsSnap.docs.map(async (doc) => {
-      const productData = doc.data();
-      const sellerDoc = await db.collection("sellers").doc(productData.sellerId).get();
-      
-      if (sellerDoc.exists && sellerDoc.data().status === "active") {
-        return { id: doc.id, ...productData };
-      }
-      return null;
+    const products = await prisma.product.findMany({
+      where: {
+        status: "ACTIVE",
+        seller: {
+          sellerProfile: {
+            status: "ACTIVE"
+          }
+        }
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
     });
-
-    const allProducts = await Promise.all(productPromises);
-    const products = allProducts.filter(p => p !== null);
 
     return reply.status(200).send({ success: true, products, count: products.length });
   } catch (err) {

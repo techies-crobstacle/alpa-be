@@ -1,13 +1,14 @@
-const { admin, db, storage } = require("../config/firebase");
+const prisma = require("../config/prisma");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
 const { validateABNWithVigil, verifyIdentityDocument } = require("../utils/vigilAPI");
-const { checkEmailExists } = require("../utils/emailValidation");
+const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const fs = require('fs').promises;
 
 // Helper function to generate seller JWT token
-const generateSellerToken = (sellerId) => {
-  return jwt.sign({ sellerId, userType: "seller" }, process.env.JWT_SECRET, {
+const generateSellerToken = (userId) => {
+  return jwt.sign({ userId, userType: "seller", role: "SELLER" }, process.env.JWT_SECRET, {
     expiresIn: "30d"
   });
 };
@@ -24,78 +25,86 @@ exports.applyAsSeller = async (request, reply) => {
       });
     }
 
-    // Check if email exists across all collections
-    const emailCheck = await checkEmailExists(email);
-    
-    if (emailCheck.exists) {
-      // Allow continuing only if it's an unverified seller registration
-      if (emailCheck.location === "sellers" && !emailCheck.verified && emailCheck.allowContinue) {
-        const sellerId = emailCheck.sellerId;
-        
-        // Generate new OTP for existing unverified seller
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { sellerProfile: true }
+    });
+
+    if (existingUser) {
+      // If user exists but hasn't verified email, allow resending OTP
+      if (!existingUser.emailVerified && existingUser.role === 'SELLER') {
+        // Generate new OTP
         const otp = generateOTP();
-        
-        await db.collection("otps").add({
-          sellerId,
-          userType: "seller",
-          otp,
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        // Update or create pending registration
+        await prisma.pendingRegistration.upsert({
+          where: { email: normalizedEmail },
+          update: {
+            otp,
+            otpExpiry,
+            updatedAt: new Date()
+          },
+          create: {
+            email: normalizedEmail,
+            phone,
+            name: contactPerson,
+            otp,
+            otpExpiry,
+            role: 'SELLER'
+          }
         });
 
-        await sendOTPEmail(email, otp, contactPerson);
+        await sendOTPEmail(normalizedEmail, otp, contactPerson);
 
         return reply.status(200).send({
           success: true,
           message: "OTP sent to your email. Please verify to continue.",
-          sellerId
+          userId: existingUser.id
         });
       }
-      
-      // Email exists elsewhere - reject
+
       return reply.status(400).send({
         success: false,
-        message: emailCheck.message
+        message: "Email already registered"
       });
     }
 
-    // Create new seller document
-    const sellerRef = await db.collection("sellers").add({
-      email: email.toLowerCase(),
-      phone,
-      contactPerson,
-      emailVerified: false,
-      phoneVerified: false,
-      onboardingStep: 1,
-      status: "draft",
-      productCount: 0,
-      minimumProductsUploaded: false,
-      culturalApprovalStatus: "pending",
-      appliedAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-    const sellerId = sellerRef.id;
-
     // Generate OTP
     const otp = generateOTP();
-    
-    // Store OTP in Firebase
-    await db.collection("otps").add({
-      sellerId,
-      userType: "seller",
-      otp,
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Create or update pending registration (upsert to handle re-applications)
+    const pendingReg = await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      update: {
+        phone,
+        name: contactPerson,
+        otp,
+        otpExpiry,
+        role: 'SELLER'
+      },
+      create: {
+        email: normalizedEmail,
+        phone,
+        name: contactPerson,
+        otp,
+        otpExpiry,
+        role: 'SELLER'
+      }
     });
 
     // Send OTP email
-    await sendOTPEmail(email, otp, contactPerson);
+    await sendOTPEmail(normalizedEmail, otp, contactPerson);
 
     reply.status(200).send({
       success: true,
       message: "OTP sent to your email. Please verify to continue.",
-      sellerId
+      sellerId: pendingReg.id,
+      email: normalizedEmail
     });
   } catch (error) {
     console.error("Apply as seller error:", error);
@@ -106,12 +115,13 @@ exports.applyAsSeller = async (request, reply) => {
 // Step 2: Verify OTP & Set Password
 exports.verifyOTP = async (request, reply) => {
   try {
-    const { sellerId, otp, password } = request.body;
+    const { email, sellerId, otp, password } = request.body;
 
-    if (!sellerId || !otp) {
+    // Support both email and sellerId for backward compatibility
+    if ((!email && !sellerId) || !otp) {
       return reply.status(400).send({
         success: false,
-        message: "Seller ID and OTP are required"
+        message: "Email or Seller ID and OTP are required"
       });
     }
 
@@ -122,58 +132,86 @@ exports.verifyOTP = async (request, reply) => {
       });
     }
 
-    // Find OTP
-    const otpSnapshot = await db.collection("otps")
-      .where("sellerId", "==", sellerId)
-      .where("userType", "==", "seller")
-      .where("otp", "==", otp)
-      .get();
-
-    if (otpSnapshot.empty) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Invalid OTP" 
+    // Find pending registration by email or sellerId
+    let pending;
+    if (sellerId) {
+      pending = await prisma.pendingRegistration.findUnique({
+        where: { id: sellerId }
+      });
+    } else {
+      const normalizedEmail = email.toLowerCase();
+      pending = await prisma.pendingRegistration.findUnique({
+        where: { email: normalizedEmail }
       });
     }
 
-    const otpDoc = otpSnapshot.docs[0];
-    const otpData = otpDoc.data();
+    if (!pending || pending.otp !== otp) {
+      return reply.status(400).send({
+        success: false,
+        message: "Invalid OTP"
+      });
+    }
 
     // Check if OTP is expired
-    if (otpData.expiresAt.toDate() < new Date()) {
-      await otpDoc.ref.delete();
-      return reply.status(400).send({ 
-        success: false, 
-        message: "OTP has expired. Please request a new one." 
+    if (pending.otpExpiry < new Date()) {
+      await prisma.pendingRegistration.delete({
+        where: { id: pending.id }
+      });
+      return reply.status(400).send({
+        success: false,
+        message: "OTP has expired. Please request a new one."
       });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Update seller
-    await db.collection("sellers").doc(sellerId).update({
-      password: hashedPassword,
-      emailVerified: true,
-      onboardingStep: 2,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Create user and seller profile in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          email: pending.email,
+          password: hashedPassword,
+          name: pending.name,
+          phone: pending.phone || pending.mobile,
+          role: 'SELLER',
+          emailVerified: true
+        }
+      });
+
+      // Create seller profile
+      const sellerProfile = await tx.sellerProfile.create({
+        data: {
+          userId: user.id,
+          contactPerson: pending.name,
+          onboardingStep: 2,
+          status: 'PENDING',
+          productCount: 0,
+          minimumProductsUploaded: false,
+          culturalApprovalStatus: 'pending'
+        }
+      });
+
+      // Delete pending registration
+      await tx.pendingRegistration.delete({
+        where: { id: pending.id }
+      });
+
+      return { user, sellerProfile };
     });
 
-    // Delete used OTP
-    await otpDoc.ref.delete();
+    // Generate JWT token
+    const token = generateSellerToken(result.user.id);
 
-    // Get updated seller data
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    const seller = { id: sellerDoc.id, ...sellerDoc.data() };
-    delete seller.password; // Don't send password in response
-
-    // Generate JWT token for authentication
-    const token = generateSellerToken(sellerId);
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = result.user;
 
     reply.status(200).send({
       success: true,
       message: "Email verified and password set successfully. You can now continue with your application.",
-      seller,
+      user: userWithoutPassword,
+      sellerProfile: result.sellerProfile,
       token
     });
   } catch (error) {
@@ -194,23 +232,23 @@ exports.sellerLogin = async (request, reply) => {
       });
     }
 
-    // Find seller by email
-    const sellerSnapshot = await db.collection("sellers")
-      .where("email", "==", email.toLowerCase())
-      .get();
+    const normalizedEmail = email.toLowerCase();
 
-    if (sellerSnapshot.empty) {
+    // Find seller by email
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { sellerProfile: true }
+    });
+
+    if (!user || user.role !== 'SELLER') {
       return reply.status(401).send({
         success: false,
         message: "Invalid email or password"
       });
     }
 
-    const sellerDoc = sellerSnapshot.docs[0];
-    const seller = { id: sellerDoc.id, ...sellerDoc.data() };
-
     // Check if seller has set password
-    if (!seller.password) {
+    if (!user.password) {
       return reply.status(400).send({
         success: false,
         message: "Please complete your registration first by verifying OTP and setting a password"
@@ -218,7 +256,7 @@ exports.sellerLogin = async (request, reply) => {
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, seller.password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       return reply.status(401).send({
@@ -227,8 +265,8 @@ exports.sellerLogin = async (request, reply) => {
       });
     }
 
-    // Check if seller is active
-    if (seller.status === "rejected") {
+    // Check if seller is rejected
+    if (user.sellerProfile && user.sellerProfile.status === 'REJECTED') {
       return reply.status(403).send({
         success: false,
         message: "Your seller account has been rejected. Please contact support."
@@ -236,15 +274,15 @@ exports.sellerLogin = async (request, reply) => {
     }
 
     // Generate JWT token
-    const token = generateSellerToken(seller.id);
+    const token = generateSellerToken(user.id);
 
-    // Remove sensitive data
-    delete seller.password;
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
 
     reply.status(200).send({
       success: true,
       message: "Login successful",
-      seller,
+      user: userWithoutPassword,
       token
     });
   } catch (error) {
@@ -256,44 +294,52 @@ exports.sellerLogin = async (request, reply) => {
 // Resend OTP
 exports.resendOTP = async (request, reply) => {
   try {
-    const { sellerId } = request.body;
+    const { email, sellerId } = request.body;
 
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    if (!sellerDoc.exists) {
-      return reply.status(404).send({ success: false, message: "Seller not found" });
-    }
-
-    const seller = sellerDoc.data();
-
-    if (seller.emailVerified) {
+    // Support both email and sellerId
+    if (!email && !sellerId) {
       return reply.status(400).send({
         success: false,
-        message: "Email already verified"
+        message: "Email or Seller ID is required"
+      });
+    }
+
+    // Find pending registration
+    let pending;
+    if (sellerId) {
+      pending = await prisma.pendingRegistration.findUnique({
+        where: { id: sellerId }
+      });
+    } else {
+      const normalizedEmail = email.toLowerCase();
+      pending = await prisma.pendingRegistration.findUnique({
+        where: { email: normalizedEmail }
+      });
+    }
+
+    if (!pending) {
+      return reply.status(404).send({
+        success: false,
+        message: "No pending registration found"
       });
     }
 
     // Generate new OTP
     const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-    // Delete old OTPs
-    const oldOtps = await db.collection("otps")
-      .where("sellerId", "==", sellerId)
-      .where("userType", "==", "seller")
-      .get();
-    
-    oldOtps.forEach(doc => doc.ref.delete());
-
-    // Store new OTP
-    await db.collection("otps").add({
-      sellerId,
-      userType: "seller",
-      otp,
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    // Update pending registration with new OTP
+    await prisma.pendingRegistration.update({
+      where: { id: pending.id },
+      data: {
+        otp,
+        otpExpiry,
+        updatedAt: new Date()
+      }
     });
 
     // Send OTP
-    await sendOTPEmail(seller.email, otp, seller.contactPerson);
+    await sendOTPEmail(pending.email, otp, pending.name);
 
     reply.status(200).send({
       success: true,
@@ -305,61 +351,43 @@ exports.resendOTP = async (request, reply) => {
   }
 };
 
-// Step 3: Submit Business Details & ABN
+// Step 3: Submit Business Details
 exports.submitBusinessDetails = async (request, reply) => {
   try {
-    const { businessName, abn, businessAddress } = request.body;
-    const sellerId = request.sellerId;
+    const userId = request.user.userId;
+    const {
+      businessName,
+      abn,
+      businessAddress,
+      businessType,
+      yearsInBusiness
+    } = request.body;
 
-    console.log("📝 Submit business details - sellerId:", sellerId);
-
-    if (!sellerId) {
-      console.error("❌ Seller ID is undefined");
-      return reply.status(401).send({
-        success: false,
-        message: "Authentication error: Seller ID not found"
-      });
-    }
-
-    if (!businessName || !abn) {
+    if (!businessName || !abn || !businessAddress) {
       return reply.status(400).send({
         success: false,
-        message: "Business name and ABN are required"
+        message: "Business name, ABN, and address are required"
       });
     }
 
-    // Check if ABN already exists
-    const abnSnapshot = await db.collection("sellers")
-      .where("abn", "==", abn.replace(/\s/g, ""))
-      .get();
-
-    if (!abnSnapshot.empty && abnSnapshot.docs[0].id !== sellerId) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "This ABN is already registered by another seller" 
-      });
-    }
-
-    // Get current seller data
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    const currentStep = sellerDoc.data().onboardingStep || 2;
-
-    // Update seller
-    await db.collection("sellers").doc(sellerId).update({
-      businessName,
-      abn: abn.replace(/\s/g, ""),
-      businessAddress: businessAddress || {},
-      onboardingStep: Math.max(currentStep, 3),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Update seller profile
+    const sellerProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        businessName,
+        abn,
+        businessAddress: typeof businessAddress === 'string' ? businessAddress : JSON.stringify(businessAddress),
+        businessType,
+        yearsInBusiness: yearsInBusiness ? parseInt(yearsInBusiness) : null,
+        onboardingStep: 3,
+        updatedAt: new Date()
+      }
     });
-
-    const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-    const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
     reply.status(200).send({
       success: true,
-      message: "Business details saved successfully",
-      seller
+      message: "Business details submitted successfully",
+      sellerProfile
     });
   } catch (error) {
     console.error("Submit business details error:", error);
@@ -371,7 +399,6 @@ exports.submitBusinessDetails = async (request, reply) => {
 exports.validateABN = async (request, reply) => {
   try {
     const { abn } = request.body;
-    const sellerId = request.sellerId;
 
     if (!abn) {
       return reply.status(400).send({
@@ -381,32 +408,18 @@ exports.validateABN = async (request, reply) => {
     }
 
     // Call Vigil API for ABN validation
-    const abnValidation = await validateABNWithVigil(abn);
-
-    if (!abnValidation.isValid) {
-      return reply.status(400).send({
-        success: false,
-        message: abnValidation.message || "Invalid ABN or business not found"
-      });
-    }
-
-    // Update seller
-    await db.collection("sellers").doc(sellerId).update({
-      abnVerified: true,
-      abnValidationData: abnValidation.data,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    const abnResult = await validateABNWithVigil(abn);
 
     reply.status(200).send({
       success: true,
-      message: "ABN verified successfully",
-      businessInfo: abnValidation.data
+      abnValidation: abnResult
     });
   } catch (error) {
-    console.error("ABN validation error:", error);
-    reply.status(500).send({ 
-      success: false, 
-      message: "ABN validation failed. Please try again." 
+    console.error("Validate ABN error:", error);
+    reply.status(500).send({
+      success: false,
+      message: "Failed to validate ABN",
+      error: error.message
     });
   }
 };
@@ -414,27 +427,24 @@ exports.validateABN = async (request, reply) => {
 // Step 4: Submit Cultural Information
 exports.submitCulturalInfo = async (request, reply) => {
   try {
-    const { artistName, clanAffiliation, culturalStory } = request.body;
-    const sellerId = request.sellerId;
+    const userId = request.user.userId;
+    const { culturalBackground, culturalStory } = request.body;
 
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    const currentStep = sellerDoc.data().onboardingStep || 3;
-
-    await db.collection("sellers").doc(sellerId).update({
-      artistName: artistName || "",
-      clanAffiliation: clanAffiliation || "",
-      culturalStory: culturalStory || "",
-      onboardingStep: Math.max(currentStep, 4),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Update seller profile
+    const sellerProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        culturalBackground,
+        culturalStory,
+        onboardingStep: 4,
+        updatedAt: new Date()
+      }
     });
-
-    const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-    const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
     reply.status(200).send({
       success: true,
-      message: "Cultural information saved successfully",
-      seller
+      message: "Cultural information submitted successfully",
+      sellerProfile
     });
   } catch (error) {
     console.error("Submit cultural info error:", error);
@@ -442,84 +452,53 @@ exports.submitCulturalInfo = async (request, reply) => {
   }
 };
 
-// Step 5: Submit Store Profile with Logo Upload
+// Step 5: Submit Store Profile
 exports.submitStoreProfile = async (request, reply) => {
   try {
-    const { storeName, storeBio } = request.body;
-    const sellerId = request.sellerId;
-    const file = request.file;
+    const userId = request.user.userId;
+    const {
+      storeName,
+      storeDescription,
+      storeBio,
+      storeLogo,
+      logo,
+      storeBanner,
+      banner,
+      storeLocation
+    } = request.body;
 
-    if (!storeName) {
+    // Support both storeDescription and storeBio
+    const description = storeDescription || storeBio;
+    
+    // Support both storeLogo/logo and storeBanner/banner
+    const logoUrl = storeLogo || logo;
+    const bannerUrl = storeBanner || banner;
+
+    if (!storeName || !description) {
       return reply.status(400).send({
         success: false,
-        message: "Store name is required"
+        message: "Store name and description are required"
       });
     }
 
-    // Check if store name is unique
-    const storeSnapshot = await db.collection("sellers")
-      .where("storeName", "==", storeName)
-      .get();
-    
-    if (!storeSnapshot.empty && storeSnapshot.docs[0].id !== sellerId) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Store name already taken. Please choose another." 
-      });
-    }
-
-    let storeLogo = null;
-
-    // Upload logo to Firebase Storage if file exists
-    if (file) {
-      try {
-        const bucket = admin.storage().bucket();
-        const fileName = `sellers/${sellerId}/logo_${Date.now()}_${file.originalname}`;
-        const fileUpload = bucket.file(fileName);
-
-        await fileUpload.save(file.buffer, {
-          metadata: {
-            contentType: file.mimetype
-          }
-        });
-
-        // Make file publicly accessible
-        await fileUpload.makePublic();
-        
-        // Get public URL
-        storeLogo = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-      } catch (uploadError) {
-        console.error("File upload error:", uploadError);
-        return reply.status(500).send({
-          success: false,
-          message: "Failed to upload logo. Please try again."
-        });
+    // Update seller profile
+    const sellerProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        storeName,
+        storeDescription: description,
+        storeLogo: logoUrl,
+        storeBanner: bannerUrl,
+        storeLocation,
+        onboardingStep: 5,
+        updatedAt: new Date()
       }
-    }
-
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    const currentStep = sellerDoc.data().onboardingStep || 4;
-
-    const updateData = {
-      storeName,
-      storeBio: storeBio || "",
-      onboardingStep: Math.max(currentStep, 5),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    if (storeLogo) {
-      updateData.storeLogo = storeLogo;
-    }
-
-    await db.collection("sellers").doc(sellerId).update(updateData);
-
-    const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-    const seller = { id: updatedSeller.id, ...updatedSeller.data() };
+    });
 
     reply.status(200).send({
       success: true,
-      message: "Store profile saved successfully",
-      seller
+      message: "Store profile submitted successfully",
+      sellerProfile
     });
   } catch (error) {
     console.error("Submit store profile error:", error);
@@ -527,156 +506,109 @@ exports.submitStoreProfile = async (request, reply) => {
   }
 };
 
-// Step 6: Upload KYC Documents with Vigil Integration
+// Step 6: Upload KYC Documents
 exports.uploadKYC = async (request, reply) => {
   try {
-    const { documentType, firstName, lastName, dateOfBirth } = request.body;
-    const sellerId = request.sellerId;
-    const file = request.file;
-
-    if (!file) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Document file is required" 
-      });
-    }
-
-    if (!documentType) {
+    const userId = request.user.userId;
+    
+    // Files should be uploaded via multer middleware
+    // Check if files exist in request
+    if (!request.files || request.files.length === 0) {
       return reply.status(400).send({
         success: false,
-        message: "Document type is required (passport, drivers_license, or medicare)"
+        message: "Please upload at least one KYC document"
       });
     }
 
-    if (!firstName || !lastName || !dateOfBirth) {
-      return reply.status(400).send({
-        success: false,
-        message: "First name, last name, and date of birth are required for verification"
-      });
-    }
+    const uploadedDocuments = [];
 
-    try {
-      // Step 1: Verify identity with Vigil API
-      const verification = await verifyIdentityDocument({
-        documentType,
-        firstName,
-        lastName,
-        dateOfBirth,
-        documentFrontBuffer: file.buffer,
-        mimeType: file.mimetype,
-        sellerId
-      });
-      
-      if (!verification.success) {
-        return reply.status(400).send({
-          success: false,
-          message: "Identity verification failed"
+    // Upload each file to Cloudinary
+    for (const file of request.files) {
+      try {
+        // Upload to Cloudinary
+        const result = await uploadToCloudinary(file.path, 'kyc-documents');
+        
+        uploadedDocuments.push({
+          documentType: file.fieldname,
+          documentUrl: result.url,
+          publicId: result.publicId,
+          originalName: file.originalname,
+          uploadedAt: new Date()
         });
+
+        // Delete local file after upload
+        await fs.unlink(file.path);
+      } catch (uploadError) {
+        console.error(`Failed to upload ${file.originalname}:`, uploadError);
+        // Continue with other files
       }
+    }
 
-      // Step 2: Upload document to Firebase Storage
-      const bucket = admin.storage().bucket();
-      const fileName = `sellers/${sellerId}/kyc_${Date.now()}_${file.originalname}`;
-      const fileUpload = bucket.file(fileName);
-
-      await fileUpload.save(file.buffer, {
-        metadata: {
-          contentType: file.mimetype
-        }
-      });
-
-      // Get download URL (signed URL for security)
-      const [url] = await fileUpload.getSignedUrl({
-        action: 'read',
-        expires: '03-01-2500' // Far future date
-      });
-
-      const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-      const currentStep = sellerDoc.data().onboardingStep || 5;
-
-      // Step 3: Update seller with KYC info and verification data
-      await db.collection("sellers").doc(sellerId).update({
-        idDocument: {
-          type: documentType,
-          documentUrl: url,
-          fileName: fileName,
-          firstName,
-          lastName,
-          dateOfBirth,
-          uploadedAt: admin.firestore.FieldValue.serverTimestamp()
-        },
-        vigilVerification: {
-          verificationId: verification.verificationId,
-          verified: verification.verified,
-          confidence: verification.confidence,
-          documentData: verification.documentData,
-          checks: verification.checks,
-          warnings: verification.warnings,
-          verifiedAt: verification.timestamp
-        },
-        kycStatus: "submitted",
-        onboardingStep: Math.max(currentStep, 6),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-      const seller = { id: updatedSeller.id, ...updatedSeller.data() };
-
-      reply.status(200).send({
-        success: true,
-        message: "KYC document uploaded and verified successfully",
-        seller,
-        vigilVerification: {
-          verificationId: verification.verificationId,
-          verified: verification.verified,
-          confidence: verification.confidence,
-          warnings: verification.warnings
-        }
-      });
-    } catch (uploadError) {
-      console.error("File upload error:", uploadError);
+    if (uploadedDocuments.length === 0) {
       return reply.status(500).send({
         success: false,
-        message: uploadError.message || "Failed to upload document. Please try again."
+        message: "Failed to upload documents"
       });
     }
+
+    // Update seller profile with KYC documents
+    const sellerProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        kycDocuments: uploadedDocuments,
+        kycSubmitted: true,
+        onboardingStep: 6,
+        updatedAt: new Date()
+      }
+    });
+
+    // Optional: Call Vigil API for identity verification
+    // const verificationResult = await verifyIdentityDocument(uploadedDocuments[0].documentUrl);
+
+    reply.status(200).send({
+      success: true,
+      message: "KYC documents uploaded successfully",
+      documents: uploadedDocuments,
+      sellerProfile
+    });
   } catch (error) {
     console.error("Upload KYC error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
-// Step 7: Submit Bank Details (Optional - can be added later)
+// Step 7: Submit Bank Details
 exports.submitBankDetails = async (request, reply) => {
   try {
-    const { accountName, bsb, accountNumber } = request.body;
-    const sellerId = request.sellerId;
+    const userId = request.user.userId;
+    const { bankName, accountName, bsb, accountNumber } = request.body;
 
-    if (!accountName || !bsb || !accountNumber) {
+    if (!bankName || !accountName || !bsb || !accountNumber) {
       return reply.status(400).send({
         success: false,
-        message: "Account name, BSB, and account number are required"
+        message: "All bank details are required"
       });
     }
 
-    await db.collection("sellers").doc(sellerId).update({
-      bankDetails: {
-        accountName,
-        bsb,
-        accountNumber,
-        verified: false,
-        addedAt: admin.firestore.FieldValue.serverTimestamp()
-      },
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Update seller profile
+    const sellerProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        bankDetails: {
+          bankName,
+          accountName,
+          bsb,
+          accountNumber
+        },
+        onboardingStep: 7,
+        updatedAt: new Date()
+      }
     });
-
-    const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-    const seller = { id: updatedSeller.id, ...updatedSeller.data() };
 
     reply.status(200).send({
       success: true,
-      message: "Bank details saved. You can update these later if needed.",
-      seller
+      message: "Bank details submitted successfully",
+      sellerProfile
     });
   } catch (error) {
     console.error("Submit bank details error:", error);
@@ -684,68 +616,66 @@ exports.submitBankDetails = async (request, reply) => {
   }
 };
 
-// Submit for Admin Review
+// Step 8: Submit for Review
 exports.submitForReview = async (request, reply) => {
   try {
-    const sellerId = request.sellerId;
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    const seller = sellerDoc.data();
+    const userId = request.user.userId;
 
-    // Validation checks
-    if (!seller.emailVerified) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Email verification is required before submission" 
-      });
-    }
-
-    if (!seller.abnVerified) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "ABN verification is required before submission" 
-      });
-    }
-
-    if (seller.kycStatus !== "submitted") {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "KYC documents must be uploaded before submission" 
-      });
-    }
-
-    if (!seller.storeName) {
-      return reply.status(400).send({
-        success: false,
-        message: "Store profile must be completed before submission"
-      });
-    }
-
-    // Update status
-    await db.collection("sellers").doc(sellerId).update({
-      status: "pending_review",
-      submittedForReviewAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Get seller profile
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId }
     });
 
-    const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-
-    // TODO: Send notification email to admin
-
-    // Prepare response message with product requirements
-    let message = "Application submitted for review successfully! You'll be notified once approved.";
-    
-    if (!seller.productCount || seller.productCount < 5) {
-      message += " Note: After approval, you'll need to upload at least 1-2 products to start, with 5+ products recommended for going live. Each product should have 3-5 high-quality images.";
+    if (!sellerProfile) {
+      return reply.status(404).send({
+        success: false,
+        message: "Seller profile not found"
+      });
     }
+
+    // Validate all required fields are completed
+    const requiredFields = [
+      'businessName',
+      'abn',
+      'businessAddress',
+      'businessType',
+      'storeName',
+      'storeDescription'
+    ];
+
+    const missingFields = requiredFields.filter(field => !sellerProfile[field]);
+
+    if (missingFields.length > 0) {
+      return reply.status(400).send({
+        success: false,
+        message: `Please complete the following fields: ${missingFields.join(', ')}`
+      });
+    }
+
+    if (!sellerProfile.kycSubmitted) {
+      return reply.status(400).send({
+        success: false,
+        message: "Please upload KYC documents before submitting"
+      });
+    }
+
+    // Update status to pending review
+    const updatedProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        status: 'PENDING',
+        submittedForReviewAt: new Date(),
+        onboardingStep: 8,
+        updatedAt: new Date()
+      }
+    });
+
+    // TODO: Send notification to admin for review
 
     reply.status(200).send({
       success: true,
-      message,
-      seller: { id: updatedSeller.id, ...updatedSeller.data() },
-      nextSteps: {
-        current: "pending_review",
-        next: "After admin approval, upload products (minimum 1-2, recommended 5+) with 3-5 images each"
-      }
+      message: "Application submitted for review successfully",
+      sellerProfile: updatedProfile
     });
   } catch (error) {
     console.error("Submit for review error:", error);
@@ -756,24 +686,29 @@ exports.submitForReview = async (request, reply) => {
 // Get Seller Profile
 exports.getProfile = async (request, reply) => {
   try {
-    const sellerId = request.sellerId;
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    
-    if (!sellerDoc.exists) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Seller profile not found" 
+    const userId = request.user.userId;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        sellerProfile: true
+      }
+    });
+
+    if (!user || !user.sellerProfile) {
+      return reply.status(404).send({
+        success: false,
+        message: "Seller profile not found"
       });
     }
 
-    const seller = { id: sellerDoc.id, ...sellerDoc.data() };
-    
-    // Remove sensitive data
-    if (seller.idDocument) {
-      delete seller.idDocument.documentUrl;
-    }
+    // Remove password
+    const { password: _, ...userWithoutPassword } = user;
 
-    reply.status(200).send({ success: true, seller });
+    reply.status(200).send({
+      success: true,
+      user: userWithoutPassword
+    });
   } catch (error) {
     console.error("Get profile error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
@@ -783,34 +718,27 @@ exports.getProfile = async (request, reply) => {
 // Update Seller Profile
 exports.updateProfile = async (request, reply) => {
   try {
-    const sellerId = request.sellerId;
-    const allowedUpdates = ["phone", "businessAddress", "storeBio", "culturalStory", "artistName", "clanAffiliation"];
-    
-    const updates = {};
-    for (const key of allowedUpdates) {
-      if (request.body[key] !== undefined) {
-        updates[key] = request.body[key];
+    const userId = request.user.userId;
+    const updates = request.body;
+
+    // Remove fields that shouldn't be directly updated
+    delete updates.userId;
+    delete updates.status;
+    delete updates.productCount;
+    delete updates.kycSubmitted;
+
+    const sellerProfile = await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        ...updates,
+        updatedAt: new Date()
       }
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return reply.status(400).send({
-        success: false,
-        message: "No valid fields to update"
-      });
-    }
-
-    updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-
-    await db.collection("sellers").doc(sellerId).update(updates);
-
-    const updatedSeller = await db.collection("sellers").doc(sellerId).get();
-    const seller = { id: updatedSeller.id, ...updatedSeller.data() };
+    });
 
     reply.status(200).send({
       success: true,
       message: "Profile updated successfully",
-      seller
+      sellerProfile
     });
   } catch (error) {
     console.error("Update profile error:", error);
@@ -818,49 +746,39 @@ exports.updateProfile = async (request, reply) => {
   }
 };
 
-// Get Go-Live Status (Check if seller can go live)
+// Get Go-Live Status
 exports.getGoLiveStatus = async (request, reply) => {
   try {
-    const sellerId = request.sellerId;
+    const userId = request.user.userId;
 
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId }
+    });
 
-    if (!sellerDoc.exists) {
+    if (!sellerProfile) {
       return reply.status(404).send({
         success: false,
-        message: "Seller not found"
+        message: "Seller profile not found"
       });
     }
 
-    const seller = sellerDoc.data();
-
-    const checks = {
-      approved: seller.status === "approved" || seller.status === "active",
-      minimumProducts: seller.productCount >= 1,
-      culturalApproval: seller.culturalApprovalStatus === "approved",
-      isLive: seller.status === "active"
+    // Check all requirements for going live
+    const requirements = {
+      accountApproved: sellerProfile.status === 'APPROVED' || sellerProfile.status === 'ACTIVE',
+      minimumProducts: sellerProfile.minimumProductsUploaded,
+      culturalApproved: sellerProfile.culturalApprovalStatus === 'approved',
+      kycCompleted: sellerProfile.kycSubmitted,
+      bankDetailsAdded: !!sellerProfile.bankDetails
     };
 
-    const canGoLive = checks.approved && checks.minimumProducts && checks.culturalApproval && !checks.isLive;
+    const canGoLive = Object.values(requirements).every(req => req === true);
 
     reply.status(200).send({
       success: true,
       canGoLive,
-      isLive: checks.isLive,
-      checks,
-      currentStatus: seller.status,
-      productCount: seller.productCount || 0,
-      pendingProducts: checks.isLive ? 0 : seller.productCount || 0,
-      message: checks.isLive 
-        ? "Your store is live!"
-        : canGoLive
-        ? "Ready to go live! Admin will activate your store soon."
-        : "Complete all requirements to go live",
-      requirements: {
-        approval: checks.approved ? "✓ Completed" : "⏳ Pending admin approval",
-        products: checks.minimumProducts ? "✓ Completed" : `⏳ Upload at least 1-2 products (current: ${seller.productCount || 0})`,
-        culturalApproval: checks.culturalApproval ? "✓ Completed" : "⏳ Pending cultural approval from admin"
-      }
+      requirements,
+      currentStatus: sellerProfile.status,
+      productCount: sellerProfile.productCount
     });
   } catch (error) {
     console.error("Get go-live status error:", error);
@@ -868,33 +786,33 @@ exports.getGoLiveStatus = async (request, reply) => {
   }
 };
 
-// Helper: Update Seller Product Count (called from product controller)
-exports.updateProductCount = async (sellerId, increment = true) => {
+// Update Product Count (called when products are added/removed)
+exports.updateProductCount = async (userId, increment = true) => {
   try {
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    
-    if (!sellerDoc.exists) {
-      throw new Error("Seller not found");
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId }
+    });
+
+    if (!sellerProfile) {
+      throw new Error("Seller profile not found");
     }
 
-    const currentCount = sellerDoc.data().productCount || 0;
-    const newCount = increment ? currentCount + 1 : Math.max(0, currentCount - 1);
-    
-    const updateData = {
-      productCount: newCount,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
+    const newCount = increment ? sellerProfile.productCount + 1 : Math.max(0, sellerProfile.productCount - 1);
 
-    // Check if minimum products uploaded
-    if (newCount >= 1 && !sellerDoc.data().minimumProductsUploaded) {
-      updateData.minimumProductsUploaded = true;
-    } else if (newCount < 1) {
-      updateData.minimumProductsUploaded = false;
-    }
+    // Check if minimum products requirement is met (e.g., 5 products)
+    const minimumRequired = 5;
+    const minimumProductsUploaded = newCount >= minimumRequired;
 
-    await db.collection("sellers").doc(sellerId).update(updateData);
+    await prisma.sellerProfile.update({
+      where: { userId },
+      data: {
+        productCount: newCount,
+        minimumProductsUploaded,
+        updatedAt: new Date()
+      }
+    });
 
-    return { success: true, productCount: newCount };
+    return { productCount: newCount, minimumProductsUploaded };
   } catch (error) {
     console.error("Update product count error:", error);
     throw error;

@@ -29,20 +29,19 @@
 
 
 const orderController = require("../controllers/orders");
-const auth = require("../middlewares/auth");
-const roleMiddleware = require("../middlewares/checkRole");
+const { authenticateUser } = require("../middlewares/authMiddleware");
 
 async function orderRoutes(fastify, options) {
   // ---------------- USER ORDER ROUTES ----------------
 
   // Place a new order
-  fastify.post("/create", { preHandler: [auth, roleMiddleware("user")] }, orderController.createOrder);
+  fastify.post("/create", { preHandler: authenticateUser }, orderController.createOrder);
 
   // Get logged-in user's orders
-  fastify.get("/my-orders", { preHandler: [auth, roleMiddleware("user")] }, orderController.getMyOrders);
+  fastify.get("/my-orders", { preHandler: authenticateUser }, orderController.getMyOrders);
 
   // Cancel order
-  fastify.put("/cancel/:id", { preHandler: [auth, roleMiddleware("user")] }, orderController.cancelOrder);
+  fastify.put("/cancel/:id", { preHandler: authenticateUser }, orderController.cancelOrder);
 }
 
 module.exports = orderRoutes;

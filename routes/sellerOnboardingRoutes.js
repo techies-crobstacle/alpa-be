@@ -1,5 +1,5 @@
 const sellerController = require("../controllers/sellerOnboarding");
-const { handleFileUpload } = require("../middlewares/upload");
+const { handleSellerDocsUpload } = require("../middlewares/upload");
 const { authenticateSeller, isAdmin } = require("../middlewares/authMiddleware");
 
 async function sellerOnboardingRoutes(fastify, options) {
@@ -27,10 +27,10 @@ async function sellerOnboardingRoutes(fastify, options) {
   fastify.post("/cultural-info", { preHandler: authenticateSeller }, sellerController.submitCulturalInfo);
 
   // Step 5: Store Profile with Logo Upload
-  fastify.post("/store-profile", { preHandler: [authenticateSeller, handleFileUpload] }, sellerController.submitStoreProfile);
+  fastify.post("/store-profile", { preHandler: [authenticateSeller, handleSellerDocsUpload] }, sellerController.submitStoreProfile);
 
   // Step 6: KYC Documents Upload
-  fastify.post("/kyc-upload", { preHandler: [authenticateSeller, handleFileUpload] }, sellerController.uploadKYC);
+  fastify.post("/kyc-upload", { preHandler: [authenticateSeller, handleSellerDocsUpload] }, sellerController.uploadKYC);
 
   // Step 7: Bank Details (Optional - can be added later)
   fastify.post("/bank-details", { preHandler: authenticateSeller }, sellerController.submitBankDetails);

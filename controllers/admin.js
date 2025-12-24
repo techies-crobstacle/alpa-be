@@ -1,59 +1,73 @@
-const { db } = require("../config/firebase");
+const prisma = require("../config/prisma");
 
-// GET ALL USERS (role: "user")
+// GET ALL USERS (role: "CUSTOMER")
 exports.getAllUsers = async (request, reply) => {
   try {
-    const snap = await db.collection("users").where("role", "==", "user").get();
-    const users = snap.docs.map(doc => {
-      const data = doc.data();
-      return { id: data.uid || doc.id, ...data };
+    const users = await prisma.user.findMany({
+      where: { role: "CUSTOMER" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        isVerified: true,
+        emailVerified: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
 
     return reply.status(200).send({ success: true, users, count: users.length });
   } catch (err) {
+    console.error("Get all users error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
 
-// GET ALL SELLERS (from sellers collection)
+// GET ALL SELLERS (from seller_profiles)
 exports.getAllSellers = async (request, reply) => {
   try {
-    const snap = await db.collection("sellers").get();
-    const sellers = snap.docs.map(doc => {
-      const data = doc.data();
-      return { 
-        id: doc.id,
-        sellerId: doc.id,
-        email: data.email,
-        businessName: data.businessName,
-        storeName: data.storeName,
-        contactPerson: data.contactPerson,
-        phone: data.phone,
-        businessType: data.businessType,
-        abn: data.abn,
-        address: data.address,
-        city: data.city,
-        state: data.state,
-        postcode: data.postcode,
-        country: data.country,
-        productCount: data.productCount || 0,
-        status: data.status,
-        accountStatus: data.accountStatus,
-        kycStatus: data.kycStatus,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        approvedAt: data.approvedAt,
-        bankDetails: data.bankDetails || null,
-        documents: data.documents || null
-      };
+    const sellers = await prisma.sellerProfile.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            createdAt: true
+          }
+        }
+      }
     });
+
+    const formattedSellers = sellers.map(seller => ({
+      id: seller.id,
+      sellerId: seller.userId,
+      email: seller.user.email,
+      businessName: seller.businessName,
+      storeName: seller.storeName,
+      contactPerson: seller.user.name,
+      phone: seller.user.phone,
+      businessType: seller.businessType,
+      address: seller.businessAddress,
+      productCount: seller.productCount,
+      status: seller.status,
+      minimumProductsUploaded: seller.minimumProductsUploaded,
+      createdAt: seller.createdAt,
+      updatedAt: seller.updatedAt,
+      bankDetails: seller.bankDetails,
+      documents: seller.verificationDocs
+    }));
 
     return reply.status(200).send({ 
       success: true, 
-      sellers,
-      count: sellers.length 
+      sellers: formattedSellers,
+      count: formattedSellers.length 
     });
   } catch (err) {
+    console.error("Get all sellers error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -63,55 +77,77 @@ exports.getSellerDetails = async (request, reply) => {
   try {
     const sellerId = request.params.id;
     
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            createdAt: true,
+            products: {
+              include: {
+                ratings: true
+              }
+            }
+          }
+        }
+      }
+    });
     
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
     }
 
-    const sellerData = sellerDoc.data();
+    const products = seller.user.products;
 
-    // Get seller's products
-    const productsSnap = await db.collection("products")
-      .where("sellerId", "==", sellerId)
-      .get();
-    
-    const products = productsSnap.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    }));
-
-    // Get seller's orders
-    const ordersSnap = await db.collection("orders").get();
-    const orders = [];
-    
-    ordersSnap.forEach(doc => {
-      const order = doc.data();
-      const hasSellerProduct = order.products && order.products.some(p => p.sellerId === sellerId);
-      if (hasSellerProduct) {
-        orders.push({ id: doc.id, ...order });
+    // Get seller's orders (orders containing seller's products)
+    const orders = await prisma.order.findMany({
+      where: {
+        items: {
+          some: {
+            product: {
+              sellerId
+            }
+          }
+        }
+      },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        }
       }
     });
 
     return reply.status(200).send({ 
       success: true, 
       seller: {
-        id: sellerDoc.id,
-        ...sellerData
+        id: seller.id,
+        userId: seller.userId,
+        businessName: seller.businessName,
+        storeName: seller.storeName,
+        status: seller.status,
+        productCount: seller.productCount,
+        ...seller
       },
       products,
       orders,
       statistics: {
         totalProducts: products.length,
         totalOrders: orders.length,
-        activeProducts: products.filter(p => p.status === "active").length,
-        pendingOrders: orders.filter(o => o.status === "pending").length
+        activeProducts: products.filter(p => p.status === "ACTIVE").length,
+        pendingOrders: orders.filter(o => o.status === "PENDING").length
       }
     });
   } catch (err) {
+    console.error("Get seller details error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -122,34 +158,34 @@ exports.getProductsBySeller = async (request, reply) => {
     const { sellerId } = request.params;
     
     // Check if seller exists
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
-    if (!sellerDoc.exists) {
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      include: { user: true }
+    });
+    
+    if (!seller) {
       return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
     }
 
-    const snap = await db.collection("products")
-      .where("sellerId", "==", sellerId)
-      .get();
-    
-    const products = snap.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    }));
+    const products = await prisma.product.findMany({
+      where: { sellerId }
+    });
 
     return reply.status(200).send({ 
       success: true, 
       products,
       count: products.length,
       seller: {
-        id: sellerDoc.id,
-        businessName: sellerDoc.data().businessName,
-        storeName: sellerDoc.data().storeName
+        id: seller.id,
+        businessName: seller.businessName,
+        storeName: seller.storeName
       }
     });
   } catch (err) {
+    console.error("Get products by seller error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -157,21 +193,40 @@ exports.getProductsBySeller = async (request, reply) => {
 // GET PENDING SELLER APPROVALS
 exports.getPendingSellers = async (request, reply) => {
   try {
-    const snap = await db.collection("sellers")
-      .where("status", "==", "pending")
-      .get();
+    const pendingSellers = await prisma.sellerProfile.findMany({
+      where: { status: "PENDING" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true
+          }
+        }
+      }
+    });
     
-    const pendingSellers = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
+    const formattedSellers = pendingSellers.map(seller => ({
+      id: seller.id,
+      sellerId: seller.userId,
+      email: seller.user.email,
+      businessName: seller.businessName,
+      storeName: seller.storeName,
+      contactPerson: seller.user.name,
+      phone: seller.user.phone,
+      status: seller.status,
+      createdAt: seller.createdAt,
+      ...seller
     }));
 
     return reply.status(200).send({ 
       success: true, 
-      sellers: pendingSellers,
-      count: pendingSellers.length 
+      sellers: formattedSellers,
+      count: formattedSellers.length 
     });
   } catch (err) {
+    console.error("Get pending sellers error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -190,20 +245,23 @@ exports.approveSeller = async (request, reply) => {
       });
     }
     
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId }
+    });
     
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
     }
 
-    await db.collection("sellers").doc(sellerId).update({
-      status: "approved",
-      accountStatus: "active",
-      approvedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date()
+      }
     });
 
     return reply.status(200).send({ 
@@ -211,6 +269,7 @@ exports.approveSeller = async (request, reply) => {
       message: "Seller approved successfully" 
     });
   } catch (err) {
+    console.error("Approve seller error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -230,21 +289,24 @@ exports.rejectSeller = async (request, reply) => {
       });
     }
     
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId }
+    });
     
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
     }
 
-    await db.collection("sellers").doc(sellerId).update({
-      status: "rejected",
-      accountStatus: "inactive",
-      rejectionReason: reason || "Not specified",
-      rejectedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        status: "REJECTED",
+        rejectionReason: reason || "Not specified",
+        rejectedAt: new Date()
+      }
     });
 
     return reply.status(200).send({ 
@@ -252,6 +314,7 @@ exports.rejectSeller = async (request, reply) => {
       message: "Seller rejected" 
     });
   } catch (err) {
+    console.error("Reject seller error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -262,21 +325,24 @@ exports.suspendSeller = async (request, reply) => {
     const { sellerId } = request.params;
     const { reason } = request.body;
     
-    const sellerDoc = await db.collection("sellers").doc(sellerId).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId }
+    });
     
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
     }
 
-    await db.collection("sellers").doc(sellerId).update({
-      status: "suspended",
-      accountStatus: "suspended",
-      suspensionReason: reason || "Not specified",
-      suspendedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        status: "SUSPENDED",
+        suspensionReason: reason || "Not specified",
+        suspendedAt: new Date()
+      }
     });
 
     return reply.status(200).send({ 
@@ -284,6 +350,7 @@ exports.suspendSeller = async (request, reply) => {
       message: "Seller suspended" 
     });
   } catch (err) {
+    console.error("Suspend seller error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -294,18 +361,22 @@ exports.updateSellerNotes = async (request, reply) => {
     const sellerId = request.params.id;
     const { notes } = request.body;
 
-    const sellerDoc = await db.collection("sellers").doc(id).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId }
+    });
     
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({ 
         success: false, 
         message: "Seller not found" 
       });
     }
 
-    await db.collection("sellers").doc(id).update({
-      adminNotes: notes || "",
-      updatedAt: new Date().toISOString()
+    await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        adminNotes: notes || ""
+      }
     });
 
     reply.status(200).send({
@@ -323,13 +394,11 @@ exports.culturalApproval = async (request, reply) => {
   try {
     const { id } = request.params;
     const { approved, feedback } = request.body;
-    const adminId = request.userId || request.user?.uid || "admin";
+    const adminId = request.user?.userId || "admin";
 
     console.log("Cultural approval request - ID:", id);
     console.log("Approved value:", approved, "Type:", typeof approved);
     console.log("Admin ID:", adminId);
-    console.log("request.userId:", request.userId);
-    console.log("request.user:", request.user);
 
     // Convert string "yes"/"no" to boolean
     let isApproved = false;
@@ -339,19 +408,20 @@ exports.culturalApproval = async (request, reply) => {
       isApproved = approved.toLowerCase() === "yes" || approved.toLowerCase() === "true";
     }
 
-    const sellerDoc = await db.collection("sellers").doc(id).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: id }
+    });
 
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({
         success: false,
         message: "Seller not found"
       });
     }
 
-    const seller = sellerDoc.data();
     console.log("Seller status:", seller.status);
 
-    if (seller.status !== "approved") {
+    if (seller.status !== "APPROVED") {
       return reply.status(400).send({
         success: false,
         message: "Seller must be approved before cultural approval"
@@ -359,29 +429,29 @@ exports.culturalApproval = async (request, reply) => {
     }
 
     const updateData = {
-      culturalApprovalStatus: isApproved ? "approved" : "rejected",
-      culturalApprovalAt: new Date().toISOString(),
-      culturalApprovalFeedback: feedback || "",
-      updatedAt: new Date().toISOString()
+      culturalApprovalStatus: isApproved ? "APPROVED" : "REJECTED",
+      culturalApprovalAt: new Date(),
+      culturalApprovalFeedback: feedback || ""
     };
 
-    // Only add culturalApprovalBy if adminId exists
+    // Only add culturalApprovalBy if adminId exists and is not default
     if (adminId && adminId !== "admin") {
       updateData.culturalApprovalBy = adminId;
     }
 
     console.log("Updating with data:", updateData);
 
-    await db.collection("sellers").doc(id).update(updateData);
-
-    const updatedSeller = await db.collection("sellers").doc(id).get();
+    const updatedSeller = await prisma.sellerProfile.update({
+      where: { userId: id },
+      data: updateData
+    });
 
     reply.status(200).send({
       success: true,
       message: isApproved 
         ? "Cultural approval granted. Seller can now go live if minimum products are uploaded." 
         : "Cultural approval rejected. Feedback provided to seller.",
-      seller: { id: updatedSeller.id, ...updatedSeller.data() }
+      seller: updatedSeller
     });
   } catch (error) {
     console.error("Cultural approval error:", error);
@@ -395,21 +465,21 @@ exports.culturalApproval = async (request, reply) => {
 exports.activateSeller = async (request, reply) => {
   try {
     const { id } = request.params;
-    const adminId = request.userId;
+    const adminId = request.user?.userId || "admin";
 
-    const sellerDoc = await db.collection("sellers").doc(id).get();
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: id }
+    });
 
-    if (!sellerDoc.exists) {
+    if (!seller) {
       return reply.status(404).send({
         success: false,
         message: "Seller not found"
       });
     }
 
-    const seller = sellerDoc.data();
-
     // Validation checks
-    if (seller.status !== "approved") {
+    if (seller.status !== "APPROVED") {
       return reply.status(400).send({
         success: false,
         message: "Seller must be approved before activation"
@@ -423,49 +493,44 @@ exports.activateSeller = async (request, reply) => {
       });
     }
 
-    if (seller.culturalApprovalStatus !== "approved") {
+    if (seller.culturalApprovalStatus !== "APPROVED") {
       return reply.status(400).send({
         success: false,
         message: "Cultural approval is required before activation"
       });
     }
 
-    // Update seller to active status
-    await db.collection("sellers").doc(id).update({
-      status: "active",
-      accountStatus: "active",
-      activatedBy: adminId || "admin",
-      activatedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-
-    // Activate all seller's products (change from pending to active)
-    const productsSnap = await db.collection("products")
-      .where("sellerId", "==", id)
-      .where("status", "==", "pending")
-      .get();
-
-    const batch = db.batch();
-    let activatedCount = 0;
-    
-    productsSnap.docs.forEach(doc => {
-      batch.update(doc.ref, { 
-        status: "active",
-        updatedAt: new Date().toISOString()
+    // Update seller to active status and activate pending products in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Update seller status
+      const updatedSeller = await tx.sellerProfile.update({
+        where: { userId: id },
+        data: {
+          status: "ACTIVE",
+          activatedBy: adminId,
+          activatedAt: new Date()
+        }
       });
-      activatedCount++;
+
+      // Activate all seller's pending products
+      const activatedProducts = await tx.product.updateMany({
+        where: {
+          sellerId: id,
+          status: "PENDING"
+        },
+        data: {
+          status: "ACTIVE"
+        }
+      });
+
+      return { updatedSeller, activatedCount: activatedProducts.count };
     });
-
-    await batch.commit();
-
-    const updatedSeller = await db.collection("sellers").doc(id).get();
-    const seller_data = { id: updatedSeller.id, ...updatedSeller.data() };
 
     reply.status(200).send({
       success: true,
-      message: `Seller is now LIVE! ${activatedCount} products activated and visible to customers.`,
-      seller: seller_data,
-      productsActivated: activatedCount
+      message: `Seller is now LIVE! ${result.activatedCount} products activated and visible to customers.`,
+      seller: result.updatedSeller,
+      productsActivated: result.activatedCount
     });
   } catch (error) {
     console.error("Activate seller error:", error);
