@@ -5,7 +5,15 @@ exports.rateProduct = async (request, reply) => {
   try {
     const { productId } = request.params;
     const { rating, review } = request.body;
-    const buyerId = request.user.uid;
+    const buyerId = request.user && typeof request.user.userId === "string" ? request.user.userId : null;
+
+    // Validate buyerId
+    if (!buyerId) {
+      return reply.status(401).send({
+        success: false,
+        message: "Unauthorized: User ID missing or invalid."
+      });
+    }
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
@@ -32,7 +40,7 @@ exports.rateProduct = async (request, reply) => {
       where: {
         userId_productId: {
           userId: buyerId,
-          productId
+          productId: productId
         }
       }
     });
@@ -44,8 +52,9 @@ exports.rateProduct = async (request, reply) => {
       });
     }
 
-    // Create rating
-    await prisma.rating.create({
+
+    // Create rating and get the created record
+    const ratingRef = await prisma.rating.create({
       data: {
         userId: buyerId,
         productId,
@@ -54,8 +63,15 @@ exports.rateProduct = async (request, reply) => {
       }
     });
 
-    reply.send({ 
-      success: true, 
+    // Calculate new average rating and total ratings for the product
+    const ratings = await prisma.rating.findMany({
+      where: { productId }
+    });
+    const totalRatings = ratings.length;
+    const averageRating = totalRatings > 0 ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings : 0;
+
+    reply.send({
+      success: true,
       message: "Product rated successfully",
       ratingId: ratingRef.id,
       rating: parseInt(rating),
@@ -74,7 +90,7 @@ exports.updateRating = async (request, reply) => {
   try {
     const { ratingId } = request.params;
     const { rating, review } = request.body;
-    const buyerId = request.user.uid;
+    const buyerId = request.user && typeof request.user.userId === "string" ? request.user.userId : null;
 
     // Validate rating
     if (rating && (rating < 1 || rating > 5)) {
@@ -213,45 +229,46 @@ exports.getProductRatings = async (request, reply) => {
     const { limit = 10, offset = 0, sortBy = "recent" } = request.query;
 
     // Check if product exists
-    const productDoc = await db.collection("products").doc(productId).get();
-    if (!productDoc.exists) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Product not found" 
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
+    });
+    if (!product) {
+      return reply.status(404).send({
+        success: false,
+        message: "Product not found"
       });
     }
 
-    const productData = productDoc.data();
-
     // Get all ratings for this product
-    const allRatingsSnapshot = await db.collection("ratings")
-      .where("productId", "==", productId)
-      .get();
+    let ratingsArray = await prisma.rating.findMany({
+      where: { productId },
+      include: { user: true }
+    });
 
-    // Convert to array for sorting
-    let ratingsArray = allRatingsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt,
-      updatedAt: doc.data().updatedAt
-    }));
-
-    // Sort in memory (avoids composite index requirement)
+    // Sort in memory
     if (sortBy === "highest") {
       ratingsArray.sort((a, b) => {
         if (b.rating !== a.rating) {
-          return b.rating - a.rating; // Sort by rating desc
+          return b.rating - a.rating;
         }
-        return b.createdAt - a.createdAt; // Then by createdAt desc
+        return new Date(b.createdAt) - new Date(a.createdAt);
       });
     } else {
-      ratingsArray.sort((a, b) => b.createdAt - a.createdAt); // Sort by recent
+      ratingsArray.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
 
     // Apply pagination
     const startIndex = parseInt(offset);
     const endIndex = startIndex + parseInt(limit);
-    const ratings = ratingsArray.slice(startIndex, endIndex);
+    const ratings = ratingsArray.slice(startIndex, endIndex).map(r => ({
+      id: r.id,
+      userId: r.userId,
+      userName: r.user ? r.user.name : undefined,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt
+    }));
 
     // Calculate rating distribution
     const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -259,23 +276,26 @@ exports.getProductRatings = async (request, reply) => {
       distribution[ratingItem.rating]++;
     });
 
-    reply.send({ 
+    // Calculate average rating and total ratings
+    const totalRatings = ratingsArray.length;
+    const averageRating = totalRatings > 0 ? ratingsArray.reduce((sum, r) => sum + r.rating, 0) / totalRatings : 0;
+
+    reply.send({
       success: true,
       product: {
         id: productId,
-        name: productData.name,
-        averageRating: productData.averageRating || 0,
-        totalRatings: productData.totalRatings || 0
+        name: product.title,
+        averageRating: parseFloat(averageRating.toFixed(2)),
+        totalRatings
       },
       ratings,
       distribution,
       pagination: {
         limit: parseInt(limit),
         offset: parseInt(offset),
-        total: ratingsArray.length
+        total: totalRatings
       }
     });
-
   } catch (error) {
     console.error("❌ Get product ratings error:", error);
     reply.status(500).send({ success: false, error: error.message });

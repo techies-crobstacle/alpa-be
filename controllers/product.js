@@ -2,7 +2,31 @@ const prisma = require("../config/prisma");
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {
-  const { title, description, price, stock, category, images } = request.body;
+  let { title, description, price, stock, category } = request.body;
+  // Parse price and stock to correct types
+  if (typeof price === 'string') price = parseFloat(price);
+  if (typeof stock === 'string') stock = parseInt(stock);
+  let images = [];
+  const { uploadToCloudinary } = require("../config/cloudinary");
+
+  // If files were uploaded, upload them to Cloudinary
+  if (request.files && request.files.length > 0) {
+    for (const file of request.files) {
+      try {
+        const result = await uploadToCloudinary(file.path, 'products');
+        images.push(result.url);
+      } catch (err) {
+        console.error('Cloudinary upload error:', err);
+      }
+    }
+  } else if (request.body.images) {
+    // If images are provided as URLs in the body (fallback)
+    if (Array.isArray(request.body.images)) {
+      images = request.body.images;
+    } else if (typeof request.body.images === 'string') {
+      images = [request.body.images];
+    }
+  }
 
   try {
     const sellerId = request.user.userId; // From authenticateSeller middleware
@@ -34,7 +58,7 @@ exports.addProduct = async (request, reply) => {
         price,
         stock,
         category,
-        images: images || [],
+        images,
         sellerId,
         sellerName: seller.storeName || seller.businessName,
         status: productStatus

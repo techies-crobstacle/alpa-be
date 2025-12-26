@@ -150,9 +150,9 @@ exports.login = async (request, reply) => {
       });
     }
 
-    // Generate JWT token
+    // Generate JWT token with userId for compatibility
     const token = jwt.sign(
-      { uid: user.id, email: user.email, role: user.role },
+      { userId: user.id, uid: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );

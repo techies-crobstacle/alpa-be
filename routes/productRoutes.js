@@ -1,9 +1,10 @@
 const { authenticateSeller } = require("../middlewares/authMiddleware");
+const { handleProductImagesUpload } = require("../middlewares/upload");
 const { addProduct, getMyProducts, getAllProducts, getProductById, deleteProduct, updateProduct } = require("../controllers/product");
 
 async function productRoutes(fastify, options) {
-  // ADD PRODUCT (Seller only - must be approved)
-  fastify.post("/add", { preHandler: authenticateSeller }, addProduct);
+  // ADD PRODUCT (Seller only - must be approved, with image upload)
+  fastify.post("/add", { preHandler: [authenticateSeller, handleProductImagesUpload] }, addProduct);
 
   // GET ALL PRODUCTS (Public)
   fastify.get("/all", getAllProducts);
