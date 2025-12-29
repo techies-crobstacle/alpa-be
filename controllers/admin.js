@@ -1,3 +1,40 @@
+// GET ORDERS BY SELLER ID (ADMIN ONLY)
+exports.getOrdersBySellerId = async (request, reply) => {
+  try {
+    // Only admin can access (route preHandler should enforce, but double-check)
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+    const { sellerId } = request.params;
+    // Find all orders that contain at least one product from this seller
+    const orders = await prisma.order.findMany({
+      where: {
+        items: {
+          some: {
+            product: {
+              sellerId: sellerId
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        },
+        user: true
+      }
+    });
+    reply.send({ success: true, orders, count: orders.length });
+  } catch (error) {
+    console.error('Get orders by sellerId error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
 const prisma = require("../config/prisma");
 
 // GET ALL USERS (role: "CUSTOMER")
