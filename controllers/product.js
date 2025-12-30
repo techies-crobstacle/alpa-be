@@ -159,24 +159,65 @@ exports.updateProduct = async (request, reply) => {
       return reply.status(403).send({ success: false, message: "You are not authorized to update this product" });
     }
 
-    const { title, description, price, stock, category, images } = request.body;
+    // Support both JSON and form/multipart bodies
+    const body = request.body || {};
+    let { title, description, price, stock, category } = body;
+    let images = [];
+    const { uploadToCloudinary } = require("../config/cloudinary");
 
-    // Update only the provided fields
+    // If files were uploaded, upload them to Cloudinary
+    if (request.files) {
+      let filesArray = [];
+      if (Array.isArray(request.files)) {
+          // Debug log incoming body and files
+          console.log('UpdateProduct request.body:', request.body);
+          console.log('UpdateProduct request.files:', request.files);
+        filesArray = request.files;
+      } else if (typeof request.files === 'object') {
+        filesArray = [request.files];
+      }
+      if (filesArray.length > 0) {
+        for (const file of filesArray) {
+          try {
+            const result = await uploadToCloudinary(file.path, 'products');
+            images.push(result.url);
+          } catch (err) {
+            console.error('Cloudinary upload error:', err);
+          }
+        }
+      }
+    } else if (body.images) {
+      // If images are provided as URLs in the body (fallback)
+      if (Array.isArray(body.images)) {
+        images = body.images;
+      } else if (typeof body.images === 'string') {
+        images = [body.images];
+      }
+    }
+
+    // Parse price and stock to correct types, ignore empty string
+    if (typeof price === 'string' && price.trim() !== '') price = parseFloat(price);
+    else if (typeof price === 'string') price = undefined;
+    if (typeof stock === 'string' && stock.trim() !== '') stock = parseInt(stock);
+    else if (typeof stock === 'string') stock = undefined;
+
+    // Only update fields that are not undefined and not empty string
+    const updateData = {};
+    if (title !== undefined && title !== '') updateData.title = title;
+    if (description !== undefined && description !== '') updateData.description = description;
+    if (price !== undefined && price !== '') updateData.price = price;
+    if (stock !== undefined && stock !== '') updateData.stock = stock;
+    if (category !== undefined && category !== '') updateData.category = category;
+    if (images.length > 0) updateData.images = images;
+
     const updatedProduct = await prisma.product.update({
       where: { id: request.params.id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(description !== undefined && { description }),
-        ...(price !== undefined && { price }),
-        ...(stock !== undefined && { stock }),
-        ...(category !== undefined && { category }),
-        ...(images !== undefined && { images })
-      }
+      data: updateData
     });
 
-    return reply.status(200).send({ 
-      success: true, 
-      message: "Product updated successfully", 
+    return reply.status(200).send({
+      success: true,
+      message: "Product updated successfully",
       product: updatedProduct
     });
   } catch (err) {
@@ -195,6 +236,8 @@ exports.deleteProduct = async (request, reply) => {
     });
 
     if (!product) {
+          // Debug log updateData before update
+          console.log('UpdateProduct updateData:', updateData);
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 

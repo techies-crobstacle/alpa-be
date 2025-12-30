@@ -15,8 +15,8 @@ async function productRoutes(fastify, options) {
   // GET PRODUCT BY ID (Public)
   fastify.get("/:id", getProductById);
 
-  // UPDATE PRODUCT (Seller only - own products)
-  fastify.put("/:id", { preHandler: authenticateSeller }, updateProduct);
+    // UPDATE PRODUCT (Seller only - own products, with image upload)
+    fastify.put("/:id", { preHandler: [authenticateSeller, handleProductImagesUpload] }, updateProduct);
 
   // DELETE PRODUCT (Seller only - own products)
   fastify.delete("/:id", { preHandler: authenticateSeller }, deleteProduct);
