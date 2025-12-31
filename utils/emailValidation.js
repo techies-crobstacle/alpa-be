@@ -1,4 +1,3 @@
-const { db, admin } = require("../config/firebase");
 
 /**
  * Check if email exists across all collections (users, sellers, pending_registrations)

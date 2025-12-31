@@ -1,4 +1,3 @@
-const { db } = require("../config/firebase");
 
 exports.checkInventory = async (productId) => {
   const productRef = db.collection("products").doc(productId);
