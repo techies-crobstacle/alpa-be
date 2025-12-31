@@ -25,7 +25,9 @@ const app = fastify({
 // Register plugins
 app.register(require("@fastify/cors"), {
   origin: process.env.NODE_ENV === 'production'
-    ? process.env.ALLOWED_ORIGINS?.split(',') || []
+    ? [
+        'https://alpa-dashboard-3o036esmt-techies-projects-d9746931.vercel.app'
+      ]
     : ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
