@@ -18,18 +18,25 @@ exports.getAllUsers = async (request, reply) => {
 // Get profile for authenticated user
 exports.getProfile = async (request, reply) => {
   try {
+    console.log('Request user:', request.user); // Add this debug log
+    
     const userId = request.user?.id;
+    
     if (!userId) {
-      return reply.status(401).send({ message: 'Unauthorized' });
+      return reply.status(401).send({ 
+        success: false,
+        message: 'Unauthorized - User ID not found in token' 
+      });
     }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
-        mail: true,
+        id: true,
+        email: true,
         name: true,
         phone: true,
-        pid: true,
-        erofileImage: true,
+        profileImage: true,
         role: true,
         isVerified: true,
         emailVerified: true,
@@ -37,12 +44,24 @@ exports.getProfile = async (request, reply) => {
         updatedAt: true
       }
     });
+
     if (!user) {
-      return reply.status(404).send({ message: 'User not found' });
+      return reply.status(404).send({ 
+        success: false,
+        message: 'User not found' 
+      });
     }
-    reply.send(user);
+
+    reply.send({
+      success: true,
+      data: user
+    });
   } catch (error) {
-    reply.status(500).send({ message: 'Server error', error: error.message });
+    console.error('Profile fetch error:', error);
+    reply.status(500).send({ 
+      success: false,
+      message: 'Server error', 
+      error: error.message 
+    });
   }
 };
-// ...existing code...

@@ -200,4 +200,3 @@ exports.isAdmin = async (request, reply) => {
   }
 };
 
-

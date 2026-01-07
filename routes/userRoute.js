@@ -6,8 +6,9 @@ async function userRoutes(fastify, options) {
 	// Get all users (admin only)
 	fastify.get('/all', { preHandler: authMiddleware }, userController.getAllUsers);
 
-  // Get profile for authenticated user
-  fastify.get('/profile', { preHandler: authMiddleware }, userController.getProfile);
+	// Get profile for any user (no auth)
+	fastify.get('/profile', userController.getProfile);
 }
 
 module.exports = userRoutes;
+

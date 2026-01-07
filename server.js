@@ -108,6 +108,7 @@ const supportRoutes = require("./routes/supportRoutes");
 const ratingRoutes = require("./routes/ratingRoutes");
 const locationRoutes = require("./routes/locationRoutes.js");
 const userRoutes = require("./routes/userRoute");
+const profileRoutes = require("./routes/profileRoute");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -155,6 +156,7 @@ app.register(adminRoutes, { prefix: "/api/admin" });
 app.register(ratingRoutes, { prefix: "/api/ratings" });
 app.register(locationRoutes, { prefix: "/api" });
 app.register(require("./routes/userRoute"), { prefix: "/api/users" });
+app.register(profileRoutes, { prefix: "/api" });
 
 const PORT = process.env.PORT || 5000;
 
