@@ -246,8 +246,21 @@ enum SellerStatus {
   SUSPENDED
 }
 
+
 enum ProductStatus {
   PENDING
   ACTIVE
   INACTIVE
+}
+
+model Coupon {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  discount   Float
+  expiresAt  DateTime
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("coupons")
 }
