@@ -35,58 +35,128 @@ exports.getProfile = async (request, reply) => {
 exports.updateProfile = async (request, reply) => {
   try {
     const userId = request.user?.userId || request.user?.uid || request.user?.id;
+    
     if (!userId) {
-      return reply.status(401).send({ message: 'Unauthorized - User ID not found in token' });
+      return reply.status(401).send({ 
+        message: 'Unauthorized - User ID not found in token' 
+      });
     }
-    // Support both form-data and JSON body
-    let name, phone;
-    if (request.body) {
-      name = request.body.name;
-      phone = request.body.phone;
-    } else if (request.raw.body) {
-      name = request.raw.body.name;
-      phone = request.raw.body.phone;
-    }
-    let profileImageUrl;
 
-    // Handle profile image upload if file is present
-    try {
-      // Fastify v4+ puts files in request.files, older in request.raw.files
-      let file = undefined;
-      if (request.files && request.files.profileImage) {
-        file = request.files.profileImage;
-      } else if (request.raw && request.raw.files && request.raw.files.profileImage) {
-        file = request.raw.files.profileImage;
-      }
-      console.log('Received file (request.files):', request.files);
-      console.log('Received file (request.raw.files):', request.raw && request.raw.files);
-      if (file) {
-        const { uploadToCloudinary } = require('../config/cloudinary');
-        const fs = require('fs');
-        const path = require('path');
-        const tempPath = path.join(__dirname, '../uploads/', `${Date.now()}_${file.name}`);
-        await fs.promises.writeFile(tempPath, file.data);
-        const uploadResult = await uploadToCloudinary(tempPath, 'profile');
-        console.log('Cloudinary upload result:', uploadResult);
-        profileImageUrl = uploadResult.url;
-        await fs.promises.unlink(tempPath);
-      } else if (request.body && request.body.profileImage) {
-        profileImageUrl = request.body.profileImage;
+    console.log('=== UPDATE PROFILE START ===');
+    console.log('User ID:', userId);
+
+    let name, phone, profileImageUrl;
+    const { uploadToCloudinary } = require('../config/cloudinary');
+    const fs = require('fs');
+    const path = require('path');
+    const { pipeline } = require('stream/promises');
+
+    // Check if request is multipart
+    const isMultipart = request.isMultipart();
+    console.log('Is request multipart?', isMultipart);
+
+    if (isMultipart) {
+      // Process multipart form data using parts()
+      const parts = request.parts();
+    
+    for await (const part of parts) {
+      console.log('Processing part:', part.fieldname, 'Type:', part.type);
+      
+      if (part.type === 'file') {
+        // Handle file upload
+        console.log('File detected:', part.filename, 'Fieldname:', part.fieldname);
+        
+        // Only process if fieldname is 'profileImage'
+        if (part.fieldname === 'profileImage') {
+          try {
+            // Ensure uploads directory exists
+            const uploadsDir = path.join(__dirname, '../uploads/');
+            if (!fs.existsSync(uploadsDir)) {
+              fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+
+            const tempPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+            
+            // Write file using stream
+            await pipeline(part.file, fs.createWriteStream(tempPath));
+            
+            console.log('File saved to temp path:', tempPath);
+
+            // Upload to Cloudinary
+            const uploadResult = await uploadToCloudinary(tempPath, 'profile');
+            profileImageUrl = uploadResult.url;
+            
+            console.log('✓ Cloudinary upload successful:', profileImageUrl);
+
+            // Clean up temp file
+            try {
+              await fs.promises.unlink(tempPath);
+              console.log('✓ Temp file cleaned up');
+            } catch (unlinkError) {
+              console.log('Warning: Could not delete temp file:', unlinkError.message);
+            }
+          } catch (uploadError) {
+            console.error('✗ File upload error:', uploadError);
+            return reply.status(500).send({
+              message: 'Failed to upload profile image',
+              error: uploadError.message
+            });
+          }
+        }
       } else {
-        profileImageUrl = undefined;
+        // Handle regular fields
+        if (part.fieldname === 'name') {
+          name = part.value;
+        } else if (part.fieldname === 'phone') {
+          phone = part.value;
+        }
+        console.log('Field:', part.fieldname, '=', part.value);
       }
-    } catch (uploadError) {
-      console.error('Profile image upload error:', uploadError);
-      profileImageUrl = undefined;
+    }
+    } else {
+      // Handle JSON body for non-multipart requests
+      console.log('Processing JSON body:', request.body);
+      name = request.body?.name;
+      phone = request.body?.phone;
+      // Note: File upload not supported for JSON requests
+      console.log('JSON request - no file upload support');
     }
 
+    console.log('Extracted data:');
+    console.log('- Name:', name);
+    console.log('- Phone:', phone);
+    console.log('- Profile Image URL:', profileImageUrl);
+
+    // Build update data object
+    const updateData = {};
+    if (typeof name === 'string' && name.trim() !== '') {
+      updateData.name = name.trim();
+      console.log('Setting updateData.name =', updateData.name);
+    } else {
+      console.log('Name not set or empty:', name);
+    }
+    if (typeof phone === 'string' && phone.trim() !== '') {
+      updateData.phone = phone.trim();
+    }
+    if (profileImageUrl !== undefined && profileImageUrl !== null) {
+      updateData.profileImage = profileImageUrl;
+    }
+
+    console.log('Update data to be sent to database:', updateData);
+
+    if (Object.keys(updateData).length === 0) {
+      console.log('✗ No data to update');
+      return reply.status(400).send({ 
+        message: 'No data provided to update',
+        debug: 'No valid fields or files were found in the request'
+      });
+    }
+
+    // Update the user in database
+    console.log('Updating user in database...');
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: {
-        name,
-        phone,
-        profileImage: profileImageUrl
-      },
+      data: updateData,
       select: {
         id: true,
         email: true,
@@ -100,8 +170,94 @@ exports.updateProfile = async (request, reply) => {
         updatedAt: true
       }
     });
-    reply.send(updatedUser);
+
+    console.log('✓ Database updated successfully');
+    console.log('Updated user profileImage:', updatedUser.profileImage);
+    console.log('=== UPDATE PROFILE END ===');
+
+    reply.send({
+      message: 'Profile updated successfully',
+      user: updatedUser
+    });
+
   } catch (error) {
-    reply.status(500).send({ message: 'Server error', error: error.message });
+    console.error('=== UPDATE PROFILE ERROR ===');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    
+    reply.status(500).send({ 
+      message: 'Server error', 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
+
+// Change password for authenticated user
+exports.changePassword = async (request, reply) => {
+  try {
+    const userId = request.user?.userId || request.user?.uid || request.user?.id;
+    
+    if (!userId) {
+      return reply.status(401).send({ 
+        message: 'Unauthorized - User ID not found in token' 
+      });
+    }
+
+    const { currentPassword, newPassword } = request.body;
+
+    if (!currentPassword || !newPassword) {
+      return reply.status(400).send({
+        message: 'Current password and new password are required'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return reply.status(400).send({
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+
+    // Get current user
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return reply.status(404).send({ message: 'User not found' });
+    }
+
+    // Verify current password
+    const bcrypt = require('bcryptjs');
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isCurrentPasswordValid) {
+      return reply.status(400).send({
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Hash new password
+    const saltRounds = 12;
+    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedNewPassword }
+    });
+
+    reply.send({
+      message: 'Password changed successfully'
+    });
+
+  } catch (error) {
+    console.error('Change password error:', error);
+    reply.status(500).send({ 
+      message: 'Server error', 
+      error: error.message 
+    });
+  }
+};
+
+

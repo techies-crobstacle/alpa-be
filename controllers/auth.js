@@ -324,3 +324,145 @@ exports.resendOTP = async (request, reply) => {
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
+
+// FORGOT PASSWORD - Send OTP for password reset
+exports.forgotPassword = async (request, reply) => {
+  try {
+    const { email } = request.body;
+
+    if (!email) {
+      return reply.status(400).send({ success: false, message: "Email is required" });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!user) {
+      return reply.status(404).send({ 
+        success: false, 
+        message: "No account found with this email address" 
+      });
+    }
+
+    // Generate OTP for password reset
+    const { generateOTP, sendOTPEmail } = require("../utils/emailService");
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Store or update password reset request (reuse PendingRegistration table)
+    await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      update: {
+        otp,
+        otpExpiry,
+        role: 'PASSWORD_RESET' // Use as flag for password reset
+      },
+      create: {
+        email: normalizedEmail,
+        name: user.name,
+        role: 'PASSWORD_RESET', // Use as flag for password reset
+        otp,
+        otpExpiry
+      }
+    });
+
+    // Send OTP email
+    const emailResult = await sendOTPEmail(email, otp, user.name, 'Password Reset');
+
+    if (!emailResult.success) {
+      return reply.status(500).send({ 
+        success: false, 
+        message: "Failed to send reset email. Please try again." 
+      });
+    }
+
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Password reset OTP sent to your email." 
+    });
+  } catch (error) {
+    console.error("❌ Forgot password error:", error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// RESET PASSWORD - Verify OTP and update password
+exports.resetPassword = async (request, reply) => {
+  try {
+    const { email, otp, newPassword } = request.body;
+
+    if (!email || !otp || !newPassword) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Email, OTP and new password are required" 
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return reply.status(400).send({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Get password reset request
+    const resetData = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!resetData || resetData.role !== 'PASSWORD_RESET') {
+      return reply.status(404).send({ 
+        success: false, 
+        message: "No password reset request found. Please request a new reset." 
+      });
+    }
+
+    // Check if OTP has expired
+    if (new Date() > resetData.otpExpiry) {
+      await prisma.pendingRegistration.delete({
+        where: { email: normalizedEmail }
+      });
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Reset OTP has expired. Please request a new reset." 
+      });
+    }
+
+    // Verify OTP
+    if (resetData.otp !== otp) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Invalid OTP. Please try again." 
+      });
+    }
+
+    // Hash new password
+    const saltRounds = 12;
+    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update user password
+    await prisma.user.update({
+      where: { email: normalizedEmail },
+      data: { password: hashedNewPassword }
+    });
+
+    // Delete password reset request
+    await prisma.pendingRegistration.delete({
+      where: { email: normalizedEmail }
+    });
+
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Password reset successfully. You can now login with your new password." 
+    });
+  } catch (error) {
+    console.error("❌ Reset password error:", error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
