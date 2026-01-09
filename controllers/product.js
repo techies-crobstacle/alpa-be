@@ -1,4 +1,9 @@
 const prisma = require("../config/prisma");
+const {
+  notifySellerProductStatusChange,
+  notifySellerLowStock,
+  notifyAdminNewProduct
+} = require("./notification");
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {

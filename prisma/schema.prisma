@@ -26,6 +26,7 @@ model User {
   ratings       Rating[]
   supportTickets SupportTicket[]
   sellerProfile SellerProfile?
+  notifications Notification[]
 
   @@map("users")
 }
@@ -208,6 +209,40 @@ model SupportTicket {
   @@index([userId])
   @@index([status])
   @@map("support_tickets")
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  message     String
+  type        NotificationType
+  isRead      Boolean          @default(false)
+  relatedId   String?          // Order ID, Product ID, etc.
+  relatedType String?          // "order", "product", "seller", etc.
+  metadata    Json?            // Additional data (seller name, order details, etc.)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  ORDER_STATUS_CHANGED
+  NEW_ORDER
+  PRODUCT_STATUS_CHANGED
+  LOW_STOCK_ALERT
+  SELLER_APPROVED
+  SELLER_REJECTED
+  NEW_PRODUCT_SUBMITTED
+  PAYMENT_RECEIVED
+  ORDER_CANCELLED
+  PRODUCT_OUT_OF_STOCK
+  GENERAL
 }
 
 enum Role {

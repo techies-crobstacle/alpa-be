@@ -5,6 +5,11 @@ const {
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail 
 } = require("../utils/emailService");
+const {
+  notifyCustomerOrderStatusChange,
+  notifySellerNewOrder,
+  notifyAdminNewOrder
+} = require("./notification");
 
 // Stock Management and Inventory Alert with SMS Notification
 exports.createOrder = async (request, reply) => {
@@ -132,6 +137,19 @@ exports.createOrder = async (request, reply) => {
 
     console.log(`✅ Order created: ${order.id}`);
 
+    // Create notifications
+    const orderNotificationData = {
+      customerName: user.name,
+      totalAmount: totalAmount.toFixed(2),
+      itemCount: order.items.length,
+      orderId: order.id
+    };
+
+    // Notify admins about new order
+    notifyAdminNewOrder(order.id, orderNotificationData).catch(error => {
+      console.error("Admin notification error (non-blocking):", error.message);
+    });
+
     // Send email to customer (non-blocking)
     if (user.email) {
       console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
@@ -164,6 +182,7 @@ exports.createOrder = async (request, reply) => {
           const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
           console.log(`📧 Sending order notification email to seller: ${seller.email}`);
           
+          // Send email notification
           sendSellerOrderNotificationEmail(seller.email, sellerName, {
             orderId: order.id,
             productCount: sellerData.productCount,
@@ -176,6 +195,16 @@ exports.createOrder = async (request, reply) => {
             customerPhone: user.phone
           }).catch(error => {
             console.error("Seller email error (non-blocking):", error.message);
+          });
+
+          // Create notification for seller
+          notifySellerNewOrder(sellerId, order.id, {
+            customerName: user.name,
+            totalAmount: sellerData.totalAmount.toFixed(2),
+            itemCount: sellerData.productCount,
+            sellerName: sellerName
+          }).catch(error => {
+            console.error("Seller notification error (non-blocking):", error.message);
           });
         }
       } catch (error) {

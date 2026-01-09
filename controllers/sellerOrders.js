@@ -1,5 +1,6 @@
 const prisma = require("../config/prisma");
 const { sendOrderStatusEmail } = require("../utils/emailService");
+const { notifyCustomerOrderStatusChange } = require("./notification");
 
 const { 
   generateSalesReportCSV,
@@ -121,6 +122,14 @@ exports.updateOrderStatus = async (request, reply) => {
         status
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
+      });
+
+      // Create notification for customer
+      notifyCustomerOrderStatusChange(order.user.id, orderId, status, {
+        totalAmount: order.totalAmount.toString(),
+        itemCount: order.items.length
+      }).catch(error => {
+        console.error("Customer notification error (non-blocking):", error.message);
       });
     }
 
