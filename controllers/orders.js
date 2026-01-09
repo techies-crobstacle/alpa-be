@@ -1,299 +1,3 @@
-// const { db } = require("../config/firebase");
-// const { checkInventory } = require("../utils/checkInventory");
-
-
-
-
-// // Stock Management and Inventory Alert
-// exports.createOrder = async (request, reply) => {
-//   try {
-//     const userId = request.user.uid;
-//     const { shippingAddress, paymentMethod } = request.body;
-
-//     if (!shippingAddress || !paymentMethod) {
-//       return reply.status(400).send({ success: false, message: "All fields are required" });
-//     }
-
-//     // Get user's cart
-//     const cartRef = db.collection("carts").doc(userId);
-//     const cartSnap = await cartRef.get();
-
-//     if (!cartSnap.exists || !cartSnap.data().products || cartSnap.data().products.length === 0) {
-//       return reply.status(400).send({ success: false, message: "Cart is empty" });
-//     }
-
-//     const cartProducts = cartSnap.data().products;
-//     let orderProducts = [];
-//     let totalAmount = 0;
-
-//     // Stock validation + price calculation
-//     for (const item of cartProducts) {
-//       const productRef = db.collection("products").doc(item.productId);
-//       const productSnap = await productRef.get();
-
-//       if (!productSnap.exists) {
-//         return reply.status(404).send({ success: false, message: `Product not found: ${item.productId}` });
-//       }
-
-//       const product = productSnap.data();
-
-//       // Check stock
-//       if (product.stock < item.quantity) {
-//         return reply.status(400).send({
-//           success: false,
-//           message: `Insufficient stock for product: ${product.title}`
-//         });
-//       }
-
-//       // Prepare order items
-//       orderProducts.push({
-//         productId: item.productId,
-//         quantity: item.quantity,
-//         price: product.price,
-//         sellerId: product.sellerId,
-//         title: product.title
-//       });
-
-//       totalAmount += product.price * item.quantity;
-//     }
-
-//     // Deduct stock after validation success
-//     for (const item of cartProducts) {
-//       const productRef = db.collection("products").doc(item.productId);
-//       const productSnap = await productRef.get();
-//       const product = productSnap.data();
-
-//       const newStock = product.stock - item.quantity;
-
-//       await productRef.update({
-//         stock: newStock,
-//         active: newStock > 0 ? true : false,
-//         updatedAt: new Date()
-//       });
-//     }
-
-//     // Create order document
-//     const orderRef = db.collection("orders").doc();
-//     await orderRef.set({
-//       id: orderRef.id,
-//       userId,
-//       products: orderProducts,
-//       totalAmount,
-//       shippingAddress,
-//       paymentMethod,
-//       status: "pending",
-//       createdAt: new Date()
-//     });
-
-//     // Clear cart after order
-//     await cartRef.delete();
-
-//     return reply.status(200).send({
-//       success: true,
-//       message: "Order placed successfully",
-//       orderId: orderRef.id,
-//       totalAmount
-//     });
-
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-
-// // USER — VIEW MY ORDERS
-// exports.getMyOrders = async (request, reply) => {
-//   try {
-//     const userId = request.user.uid;
-//     const snapshot = await db.collection("orders").where("userId", "==", userId).get();
-//     const orders = snapshot.docs.map((doc) => doc.data());
-
-//     return reply.status(200).send({ success: true, orders });
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-// // USER — CANCEL ORDER
-// exports.cancelOrder = async (request, reply) => {
-//   try {
-//     const orderId = request.params.id;
-//     const userId = request.user.uid;
-
-//     const orderRef = db.collection("orders").doc(orderId);
-//     const snap = await orderRef.get();
-
-//     if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
-
-//     const order = snap.data();
-//     if (order.userId !== userId) return reply.status(403).send({ success: false, message: "Not authorized" });
-
-//     if (order.status !== "pending") {
-//       return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
-//     }
-
-//     await orderRef.update({ status: "cancelled" });
-
-//     return reply.status(200).send({ success: true, message: "Order cancelled successfully" });
-
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-// // SELLER — VIEW ORDERS
-// exports.getSellerOrders = async (request, reply) => {
-//   try {
-//     const sellerId = request.user.uid;
-//     const snapshot = await db.collection("orders").get();
-
-//     let sellerOrders = [];
-
-//     snapshot.forEach((doc) => {
-//       const order = doc.data();
-//       const containsSellerItem = order.products.some(
-//         (p) => p.sellerId === sellerId
-//       );
-//       if (containsSellerItem) sellerOrders.push(order);
-//     });
-
-//     return reply.status(200).send({ success: true, orders: sellerOrders });
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-// // SELLER — UPDATE ORDER STATUS
-// exports.updateOrderStatus = async (request, reply) => {
-//   try {
-//     const sellerId = request.user.uid;
-//     const { orderId } = request.params;
-//     const { status } = request.body;
-
-//     const allowed = ["pending", "packed", "shipped", "delivered", "cancelled"];
-//     if (!allowed.includes(status)) {
-//       return reply.status(400).send({ success: false, message: "Invalid status" });
-//     }
-
-//     const orderRef = db.collection("orders").doc(orderId);
-//     const snap = await orderRef.get();
-
-//     if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
-
-//     const order = snap.data();
-//     const containsSellerItem = order.products.some((p) => p.sellerId === sellerId);
-
-//     if (!containsSellerItem) {
-//       return reply.status(403).send({ success: false, message: "Unauthorized seller" });
-//     }
-
-//     await orderRef.update({ status, updatedAt: new Date() });
-
-//     return reply.status(200).send({ success: true, message: "Status updated successfully" });
-
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-// // SELLER — UPDATE TRACKING INFO
-// exports.updateTrackingInfo = async (request, reply) => {
-//   try {
-//     const sellerId = request.user.uid;
-//     const { orderId } = request.params;
-//     const { trackingNumber, estimatedDelivery } = request.body;
-
-//     const orderRef = db.collection("orders").doc(orderId);
-//     const snap = await orderRef.get();
-
-//     if (!snap.exists) return reply.status(404).send({ success: false, message: "Order not found" });
-
-//     const order = snap.data();
-//     const containsSellerItem = order.products.some((p) => p.sellerId === sellerId);
-
-//     if (!containsSellerItem) {
-//       return reply.status(403).send({ success: false, message: "Unauthorized seller" });
-//     }
-
-//     await orderRef.update({
-//       trackingNumber,
-//       estimatedDelivery,
-//       updatedAt: new Date(),
-//     });
-
-//     return reply.status(200).send({ success: true, message: "Tracking info updated" });
-
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-
-// exports.bulkUpdateStock = async (request, reply) => {
-//   try {
-//     const sellerId = request.user.uid;
-//     const updates = request.body;
-
-//     if (!Array.isArray(updates) || updates.length === 0) {
-//       return reply.status(400).send({ success: false, message: "Updates array is required" });
-//     }
-
-//     let results = [];
-
-//     for (const item of updates) {
-//       const { productId, stock } = item;
-
-//       if (!productId || stock === undefined) {
-//         results.push({ productId, success: false, message: "productId and stock are required" });
-//         continue;
-//       }
-
-//       const productRef = db.collection("products").doc(productId);
-//       const productSnap = await productRef.get();
-
-//       if (!productSnap.exists) {
-//         results.push({ productId, success: false, message: "Product not found" });
-//         continue;
-//       }
-
-//       const product = productSnap.data();
-
-//       // Check seller ownership
-//       if (product.sellerId !== sellerId) {
-//         results.push({ productId, success: false, message: "Unauthorized seller" });
-//         continue;
-//       }
-
-//       const newStock = Number(stock);
-//       const isActive = newStock > 0;
-
-//       await productRef.update({
-//         stock: newStock,
-//         active: isActive,
-//         updatedAt: new Date()
-//       });
-
-//       results.push({
-//         productId,
-//         success: true,
-//         stock: newStock,
-//         active: isActive,
-//         message: "Stock updated successfully"
-//       });
-//     }
-
-//     return reply.status(200).send({
-//       success: true,
-//       message: "Bulk stock update completed",
-//       results
-//     });
-
-//   } catch (error) {
-//     return reply.status(500).send({ success: false, message: error.message });
-//   }
-// };
-
-
 const prisma = require("../config/prisma");
 const { checkInventory } = require("../utils/checkInventory");
 const { 
@@ -565,6 +269,210 @@ exports.cancelOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Cancel order error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// USER — REORDER (Add all items from previous order to cart)
+exports.reorder = async (request, reply) => {
+  try {
+    const orderId = request.params.id;
+    const userId = request.user.userId;
+
+    // Get the order with items
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: "Order not found" });
+    }
+
+    if (order.userId !== userId) {
+      return reply.status(403).send({ success: false, message: "Not authorized to reorder this order" });
+    }
+
+    if (order.items.length === 0) {
+      return reply.status(400).send({ success: false, message: "Order has no items to reorder" });
+    }
+
+    // Get or create user's cart
+    let cart = await prisma.cart.findUnique({
+      where: { userId },
+      include: {
+        items: true
+      }
+    });
+
+    console.log(`📋 Found existing cart for user ${userId}:`, cart ? `Cart ID: ${cart.id}, Items: ${cart.items.length}` : 'No cart found');
+
+    if (!cart) {
+      cart = await prisma.cart.create({
+        data: { userId },
+        include: {
+          items: true
+        }
+      });
+      console.log(`🆕 Created new cart for user ${userId}: Cart ID: ${cart.id}`);
+    }
+
+    const addedItems = [];
+    const unavailableItems = [];
+    
+    // Process each item from the order
+    for (const orderItem of order.items) {
+      const product = orderItem.product;
+      
+      // Check if product still exists and is available
+      if (!product) {
+        unavailableItems.push({
+          productId: orderItem.productId,
+          reason: "Product no longer exists"
+        });
+        continue;
+      }
+
+      // Check stock availability
+      if (product.stock < orderItem.quantity) {
+        unavailableItems.push({
+          productId: product.id,
+          title: product.title,
+          requestedQuantity: orderItem.quantity,
+          availableStock: product.stock,
+          reason: "Insufficient stock"
+        });
+        continue;
+      }
+
+      // Check if item already exists in cart
+      const existingCartItem = await prisma.cartItem.findUnique({
+        where: {
+          cartId_productId: {
+            cartId: cart.id,
+            productId: product.id
+          }
+        }
+      });
+
+      console.log(`🔍 Checking product ${product.id} (${product.title}) in cart:`, existingCartItem ? `Found existing item with quantity ${existingCartItem.quantity}` : 'Not in cart');
+
+      if (existingCartItem) {
+        // Update existing cart item quantity
+        const newQuantity = existingCartItem.quantity + orderItem.quantity;
+        
+        // Check if new quantity exceeds stock
+        if (newQuantity > product.stock) {
+          unavailableItems.push({
+            productId: product.id,
+            title: product.title,
+            requestedQuantity: orderItem.quantity,
+            currentCartQuantity: existingCartItem.quantity,
+            availableStock: product.stock,
+            reason: "Adding this quantity would exceed available stock"
+          });
+          continue;
+        }
+
+        const updatedItem = await prisma.cartItem.update({
+          where: {
+            cartId_productId: {
+              cartId: cart.id,
+              productId: product.id
+            }
+          },
+          data: {
+            quantity: newQuantity
+          }
+        });
+
+        console.log(`📝 Updated cart item: Product ${product.id}, New quantity: ${updatedItem.quantity}`);
+
+        addedItems.push({
+          productId: product.id,
+          title: product.title,
+          quantity: orderItem.quantity,
+          newTotalQuantity: newQuantity,
+          action: "updated"
+        });
+      } else {
+        // Create new cart item
+        const newCartItem = await prisma.cartItem.create({
+          data: {
+            cartId: cart.id,
+            productId: product.id,
+            quantity: orderItem.quantity
+          }
+        });
+
+        console.log(`➕ Created new cart item: Product ${product.id} (${product.title}), Quantity: ${newCartItem.quantity}, Cart Item ID: ${newCartItem.id}`);
+
+        addedItems.push({
+          productId: product.id,
+          title: product.title,
+          quantity: orderItem.quantity,
+          action: "added"
+        });
+      }
+    }
+
+    console.log(`✅ Reorder processed for order ${orderId} - Added: ${addedItems.length}, Unavailable: ${unavailableItems.length}`);
+
+    // Verify final cart state
+    const finalCart = await prisma.cart.findUnique({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    console.log(`🛒 Final cart verification for user ${userId}:`, finalCart ? 
+      `Cart ID: ${finalCart.id}, Total items: ${finalCart.items.length}` : 'Cart not found');
+    
+    if (finalCart && finalCart.items.length > 0) {
+      console.log('📦 Cart contents:', finalCart.items.map(item => 
+        `${item.product.title} (ID: ${item.productId}) - Qty: ${item.quantity}`
+      ));
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: addedItems.length > 0 
+        ? `Successfully added ${addedItems.length} items to cart for reorder`
+        : "No items could be added to cart",
+      data: {
+        orderId,
+        addedItems,
+        unavailableItems,
+        summary: {
+          totalOrderItems: order.items.length,
+          successfullyAdded: addedItems.length,
+          unavailable: unavailableItems.length
+        },
+        debug: {
+          cartId: finalCart?.id,
+          finalCartItemCount: finalCart?.items.length || 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Reorder error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

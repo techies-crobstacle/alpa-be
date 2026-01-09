@@ -38,6 +38,17 @@ async function adminRoutes(fastify, options) {
 
   // Activate seller (Go Live - SOW Requirement)
   fastify.post("/sellers/activate/:id", { preHandler: adminAuth }, adminController.activateSeller);
+
+  // ---------------- CATEGORY MANAGEMENT ----------------
+  // Get all categories with product counts
+  fastify.get("/categories", { preHandler: adminAuth }, adminController.getAllCategories);
+
+  // ---------------- COUPON MANAGEMENT ----------------
+  // Admin coupon management
+  fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);
+  fastify.get("/coupons", { preHandler: adminAuth }, adminController.getAllCoupons);
+  fastify.put("/coupons/:id", { preHandler: adminAuth }, adminController.updateCoupon);
+  fastify.delete("/coupons/:id", { preHandler: adminAuth }, adminController.deleteCoupon);
 }
 
 module.exports = adminRoutes;

@@ -6,6 +6,19 @@ const {
   generateSalesSummaryCSV 
 } = require("../utils/csvExport");
 
+// Helper function to map database status to display status
+const mapStatusForDisplay = (dbStatus) => {
+  const displayMap = {
+    'PENDING': 'pending',
+    'CONFIRMED': 'processing',  // Legacy support
+    'PROCESSING': 'processing',  // New status
+    'SHIPPED': 'shipped',
+    'DELIVERED': 'delivered',
+    'CANCELLED': 'cancelled'
+  };
+  return displayMap[dbStatus] || dbStatus.toLowerCase();
+};
+
 
 // SELLER — VIEW ORDERS
 exports.getSellerOrders = async (request, reply) => {
@@ -40,7 +53,13 @@ exports.getSellerOrders = async (request, reply) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    return reply.status(200).send({ success: true, orders, count: orders.length });
+    // Map database statuses to display statuses
+    const ordersWithDisplayStatus = orders.map(order => ({
+      ...order,
+      status: mapStatusForDisplay(order.status)
+    }));
+
+    return reply.status(200).send({ success: true, orders: ordersWithDisplayStatus, count: orders.length });
   } catch (error) {
     console.error("Get seller orders error:", error);
     return reply.status(500).send({ success: false, message: error.message });
@@ -56,8 +75,7 @@ exports.updateOrderStatus = async (request, reply) => {
 
     const statusMap = {
       'pending': 'PENDING',
-      'confirmed': 'CONFIRMED',
-      'packed': 'CONFIRMED',
+      'processing': 'PROCESSING',  // Now store as PROCESSING
       'shipped': 'SHIPPED',
       'delivered': 'DELIVERED',
       'cancelled': 'CANCELLED'
@@ -66,7 +84,7 @@ exports.updateOrderStatus = async (request, reply) => {
     const normalizedStatus = statusMap[status.toLowerCase()];
     
     if (!normalizedStatus) {
-      return reply.status(400).send({ success: false, message: "Invalid status. Use: pending, confirmed, shipped, delivered, cancelled" });
+      return reply.status(400).send({ success: false, message: "Invalid status. Use: pending, processing, shipped, delivered, cancelled" });
     }
 
     const order = await prisma.order.findUnique({
@@ -106,7 +124,11 @@ exports.updateOrderStatus = async (request, reply) => {
       });
     }
 
-    return reply.status(200).send({ success: true, message: "Order status updated successfully. Customer notified via email." });
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Order status updated successfully. Customer notified via email.",
+      updatedStatus: status  // Return the original status that was sent
+    });
   } catch (error) {
     console.error("Update order status error:", error);
     return reply.status(500).send({ success: false, message: error.message });
@@ -394,7 +416,8 @@ exports.getSalesAnalytics = async (request, reply) => {
     let totalItemsSold = 0;
     const statusBreakdown = {
       PENDING: 0,
-      CONFIRMED: 0,
+      CONFIRMED: 0,  // Legacy status
+      PROCESSING: 0,  // New status
       SHIPPED: 0,
       DELIVERED: 0,
       CANCELLED: 0

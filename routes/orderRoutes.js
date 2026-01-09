@@ -42,6 +42,9 @@ async function orderRoutes(fastify, options) {
 
   // Cancel order
   fastify.put("/cancel/:id", { preHandler: authenticateUser }, orderController.cancelOrder);
+
+  // Reorder - Add all items from previous order to cart
+  fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
 }
 
 module.exports = orderRoutes;

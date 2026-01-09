@@ -1,3 +1,5 @@
+const prisma = require("../config/prisma");
+
 // GET ORDERS BY SELLER ID (ADMIN ONLY)
 exports.getOrdersBySellerId = async (request, reply) => {
   try {
@@ -35,7 +37,6 @@ exports.getOrdersBySellerId = async (request, reply) => {
     reply.status(500).send({ success: false, error: error.message });
   }
 };
-const prisma = require("../config/prisma");
 
 // GET ALL USERS (role: "CUSTOMER")
 exports.getAllUsers = async (request, reply) => {
@@ -572,6 +573,278 @@ exports.activateSeller = async (request, reply) => {
   } catch (error) {
     console.error("Activate seller error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// ==================== CATEGORY MANAGEMENT ====================
+
+// GET ALL CATEGORIES WITH PRODUCT COUNTS (Admin only)
+exports.getAllCategories = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    // Get all categories with product counts using aggregation
+    const categoryData = await prisma.product.groupBy({
+      by: ['category'],
+      _count: {
+        id: true
+      },
+      orderBy: {
+        _count: {
+          id: 'desc' // Order by product count (highest first)
+        }
+      }
+    });
+
+    // Transform the data to a more readable format
+    const categories = categoryData.map(item => ({
+      name: item.category,
+      productCount: item._count.id
+    }));
+
+    // Get total categories and total products
+    const totalProducts = await prisma.product.count();
+    const totalCategories = categories.length;
+
+    reply.send({
+      success: true,
+      categories,
+      summary: {
+        totalCategories,
+        totalProducts
+      }
+    });
+  } catch (error) {
+    console.error('Get all categories error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// ==================== COUPON MANAGEMENT ====================
+
+// CREATE COUPON (Admin only)
+exports.createCoupon = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { code, discount, expiresAt } = request.body;
+
+    if (!code || !discount || !expiresAt) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Coupon code, discount percentage, and expiry date are required'
+      });
+    }
+
+    if (discount <= 0 || discount > 100) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Discount must be between 1 and 100 percent'
+      });
+    }
+
+    // Check if coupon code already exists
+    const existingCoupon = await prisma.coupon.findUnique({
+      where: { code: code.toUpperCase() }
+    });
+
+    if (existingCoupon) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Coupon code already exists'
+      });
+    }
+
+    const coupon = await prisma.coupon.create({
+      data: {
+        code: code.toUpperCase(),
+        discount: parseFloat(discount),
+        expiresAt: new Date(expiresAt),
+        createdBy: request.user.userId || request.user.uid
+      }
+    });
+
+    reply.status(201).send({
+      success: true,
+      message: 'Coupon created successfully',
+      coupon
+    });
+  } catch (error) {
+    console.error('Create coupon error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// GET ALL COUPONS (Admin only)
+exports.getAllCoupons = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const coupons = await prisma.coupon.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    reply.send({
+      success: true,
+      coupons,
+      count: coupons.length
+    });
+  } catch (error) {
+    console.error('Get all coupons error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// UPDATE COUPON (Admin only)
+exports.updateCoupon = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { id } = request.params;
+    const { code, discount, expiresAt } = request.body;
+
+    // Check if coupon exists
+    const existingCoupon = await prisma.coupon.findUnique({
+      where: { id }
+    });
+
+    if (!existingCoupon) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Coupon not found'
+      });
+    }
+
+    // Prepare update data
+    const updateData = {};
+    if (code) updateData.code = code.toUpperCase();
+    if (discount !== undefined) {
+      if (discount <= 0 || discount > 100) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Discount must be between 1 and 100 percent'
+        });
+      }
+      updateData.discount = parseFloat(discount);
+    }
+    if (expiresAt) updateData.expiresAt = new Date(expiresAt);
+
+    // Check if new code conflicts with existing codes (if code is being updated)
+    if (code && code.toUpperCase() !== existingCoupon.code) {
+      const conflictingCoupon = await prisma.coupon.findUnique({
+        where: { code: code.toUpperCase() }
+      });
+      if (conflictingCoupon) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Coupon code already exists'
+        });
+      }
+    }
+
+    const updatedCoupon = await prisma.coupon.update({
+      where: { id },
+      data: updateData
+    });
+
+    reply.send({
+      success: true,
+      message: 'Coupon updated successfully',
+      coupon: updatedCoupon
+    });
+  } catch (error) {
+    console.error('Update coupon error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// DELETE COUPON (Admin only)
+exports.deleteCoupon = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { id } = request.params;
+
+    // Check if coupon exists
+    const existingCoupon = await prisma.coupon.findUnique({
+      where: { id }
+    });
+
+    if (!existingCoupon) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Coupon not found'
+      });
+    }
+
+    await prisma.coupon.delete({
+      where: { id }
+    });
+
+    reply.send({
+      success: true,
+      message: 'Coupon deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete coupon error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// VALIDATE COUPON (Customer use)
+exports.validateCoupon = async (request, reply) => {
+  try {
+    const { code } = request.body;
+
+    if (!code) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Coupon code is required'
+      });
+    }
+
+    const coupon = await prisma.coupon.findUnique({
+      where: { code: code.toUpperCase() }
+    });
+
+    if (!coupon) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Invalid coupon code'
+      });
+    }
+
+    // Check if coupon is expired
+    if (new Date() > coupon.expiresAt) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Coupon has expired'
+      });
+    }
+
+    reply.send({
+      success: true,
+      message: 'Coupon is valid',
+      coupon: {
+        id: coupon.id,
+        code: coupon.code,
+        discount: coupon.discount,
+        expiresAt: coupon.expiresAt
+      }
+    });
+  } catch (error) {
+    console.error('Validate coupon error:', error);
+    reply.status(500).send({ success: false, error: error.message });
   }
 };
 
