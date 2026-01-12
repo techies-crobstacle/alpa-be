@@ -137,9 +137,26 @@ exports.createOrder = async (request, reply) => {
 
     console.log(`✅ Order created: ${order.id}`);
 
+    // Get seller information for notifications
+    let sellerNames = [];
+    for (const [sellerId, _] of sellerNotifications) {
+      try {
+        const seller = await prisma.user.findUnique({
+          where: { id: sellerId },
+          select: { name: true }
+        });
+        if (seller) {
+          sellerNames.push(seller.name);
+        }
+      } catch (error) {
+        console.error(`Error fetching seller ${sellerId}:`, error);
+      }
+    }
+
     // Create notifications
     const orderNotificationData = {
       customerName: user.name,
+      sellerName: sellerNames.length > 0 ? sellerNames.join(', ') : 'Unknown',
       totalAmount: totalAmount.toFixed(2),
       itemCount: order.items.length,
       orderId: order.id
@@ -291,6 +308,14 @@ exports.cancelOrder = async (request, reply) => {
         status: "cancelled"
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
+      });
+
+      // Create notification for customer about cancellation
+      notifyCustomerOrderStatusChange(user.id, orderId, "cancelled", {
+        totalAmount: order.totalAmount.toString(),
+        itemCount: order.items?.length || 0
+      }).catch(error => {
+        console.error("Customer notification error (non-blocking):", error.message);
       });
     }
 

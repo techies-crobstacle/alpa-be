@@ -1,6 +1,6 @@
 const prisma = require("../config/prisma");
 const { sendOrderStatusEmail } = require("../utils/emailService");
-const { notifyCustomerOrderStatusChange } = require("./notification");
+const { notifyCustomerOrderStatusChange, notifyAdminOrderStatusChange } = require("./notification");
 
 const { 
   generateSalesReportCSV,
@@ -125,11 +125,27 @@ exports.updateOrderStatus = async (request, reply) => {
       });
 
       // Create notification for customer
+      console.log(`🔔 Creating status change notification for customer ${order.user.id}: ${status}`);
       notifyCustomerOrderStatusChange(order.user.id, orderId, status, {
         totalAmount: order.totalAmount.toString(),
         itemCount: order.items.length
       }).catch(error => {
         console.error("Customer notification error (non-blocking):", error.message);
+      });
+
+      // Notify admins about status change
+      const seller = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { name: true }
+      });
+      
+      notifyAdminOrderStatusChange(orderId, status, {
+        customerName: order.user.name,
+        sellerName: seller?.name || 'Unknown',
+        totalAmount: order.totalAmount.toString(),
+        itemCount: order.items.length
+      }).catch(error => {
+        console.error("Admin notification error (non-blocking):", error.message);
       });
     }
 
@@ -190,6 +206,32 @@ exports.updateTrackingInfo = async (request, reply) => {
         trackingNumber
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
+      });
+
+      // Create notification for customer about shipped status
+      console.log(`🔔 Creating shipped notification for customer ${order.user.id}`);
+      notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
+        totalAmount: order.totalAmount.toString(),
+        itemCount: order.items.length,
+        trackingNumber
+      }).catch(error => {
+        console.error("Customer notification error (non-blocking):", error.message);
+      });
+
+      // Notify admins about shipped status
+      const seller = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { name: true }
+      });
+      
+      notifyAdminOrderStatusChange(orderId, "shipped", {
+        customerName: order.user.name,
+        sellerName: seller?.name || 'Unknown',
+        totalAmount: order.totalAmount.toString(),
+        itemCount: order.items.length,
+        trackingNumber
+      }).catch(error => {
+        console.error("Admin notification error (non-blocking):", error.message);
       });
     }
 

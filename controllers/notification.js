@@ -24,6 +24,8 @@ const createNotification = async (userId, title, message, type, relatedId = null
 
 // CUSTOMER NOTIFICATIONS
 const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDetails = {}) => {
+  console.log(`🔔 notifyCustomerOrderStatusChange called: userId=${userId}, orderId=${orderId}, status=${status}`);
+  
   const statusMessages = {
     'pending': 'Your order is being processed',
     'processing': 'Your order is being prepared',
@@ -34,6 +36,8 @@ const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDet
 
   const title = `Order ${status.charAt(0).toUpperCase() + status.slice(1)}`;
   const message = statusMessages[status] || `Your order status has been updated to ${status}`;
+
+  console.log(`🔔 Creating notification: title="${title}", message="${message}"`);
 
   return await createNotification(
     userId,
@@ -152,6 +156,35 @@ const notifyAdminNewProduct = async (productId, productDetails = {}) => {
       productId,
       'product',
       productDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
+// ADMIN NOTIFICATION FOR ORDER STATUS CHANGES
+const notifyAdminOrderStatusChange = async (orderId, status, orderDetails = {}) => {
+  const { customerName, sellerName, totalAmount, itemCount } = orderDetails;
+  
+  const title = 'Order Status Updated';
+  const message = `Order from ${customerName || 'Customer'} to seller ${sellerName || 'Unknown'} for $${totalAmount || '0.00'} has been updated to ${status}`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'ORDER_STATUS_CHANGED',
+      orderId,
+      'order',
+      { status, ...orderDetails }
     );
     if (notification) notifications.push(notification);
   }
@@ -279,5 +312,6 @@ module.exports = {
   notifySellerProductStatusChange,
   notifySellerLowStock,
   notifyAdminNewOrder,
-  notifyAdminNewProduct
+  notifyAdminNewProduct,
+  notifyAdminOrderStatusChange
 };

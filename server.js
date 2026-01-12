@@ -111,6 +111,7 @@ const userRoutes = require("./routes/userRoute");
 const profileRoutes = require("./routes/profileRoute");
 const couponRoutes = require("./routes/couponRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const wishlistRoutes = require("./routes/wishlistRoutes");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -161,6 +162,7 @@ app.register(require("./routes/userRoute"), { prefix: "/api/users" });
 app.register(profileRoutes, { prefix: "/api" });
 app.register(couponRoutes, { prefix: "/api/coupons" });
 app.register(notificationRoutes, { prefix: "/api/notifications" });
+app.register(wishlistRoutes, { prefix: "/api/wishlist" });
 
 const PORT = process.env.PORT || 5000;
 
