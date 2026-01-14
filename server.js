@@ -112,6 +112,8 @@ const profileRoutes = require("./routes/profileRoute");
 const couponRoutes = require("./routes/couponRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
+const orderNotificationRoutes = require("./routes/orderNotificationRoutes");
+const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -163,8 +165,9 @@ app.register(profileRoutes, { prefix: "/api" });
 app.register(couponRoutes, { prefix: "/api/coupons" });
 app.register(notificationRoutes, { prefix: "/api/notifications" });
 app.register(wishlistRoutes, { prefix: "/api/wishlist" });
+app.register(orderNotificationRoutes, { prefix: "/api/seller" });
 
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT) || 5000;
 
 // Graceful shutdown
 const closeGracefully = async (signal) => {
@@ -182,4 +185,9 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
     process.exit(1);
   }
   console.log(`Server running on ${address}`);
+  
+  // Initialize SLA monitoring after server starts
+  setTimeout(() => {
+    initializeSLAMonitoring();
+  }, 5000); // Wait 5 seconds for server to be fully ready
 });

@@ -28,7 +28,16 @@ exports.getOrdersBySellerId = async (request, reply) => {
             product: true
           }
         },
-        user: true
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            role: true,
+            createdAt: true
+          }
+        }
       }
     });
     reply.send({ success: true, orders, count: orders.length });

@@ -1,4 +1,6 @@
 const { isAdmin } = require("../middlewares/authMiddleware");
+const authMiddleware = require("../middlewares/auth");
+const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
 
 async function adminRoutes(fastify, options) {
@@ -46,7 +48,12 @@ async function adminRoutes(fastify, options) {
   // ---------------- COUPON MANAGEMENT ----------------
   // Admin coupon management
   fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);
-  fastify.get("/coupons", { preHandler: adminAuth }, adminController.getAllCoupons);
+  
+  // Get coupons - accessible to all authenticated users (customers, sellers, admin)
+  fastify.get("/coupons", { 
+    preHandler: [authMiddleware, checkRole(['CUSTOMER', 'SELLER', 'ADMIN'])]
+  }, adminController.getAllCoupons);
+  
   fastify.put("/coupons/:id", { preHandler: adminAuth }, adminController.updateCoupon);
   fastify.delete("/coupons/:id", { preHandler: adminAuth }, adminController.deleteCoupon);
 }

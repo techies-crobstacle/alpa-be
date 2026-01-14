@@ -28,6 +28,7 @@ model User {
   sellerProfile SellerProfile?
   notifications Notification[]
   wishlist      Wishlist[]
+  orderNotifications OrderNotification[]
 
   @@map("users")
 }
@@ -145,8 +146,8 @@ model CartItem {
 
 model Order {
   id                String      @id @default(cuid())
-  userId            String
-  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String?     // Made optional for guest orders
+  user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   items             OrderItem[]
   totalAmount       Decimal     @db.Decimal(10, 2)
   status            OrderStatus @default(PENDING)
@@ -159,6 +160,8 @@ model Order {
   customerPhone     String
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
+
+  orderNotifications OrderNotification[]
 
   @@index([userId])
   @@index([status])
@@ -245,6 +248,13 @@ enum NotificationType {
   ORDER_CANCELLED
   PRODUCT_OUT_OF_STOCK
   GENERAL
+  ORDER_PROCESSING
+  ORDER_CONFIRMATION
+  SHIPPING_PREPARATION
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+  PAYMENT_PENDING
+  STOCK_ALERT
 }
 
 enum Role {
@@ -315,4 +325,37 @@ model Wishlist {
   @@unique([userId, productId])
   @@index([userId])
   @@map("wishlists")
+}
+
+model OrderNotification {
+  id              String               @id @default(cuid())
+  orderId         String
+  sellerId        String
+  type            NotificationType
+  priority        Priority             @default(MEDIUM)
+  status          NotificationStatus   @default(PENDING)
+  message         String?
+  notes           String?
+  slaDeadline     DateTime
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  completedAt     DateTime?
+  acknowledgedAt  DateTime?
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seller User  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([priority])
+  @@index([type])
+  @@index([slaDeadline])
+  @@map("order_notifications")
+}
+
+enum NotificationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }

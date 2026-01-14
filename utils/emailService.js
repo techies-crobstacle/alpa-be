@@ -611,6 +611,183 @@ const sendContactFormEmail = async (email, name, subject, message) => {
 
 
 
+// Send SLA Warning Email
+const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatus) => {
+  try {
+    let seller, order;
+    
+    // Safely get seller and order information
+    try {
+      const prisma = require('../config/prisma');
+      
+      seller = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { email: true, name: true }
+      });
+
+      order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { 
+          id: true,
+          customerName: true,
+          totalAmount: true,
+          createdAt: true
+        }
+      });
+    } catch (dbError) {
+      console.error("Database error in SLA email:", dbError.message);
+      return { success: false, error: "Database connection error" };
+    }
+
+    if (!seller || !seller.email) {
+      console.log("No seller email found for SLA warning");
+      return { success: false, error: "Seller email not found" };
+    }
+
+    // Development mode - just log to console
+    if (isDevelopmentMode || !transporter) {
+      console.log("\n" + "=".repeat(50));
+      console.log("⚠️  SLA WARNING EMAIL - DEVELOPMENT MODE");
+      console.log("=".repeat(50));
+      console.log(`To: ${seller.email} (${seller.name})`);
+      console.log(`Order: ${orderId}`);
+      console.log(`Type: ${notificationType}`);
+      console.log(`Status: ${slaStatus.status}`);
+      console.log(`Time Remaining: ${slaStatus.timeRemaining.toFixed(1)} hours`);
+      console.log(`Customer: ${order?.customerName || 'N/A'}`);
+      console.log("=".repeat(50) + "\n");
+      return { success: true, message: "SLA warning logged to console (dev mode)" };
+    }
+
+    const urgencyColor = slaStatus.status === 'BREACHED' ? '#e74c3c' : '#f39c12';
+    const urgencyText = slaStatus.status === 'BREACHED' ? 'OVERDUE' : 'WARNING';
+
+    const mailOptions = {
+      from: `"Aboriginal Art Marketplace" <${process.env.EMAIL_USER}>`,
+      to: seller.email,
+      subject: `🚨 ${urgencyText}: ${notificationType.replace('_', ' ')} Required - Order #${orderId?.slice(-8)}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>SLA ${urgencyText}</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f4f4f4; font-family: Arial, sans-serif;">
+          <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" style="border-collapse: collapse; background-color: #ffffff; margin-top: 20px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <tr>
+              <td style="padding: 30px 40px; background: linear-gradient(135deg, ${urgencyColor} 0%, ${urgencyColor}dd 100%); text-align: center;">
+                <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
+                  ⚠️ SLA ${urgencyText}
+                </h1>
+                <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px; opacity: 0.9;">
+                  Immediate attention required
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 40px;">
+                <div style="background-color: ${urgencyColor}15; padding: 20px; border-radius: 8px; border-left: 4px solid ${urgencyColor}; margin-bottom: 30px;">
+                  <h2 style="margin: 0 0 10px 0; color: ${urgencyColor}; font-size: 20px;">
+                    ${notificationType.replace('_', ' ').toUpperCase()} Required
+                  </h2>
+                  <p style="margin: 0; color: #2c3e50; font-size: 16px; line-height: 1.6;">
+                    ${slaStatus.status === 'BREACHED' ? 
+                      'This order is now OVERDUE and requires immediate action.' :
+                      'This order is approaching its deadline and needs attention soon.'
+                    }
+                  </p>
+                </div>
+
+                <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 30px;">
+                  <h3 style="margin: 0 0 20px 0; color: #2c3e50; font-size: 18px; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">
+                    📋 Order Details
+                  </h3>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                      <div style="margin-bottom: 10px;">
+                        <strong style="color: #2c3e50;">Order ID:</strong>
+                        <span style="color: #555; margin-left: 10px;">#${orderId?.slice(-8) || 'N/A'}</span>
+                      </div>
+                      <div style="margin-bottom: 10px;">
+                        <strong style="color: #2c3e50;">Customer:</strong>
+                        <span style="color: #555; margin-left: 10px;">${order?.customerName || 'N/A'}</span>
+                      </div>
+                      <div style="margin-bottom: 10px;">
+                        <strong style="color: #2c3e50;">Order Value:</strong>
+                        <span style="color: #555; margin-left: 10px;">$${order?.totalAmount?.toString() || '0.00'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="background-color: #fff3cd; padding: 25px; border-radius: 8px; border: 1px solid #ffeaa7; margin-bottom: 30px;">
+                  <h3 style="margin: 0 0 15px 0; color: #856404; font-size: 18px;">
+                    ⏰ SLA Status
+                  </h3>
+                  <div style="margin-bottom: 10px;">
+                    <strong style="color: #856404;">Status:</strong>
+                    <span style="color: ${urgencyColor}; margin-left: 10px; font-weight: bold;">${slaStatus.status}</span>
+                  </div>
+                  <div style="margin-bottom: 10px;">
+                    <strong style="color: #856404;">Time Remaining:</strong>
+                    <span style="color: #555; margin-left: 10px;">
+                      ${slaStatus.isOverdue ? 
+                        `OVERDUE by ${Math.abs(slaStatus.timeRemaining).toFixed(1)} hours` :
+                        `${slaStatus.timeRemaining.toFixed(1)} hours remaining`
+                      }
+                    </span>
+                  </div>
+                  <div>
+                    <strong style="color: #856404;">Priority:</strong>
+                    <span style="color: ${urgencyColor}; margin-left: 10px; font-weight: bold;">${slaStatus.priority}</span>
+                  </div>
+                </div>
+
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${process.env.FRONTEND_URL || 'https://yourapp.com'}/seller/orders/${orderId}" 
+                     style="display: inline-block; padding: 15px 30px; background-color: ${urgencyColor}; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; transition: background-color 0.3s ease;">
+                    🚀 Take Action Now
+                  </a>
+                </div>
+
+                <div style="background-color: #e8f4fd; padding: 20px; border-radius: 8px; border-left: 4px solid #3498db;">
+                  <h4 style="margin: 0 0 10px 0; color: #2980b9; font-size: 16px;">💡 Next Steps:</h4>
+                  <ul style="margin: 0; padding-left: 20px; color: #34495e; line-height: 1.6;">
+                    <li>Log in to your seller dashboard</li>
+                    <li>Update the order status</li>
+                    <li>Add tracking information if applicable</li>
+                    <li>Contact the customer if needed</li>
+                  </ul>
+                </div>
+
+                <p style="color: #7f8c8d; line-height: 1.6; margin-top: 30px; font-size: 14px; border-top: 1px solid #ecf0f1; padding-top: 20px;">
+                  This is an automated SLA monitoring notification. Please take immediate action to avoid service level violations.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 20px; text-align: center; background-color: #2c3e50;">
+                <p style="margin: 0; color: #ffffff; font-size: 14px;">
+                  Aboriginal Art Marketplace - Seller Support System
+                </p>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    return { success: true };
+  } catch (error) {
+    console.error("SLA warning email error:", error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = { 
   generateOTP, 
   sendOTPEmail, 
@@ -618,7 +795,8 @@ module.exports = {
   sendOrderConfirmationEmail,
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail,
-  sendContactFormEmail
+  sendContactFormEmail,
+  sendSLAWarningEmail
 };
 
 

@@ -30,6 +30,7 @@
     "firebase": "^12.6.0",
     "firebase-admin": "^13.6.0",
     "json2csv": "^6.0.0-alpha.2",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.11",
     "nodemon": "^3.1.11",
     "passport": "^0.7.0",
