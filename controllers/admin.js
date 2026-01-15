@@ -1,6 +1,12 @@
 const prisma = require("../config/prisma");
+const {
+  notifySellerApproved,
+  notifySellerApprovalRejected,
+  notifySellerCulturalApproval,
+  notifySellerProductRecommendation
+} = require("./notification");
 
-// GET ORDERS BY SELLER ID (ADMIN ONLY)
+// GET ORDERS BY SELLER ID (ADMIN ONLY  )
 exports.getOrdersBySellerId = async (request, reply) => {
   try {
     // Only admin can access (route preHandler should enforce, but double-check)
@@ -293,7 +299,8 @@ exports.approveSeller = async (request, reply) => {
     }
     
     const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: sellerId }
+      where: { userId: sellerId },
+      include: { user: true }
     });
     
     if (!seller) {
@@ -310,6 +317,12 @@ exports.approveSeller = async (request, reply) => {
         approvedAt: new Date()
       }
     });
+
+    // Send approval notification
+    await notifySellerApproved(sellerId, seller.user.name);
+    
+    // Send product recommendation notification
+    await notifySellerProductRecommendation(sellerId, seller.user.name);
 
     return reply.status(200).send({ 
       success: true, 
@@ -337,7 +350,8 @@ exports.rejectSeller = async (request, reply) => {
     }
     
     const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: sellerId }
+      where: { userId: sellerId },
+      include: { user: true }
     });
     
     if (!seller) {
@@ -355,6 +369,9 @@ exports.rejectSeller = async (request, reply) => {
         rejectedAt: new Date()
       }
     });
+
+    // Send rejection notification
+    await notifySellerApprovalRejected(sellerId, reason || "Not specified", seller.user.name);
 
     return reply.status(200).send({ 
       success: true, 
@@ -456,7 +473,8 @@ exports.culturalApproval = async (request, reply) => {
     }
 
     const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: id }
+      where: { userId: id },
+      include: { user: true }
     });
 
     if (!seller) {
@@ -492,6 +510,20 @@ exports.culturalApproval = async (request, reply) => {
       where: { userId: id },
       data: updateData
     });
+
+    // Send cultural approval notification
+    await notifySellerCulturalApproval(
+      id, 
+      isApproved, 
+      feedback || "", 
+      seller.user.name
+    );
+
+    // If approved, also send product recommendation notification
+    if (isApproved) {
+      await notifySellerProductRecommendation(id, seller.user.name);
+      console.log(`📬 Product recommendation notification sent to seller ${id}`);
+    }
 
     reply.status(200).send({
       success: true,

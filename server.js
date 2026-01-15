@@ -114,19 +114,23 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const orderNotificationRoutes = require("./routes/orderNotificationRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
+const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
   requestTimeout: 30000 // 30 second timeout
 });
 
-// Register CORS - FIXED VERSION
+// Register CORS - Allow all origins with credentials
 app.register(require("@fastify/cors"), {
-  origin: true, // Allow all origins (simplest fix)
+  origin: true, // Allow all origins and echo back the request origin
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 });
+
+// Register cookie plugin for session management
+app.register(require("@fastify/cookie"));
 
 app.register(require("@fastify/formbody"));
 app.register(require("@fastify/multipart"), {
@@ -189,5 +193,10 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   // Initialize SLA monitoring after server starts
   setTimeout(() => {
     initializeSLAMonitoring();
+  }, 5000); // Wait 5 seconds for server to be fully ready
+  
+  // Initialize email verification reminder scheduler
+  setTimeout(() => {
+    scheduleEmailVerificationReminder();
   }, 5000); // Wait 5 seconds for server to be fully ready
 });

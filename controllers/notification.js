@@ -105,6 +105,84 @@ const notifySellerLowStock = async (sellerId, productId, productTitle, currentSt
   );
 };
 
+// SELLER APPROVAL NOTIFICATIONS
+const notifySellerApproved = async (sellerId, sellerName = 'Seller') => {
+  const title = '✅ Your Account Has Been Approved!';
+  const message = `Congratulations ${sellerName}! Your seller account has been approved by our admin team. You can now proceed with uploading products and setting up your store.`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'SELLER_APPROVED',
+    sellerId,
+    'seller',
+    { approvalType: 'account' }
+  );
+};
+
+const notifySellerApprovalRejected = async (sellerId, reason = 'Not specified', sellerName = 'Seller') => {
+  const title = '❌ Your Account Application Was Not Approved';
+  const message = `We reviewed your seller application, but it does not meet our current requirements. Reason: ${reason}. Please review and reapply after addressing the concerns.`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'SELLER_REJECTED',
+    sellerId,
+    'seller',
+    { rejectionReason: reason }
+  );
+};
+
+// CULTURAL APPROVAL NOTIFICATIONS
+const notifySellerCulturalApproval = async (sellerId, approved, feedback = '', sellerName = 'Seller') => {
+  let title, message;
+
+  if (approved) {
+    title = '✅ Cultural Approval Granted!';
+    message = `Congratulations ${sellerName}! Your cultural background and story have been approved. Your store is now eligible to go live once you upload the minimum required products (5+ products recommended, start with 1-2 SKUs).`;
+  } else {
+    title = '⚠️ Cultural Approval Requires Review';
+    message = `Your cultural information submission requires further review. Feedback: ${feedback || 'Please review your submission and resubmit.'}`;
+  }
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'CULTURAL_APPROVAL',
+    sellerId,
+    'seller',
+    { 
+      approved,
+      feedback,
+      approvalType: 'cultural'
+    }
+  );
+};
+
+// PRODUCT RECOMMENDATION NOTIFICATION
+const notifySellerProductRecommendation = async (sellerId, sellerName = 'Seller') => {
+  const title = '📦 Product Upload Recommendations';
+  const message = `Welcome to your seller dashboard, ${sellerName}! To maximize your store's success, we recommend uploading at least 5 products. You can start with 1-2 SKUs (Stock Keeping Units) per product and expand from there. More products increase visibility and customer trust.`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'PRODUCT_RECOMMENDATION',
+    sellerId,
+    'seller',
+    { 
+      recommendedCount: 5,
+      minimumSKU: 1,
+      suggestedSKU: 2
+    }
+  );
+};
+
 // ADMIN NOTIFICATIONS
 const notifyAdminNewOrder = async (orderId, orderDetails = {}) => {
   const { customerName, sellerName, totalAmount, itemCount } = orderDetails;
@@ -311,6 +389,10 @@ module.exports = {
   notifySellerNewOrder,
   notifySellerProductStatusChange,
   notifySellerLowStock,
+  notifySellerApproved,
+  notifySellerApprovalRejected,
+  notifySellerCulturalApproval,
+  notifySellerProductRecommendation,
   notifyAdminNewOrder,
   notifyAdminNewProduct,
   notifyAdminOrderStatusChange

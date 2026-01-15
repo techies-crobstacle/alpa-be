@@ -17,6 +17,8 @@ model User {
   isVerified    Boolean  @default(false)
   profileImage  String?
   emailVerified Boolean  @default(false)
+  emailVerificationDeadline DateTime? // 7 days from signup after OTP verification
+  emailVerificationReminderSentAt DateTime? // Track when 7-day reminder email was sent
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

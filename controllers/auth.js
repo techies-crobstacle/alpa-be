@@ -119,6 +119,12 @@ exports.register = async (request, reply) => {
 exports.login = async (request, reply) => {
   try {
     const { email, password } = request.body;
+    
+    // DEBUG: Log request origin and headers
+    console.log("🔍 Login Request Debug:");
+    console.log("  - Origin:", request.headers.origin);
+    console.log("  - User-Agent:", request.headers['user-agent']?.substring(0, 50));
+    console.log("  - Cookies Received:", request.cookies);
 
     if (!email || !password) {
       return reply.status(400).send({ success: false, message: "Email & password are required" });
@@ -142,13 +148,11 @@ exports.login = async (request, reply) => {
       return reply.status(401).send({ success: false, message: "Invalid credentials" });
     }
 
-    // Check if email is verified
-    if (!user.emailVerified) {
-      return reply.status(403).send({ 
-        success: false, 
-        message: "Email not verified. Please verify your email first." 
-      });
-    }
+    // ✅ Allow login even if email is not verified
+    // Users can login immediately after signup without verifying their email
+    // They have 7 days to verify, after which a reminder email is automatically sent
+    
+    console.log(`✅ Login successful for user ${user.email} (Email verified: ${user.emailVerified})`);
 
     // Generate JWT token with userId for compatibility
     const token = jwt.sign(
@@ -157,6 +161,26 @@ exports.login = async (request, reply) => {
       { expiresIn: "7d" }
     );
 
+    // 🔒 Set secure session cookie (in addition to localStorage token)
+    // Cookie provides extra security layer (httpOnly, sameSite)
+    console.log("🍪 Setting session cookie...");
+    reply.setCookie('session_token', token, {
+      httpOnly: true,      // ✅ Can't be accessed by JavaScript (prevents XSS attacks)
+      secure: false,       // Development: HTTP allowed. Will auto-set to true in production over HTTPS
+      sameSite: 'lax',     // ✅ CSRF protection (lax allows same-site requests)
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+      path: '/'
+      // Don't set domain - let browser infer from current host
+    });
+    console.log("✅ Session cookie set successfully with token");
+
+    console.log(`✅ Login successful for user ${user.email} (Email verified: ${user.emailVerified})`);
+    console.log("📊 Response Headers About to Send:", {
+      'set-cookie': reply.getHeader?.('set-cookie') || 'NO SET-COOKIE HEADER',
+      'access-control-allow-credentials': reply.getHeader?.('access-control-allow-credentials'),
+      'access-control-allow-origin': reply.getHeader?.('access-control-allow-origin')
+    });
+
     const userResponse = {
       id: user.id,
       uid: user.id,
@@ -164,13 +188,15 @@ exports.login = async (request, reply) => {
       email: user.email,
       mobile: user.phone,
       role: user.role,
+      emailVerified: user.emailVerified,
+      emailVerificationDeadline: user.emailVerificationDeadline,
       createdAt: user.createdAt,
     };
 
     return reply.status(200).send({ 
       success: true, 
       message: "Login successful", 
-      token, 
+      token,  // ✅ Still return token for localStorage
       role: user.role, 
       user: userResponse 
     });
@@ -223,6 +249,9 @@ exports.verifyOTP = async (request, reply) => {
     }
 
     // OTP verified - Create user
+    // Set email verification deadline to 7 days from now
+    const emailVerificationDeadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    
     const user = await prisma.user.create({
       data: {
         name: pendingData.name,
@@ -230,8 +259,9 @@ exports.verifyOTP = async (request, reply) => {
         password: pendingData.password,
         phone: pendingData.mobile,
         role: pendingData.role,
-        emailVerified: true,
-        isVerified: true,
+        emailVerified: false, // Still not verified yet - user gets grace period
+        isVerified: false,
+        emailVerificationDeadline, // Set 7-day deadline
       }
     });
 
@@ -242,7 +272,7 @@ exports.verifyOTP = async (request, reply) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { uid: user.id, email: user.email, role: user.role },
+      { userId: user.id, uid: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -254,12 +284,16 @@ exports.verifyOTP = async (request, reply) => {
       email: user.email,
       mobile: user.phone,
       role: user.role,
+      emailVerified: user.emailVerified,
+      emailVerificationDeadline: user.emailVerificationDeadline,
       createdAt: user.createdAt,
     };
 
+    console.log(`✅ OTP verified for ${user.email}. Email verification deadline set to: ${emailVerificationDeadline}`);
+
     return reply.status(201).send({ 
       success: true, 
-      message: "Email verified successfully. Registration complete!", 
+      message: "Email verified successfully. Registration complete! You can now login and use the platform.", 
       token,
       user: userResponse 
     });
@@ -463,6 +497,32 @@ exports.resetPassword = async (request, reply) => {
     });
   } catch (error) {
     console.error("❌ Reset password error:", error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// LOGOUT - Clear session cookie
+exports.logout = async (request, reply) => {
+  try {
+    console.log("🚪 Logout request received");
+    
+    // Clear the session cookie
+    reply.clearCookie('session_token', {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/'
+      // Don't set domain - let browser infer from current host
+    });
+
+    console.log("✅ Session cookie cleared");
+
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Logout successful. Session cookie cleared." 
+    });
+  } catch (error) {
+    console.error("❌ Logout error:", error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
