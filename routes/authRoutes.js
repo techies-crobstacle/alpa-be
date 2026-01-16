@@ -1,4 +1,4 @@
-const { register, login, logout, verifyOTP, resendOTP, forgotPassword, resetPassword } = require("../controllers/auth");
+const { register, login, logout, verifyOTP, resendOTP, forgotPassword, resetPassword, sendLoginVerification, verifyLoginOTP } = require("../controllers/auth");
 
 async function authRoutes(fastify, options) {
   fastify.post("/signup", register);
@@ -8,6 +8,10 @@ async function authRoutes(fastify, options) {
   fastify.post("/logout", logout);
   fastify.post("/forgot-password", forgotPassword);
   fastify.post("/reset-password", resetPassword);
+  
+  // New login verification routes
+  fastify.post("/send-login-verification", sendLoginVerification);
+  fastify.post("/verify-login-otp", verifyLoginOTP);
 }
 
 module.exports = authRoutes;

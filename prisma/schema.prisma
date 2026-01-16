@@ -31,6 +31,8 @@ model User {
   notifications Notification[]
   wishlist      Wishlist[]
   orderNotifications OrderNotification[]
+  userSessions  UserSession[]
+  loginVerifications LoginVerification[]
 
   @@map("users")
 }
@@ -49,6 +51,36 @@ model PendingRegistration {
   updatedAt DateTime @updatedAt
 
   @@map("pending_registrations")
+}
+
+model UserSession {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceFingerprint     String   // Browser + OS + IP hash for device identification
+  lastVerifiedAt        DateTime @default(now())
+  verificationExpiryAt  DateTime // 7 days from last verification
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([userId, deviceFingerprint])
+  @@map("user_sessions")
+}
+
+model LoginVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String
+  otp       String
+  otpExpiry DateTime
+  deviceFingerprint String
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("login_verifications")
 }
 
 model SellerProfile {
