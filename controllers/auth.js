@@ -604,128 +604,18 @@ exports.logout = async (request, reply) => {
   }
 };
 
-// HELPER FUNCTION: Generate device fingerprint
-const generateDeviceFingerprint = (request) => {
-  const userAgent = request.headers['user-agent'] || '';
-  // Use request.ip for Fastify
-  const ip = request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip || '';
-  const acceptLanguage = request.headers['accept-language'] || '';
-  
-  // Create a simple fingerprint from browser info
-  const fingerprint = require('crypto')
-    .createHash('sha256')
-    .update(`${userAgent}-${ip}-${acceptLanguage}`)
-    .digest('hex');
-    
-  return fingerprint.substring(0, 16); // First 16 chars for storage
-};
-
-// SEND LOGIN VERIFICATION OTP
-exports.sendLoginVerification = async (request, reply) => {
-  try {
-    const { email, password } = request.body;
-    
-    if (!email || !password) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Email and password are required" 
-      });
-    }
-
-    const normalizedEmail = email.toLowerCase();
-    
-    // Verify user exists and password is correct
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
-    });
-
-    if (!user) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Invalid credentials" 
-      });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return reply.status(401).send({ 
-        success: false, 
-        message: "Invalid credentials" 
-      });
-    }
-
-    // Generate device fingerprint
-    const deviceFingerprint = generateDeviceFingerprint(request);
-    
-    // Generate OTP for login verification
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    
-    // Delete any existing login verification for this user/device
-    await prisma.loginVerification.deleteMany({
-      where: {
-        userId: user.id,
-        deviceFingerprint: deviceFingerprint
-      }
-    });
-    
-    // Create new login verification record
-    await prisma.loginVerification.create({
-      data: {
-        userId: user.id,
-        email: normalizedEmail,
-        otp: otp,
-        otpExpiry: otpExpiry,
-        deviceFingerprint: deviceFingerprint
-      }
-    });
-
-    // Send OTP email
-    const emailResult = await sendOTPEmail(
-      normalizedEmail, 
-      otp, 
-      user.name, 
-      "Login Verification Required"
-    );
-
-    if (!emailResult.success) {
-      return reply.status(500).send({
-        success: false,
-        message: "Failed to send verification email. Please try again.",
-        details: emailResult.error
-      });
-    }
-
-    console.log(`📧 Login verification OTP sent to ${normalizedEmail}`);
-
-    return reply.status(200).send({
-      success: true,
-      message: "Verification email sent. Please check your inbox and verify to login.",
-      requiresVerification: true,
-      email: normalizedEmail
-    });
-
-  } catch (error) {
-    console.error("❌ Send login verification error:", error);
-    return reply.status(500).send({ success: false, error: error.message });
-  }
-};
-
 // VERIFY LOGIN OTP AND COMPLETE LOGIN
 exports.verifyLoginOTP = async (request, reply) => {
   try {
     const { email, otp } = request.body;
-    
     if (!email || !otp) {
       return reply.status(400).send({ 
         success: false, 
         message: "Email and OTP are required" 
       });
     }
-
     const normalizedEmail = email.toLowerCase();
     const deviceFingerprint = generateDeviceFingerprint(request);
-    
     // Find verification record
     const verification = await prisma.loginVerification.findFirst({
       where: {
@@ -737,14 +627,12 @@ exports.verifyLoginOTP = async (request, reply) => {
         user: true
       }
     });
-
     if (!verification) {
       return reply.status(404).send({ 
         success: false, 
         message: "No verification request found or already verified" 
       });
     }
-
     // Check if OTP is expired
     if (new Date() > verification.otpExpiry) {
       return reply.status(400).send({ 
@@ -752,7 +640,6 @@ exports.verifyLoginOTP = async (request, reply) => {
         message: "OTP has expired. Please request a new one." 
       });
     }
-
     // Verify OTP
     if (verification.otp !== otp) {
       return reply.status(400).send({ 
@@ -760,16 +647,13 @@ exports.verifyLoginOTP = async (request, reply) => {
         message: "Invalid OTP" 
       });
     }
-
     // Mark verification as complete
     await prisma.loginVerification.update({
       where: { id: verification.id },
       data: { verified: true }
     });
-
     // Create/update user session for this device
     const sessionExpiryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    
     await prisma.userSession.upsert({
       where: {
         userId_deviceFingerprint: {
@@ -790,14 +674,12 @@ exports.verifyLoginOTP = async (request, reply) => {
         isActive: true
       }
     });
-
     // Generate JWT token
     const token = jwt.sign(
       { userId: verification.user.id, uid: verification.user.id, email: verification.user.email, role: verification.user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
     // Set secure session cookie
     reply.setCookie('session_token', token, {
       httpOnly: true,
@@ -806,9 +688,7 @@ exports.verifyLoginOTP = async (request, reply) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });
-
     console.log(`✅ Login verification successful for ${normalizedEmail}`);
-
     return reply.status(200).send({
       success: true,
       message: "Email verified successfully! You are now logged in.",
@@ -822,9 +702,25 @@ exports.verifyLoginOTP = async (request, reply) => {
       token: token,
       deviceVerified: true
     });
-
   } catch (error) {
     console.error("❌ Verify login OTP error:", error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
+
+// HELPER FUNCTION: Generate device fingerprint
+const generateDeviceFingerprint = (request) => {
+  const userAgent = request.headers['user-agent'] || '';
+  // Use request.ip for Fastify
+  const ip = request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip || '';
+  const acceptLanguage = request.headers['accept-language'] || '';
+  
+  // Create a simple fingerprint from browser info
+  const fingerprint = require('crypto')
+    .createHash('sha256')
+    .update(`${userAgent}-${ip}-${acceptLanguage}`)
+    .digest('hex');
+    
+  return fingerprint.substring(0, 16); // First 16 chars for storage
+};
+
