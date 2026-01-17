@@ -77,14 +77,14 @@ exports.register = async (request, reply) => {
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
     console.log("💾 Storing pending registration in database...");
-    // Store pending registration (convert role to uppercase to match Prisma enum)
+    // Store pending registration
     await prisma.pendingRegistration.create({
       data: {
         name,
         email: normalizedEmail,
         password: hashedPassword,
         mobile,
-        role: normalizedRole, // Use the validated and normalized role
+        role: normalizedRole,
         otp,
         otpExpiry,
       }
@@ -119,130 +119,23 @@ exports.register = async (request, reply) => {
 exports.login = async (request, reply) => {
   try {
     const { email, password } = request.body;
-    
-    console.log("🔍 Login Request Debug:");
-    console.log("  - Origin:", request.headers.origin);
-    console.log("  - User-Agent:", request.headers['user-agent']?.substring(0, 50));
-    console.log("  - Cookies Received:", request.cookies);
-
     if (!email || !password) {
       return reply.status(400).send({ success: false, message: "Email & password are required" });
     }
-
     const normalizedEmail = email.toLowerCase();
-
-    // Get user by email
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
-    });
-
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
       return reply.status(404).send({ success: false, message: "User not found or invalid credentials" });
     }
-
-    // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    
     if (!isPasswordValid) {
       return reply.status(401).send({ success: false, message: "Invalid credentials" });
     }
-
-    // 🔐 NEW: Check device verification requirement
-    const deviceFingerprint = generateDeviceFingerprint(request);
-    
-    // Check if this device has a valid session
-    const existingSession = await prisma.userSession.findUnique({
-      where: {
-        userId_deviceFingerprint: {
-          userId: user.id,
-          deviceFingerprint: deviceFingerprint
-        }
-      }
-    });
-
-    const now = new Date();
-    let needsVerification = false;
-
-    if (!existingSession) {
-      // First time login on this device
-      needsVerification = true;
-      console.log(`🆕 First time login on this device for ${user.email}`);
-    } else if (now > existingSession.verificationExpiryAt || !existingSession.isActive) {
-      // Session expired (7 days passed)
-      needsVerification = true;
-      console.log(`⏰ Session expired for ${user.email} on this device`);
-      
-      // Mark session as inactive
-      await prisma.userSession.update({
-        where: { id: existingSession.id },
-        data: { isActive: false }
-      });
-    }
-
-    // If verification is needed, send OTP instead of logging in
-    if (needsVerification) {
-      // Generate OTP for login verification
-      const otp = generateOTP();
-      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-      
-      // Delete any existing login verification for this user/device
-      await prisma.loginVerification.deleteMany({
-        where: {
-          userId: user.id,
-          deviceFingerprint: deviceFingerprint
-        }
-      });
-      
-      // Create new login verification record
-      await prisma.loginVerification.create({
-        data: {
-          userId: user.id,
-          email: normalizedEmail,
-          otp: otp,
-          otpExpiry: otpExpiry,
-          deviceFingerprint: deviceFingerprint
-        }
-      });
-
-      // Send OTP email
-      const emailResult = await sendOTPEmail(
-        normalizedEmail, 
-        otp, 
-        user.name, 
-        "Login Verification Required - New Device or Session Expired"
-      );
-
-      if (!emailResult.success) {
-        return reply.status(500).send({
-          success: false,
-          message: "Failed to send verification email. Please try again.",
-          details: emailResult.error
-        });
-      }
-
-      console.log(`📧 Device verification required for ${normalizedEmail}`);
-
-      return reply.status(200).send({
-        success: true,
-        message: "Device verification required. Please check your email for the verification code.",
-        requiresVerification: true,
-        email: normalizedEmail,
-        reason: existingSession ? "Session expired after 7 days" : "First time login on this device"
-      });
-    }
-
-    // 🎉 Device is already verified and session is valid - proceed with normal login
-    console.log(`✅ Login successful for user ${user.email} (Device verified)`);
-
-    // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, uid: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
-    // Set secure session cookie
-    console.log("🍪 Setting session cookie...");
     reply.setCookie('session_token', token, {
       httpOnly: true,
       secure: false,
@@ -250,13 +143,6 @@ exports.login = async (request, reply) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });
-
-    console.log("📊 Response Headers About to Send:", {
-      'set-cookie': reply.getHeader?.('set-cookie') || 'NO SET-COOKIE HEADER',
-      'access-control-allow-credentials': reply.getHeader?.('access-control-allow-credentials'),
-      'access-control-allow-origin': reply.getHeader?.('access-control-allow-origin')
-    });
-
     const userResponse = {
       id: user.id,
       uid: user.id,
@@ -268,14 +154,12 @@ exports.login = async (request, reply) => {
       emailVerificationDeadline: user.emailVerificationDeadline,
       createdAt: user.createdAt,
     };
-
-    return reply.status(200).send({ 
-      success: true, 
-      message: "Login successful", 
+    return reply.status(200).send({
+      success: true,
+      message: "Login successful",
       token,
-      role: user.role, 
-      user: userResponse,
-      deviceVerified: true
+      role: user.role,
+      user: userResponse
     });
   } catch (error) {
     console.error("❌ Login error:", error);
@@ -325,10 +209,7 @@ exports.verifyOTP = async (request, reply) => {
       });
     }
 
-    // OTP verified - Create user
-    // Set email verification deadline to 7 days from now
-    const emailVerificationDeadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
-    
+    // OTP verified - Create user (emailVerified will be false, user will verify on first login)
     const user = await prisma.user.create({
       data: {
         name: pendingData.name,
@@ -336,9 +217,8 @@ exports.verifyOTP = async (request, reply) => {
         password: pendingData.password,
         phone: pendingData.mobile,
         role: pendingData.role,
-        emailVerified: false, // Still not verified yet - user gets grace period
+        emailVerified: false, // User needs to verify on first login
         isVerified: false,
-        emailVerificationDeadline, // Set 7-day deadline
       }
     });
 
@@ -362,15 +242,14 @@ exports.verifyOTP = async (request, reply) => {
       mobile: user.phone,
       role: user.role,
       emailVerified: user.emailVerified,
-      emailVerificationDeadline: user.emailVerificationDeadline,
       createdAt: user.createdAt,
     };
 
-    console.log(`✅ OTP verified for ${user.email}. Email verification deadline set to: ${emailVerificationDeadline}`);
+    console.log(`✅ OTP verified for ${user.email}. User will need to verify on first login.`);
 
     return reply.status(201).send({ 
       success: true, 
-      message: "Email verified successfully. Registration complete! You can now login and use the platform.", 
+      message: "Email verified successfully. Registration complete! You can now login.", 
       token,
       user: userResponse 
     });
@@ -460,22 +339,23 @@ exports.forgotPassword = async (request, reply) => {
     }
 
     // Generate OTP for password reset
-    const { generateOTP, sendOTPEmail } = require("../utils/emailService");
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store or update password reset request (reuse PendingRegistration table)
+    // Store or update password reset request
     await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
         otp,
         otpExpiry,
-        role: 'PASSWORD_RESET' // Use as flag for password reset
+        role: 'PASSWORD_RESET'
       },
       create: {
         email: normalizedEmail,
         name: user.name,
-        role: 'PASSWORD_RESET', // Use as flag for password reset
+        password: user.password, // Store existing password temporarily
+        mobile: user.phone || '',
+        role: 'PASSWORD_RESET',
         otp,
         otpExpiry
       }
@@ -554,8 +434,7 @@ exports.resetPassword = async (request, reply) => {
     }
 
     // Hash new password
-    const saltRounds = 12;
-    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
     // Update user password
     await prisma.user.update({
@@ -589,7 +468,6 @@ exports.logout = async (request, reply) => {
       secure: false,
       sameSite: 'lax',
       path: '/'
-      // Don't set domain - let browser infer from current host
     });
 
     console.log("✅ Session cookie cleared");
@@ -608,57 +486,75 @@ exports.logout = async (request, reply) => {
 exports.verifyLoginOTP = async (request, reply) => {
   try {
     const { email, otp } = request.body;
+    
     if (!email || !otp) {
       return reply.status(400).send({ 
         success: false, 
         message: "Email and OTP are required" 
       });
     }
+    
     const normalizedEmail = email.toLowerCase();
-    const deviceFingerprint = generateDeviceFingerprint(request);
-    // Find verification record
+
+    // Find the most recent unverified verification record for this email
     const verification = await prisma.loginVerification.findFirst({
       where: {
         email: normalizedEmail,
-        deviceFingerprint: deviceFingerprint,
         verified: false
       },
       include: {
         user: true
+      },
+      orderBy: {
+        createdAt: 'desc'
       }
     });
+
     if (!verification) {
+      console.log(`❌ No verification found for ${normalizedEmail}`);
       return reply.status(404).send({ 
         success: false, 
-        message: "No verification request found or already verified" 
+        message: "Verification session expired. Please login again to receive a new OTP." 
       });
     }
+
     // Check if OTP is expired
     if (new Date() > verification.otpExpiry) {
+      console.log(`⏰ OTP expired for ${normalizedEmail}`);
+      // Delete expired verification
+      await prisma.loginVerification.delete({
+        where: { id: verification.id }
+      });
       return reply.status(400).send({ 
         success: false, 
-        message: "OTP has expired. Please request a new one." 
+        message: "OTP has expired. Please login again to get a new OTP." 
       });
     }
+
     // Verify OTP
     if (verification.otp !== otp) {
+      console.log(`❌ Invalid OTP for ${normalizedEmail}`);
       return reply.status(400).send({ 
         success: false, 
-        message: "Invalid OTP" 
+        message: "Invalid OTP. Please check and try again." 
       });
     }
-    // Mark verification as complete
-    await prisma.loginVerification.update({
-      where: { id: verification.id },
-      data: { verified: true }
+
+    console.log(`✅ OTP verified for ${normalizedEmail}`);
+
+    // Delete the verification record (clean up)
+    await prisma.loginVerification.delete({
+      where: { id: verification.id }
     });
-    // Create/update user session for this device
-    const sessionExpiryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    // Create/update user session for this device (7 days validity)
+    const sessionExpiryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    
     await prisma.userSession.upsert({
       where: {
         userId_deviceFingerprint: {
           userId: verification.user.id,
-          deviceFingerprint: deviceFingerprint
+          deviceFingerprint: verification.deviceFingerprint
         }
       },
       update: {
@@ -668,18 +564,20 @@ exports.verifyLoginOTP = async (request, reply) => {
       },
       create: {
         userId: verification.user.id,
-        deviceFingerprint: deviceFingerprint,
+        deviceFingerprint: verification.deviceFingerprint,
         lastVerifiedAt: new Date(),
         verificationExpiryAt: sessionExpiryDate,
         isActive: true
       }
     });
+
     // Generate JWT token
     const token = jwt.sign(
       { userId: verification.user.id, uid: verification.user.id, email: verification.user.email, role: verification.user.role },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
+
     // Set secure session cookie
     reply.setCookie('session_token', token, {
       httpOnly: true,
@@ -688,18 +586,24 @@ exports.verifyLoginOTP = async (request, reply) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: '/'
     });
-    console.log(`✅ Login verification successful for ${normalizedEmail}`);
+
+    console.log(`✅ Login verification successful for ${normalizedEmail}. Device session valid for 7 days.`);
+
     return reply.status(200).send({
       success: true,
       message: "Email verified successfully! You are now logged in.",
       user: {
         id: verification.user.id,
+        uid: verification.user.id,
         email: verification.user.email,
         name: verification.user.name,
+        mobile: verification.user.phone,
         role: verification.user.role,
-        emailVerified: verification.user.emailVerified
+        emailVerified: verification.user.emailVerified,
+        createdAt: verification.user.createdAt
       },
       token: token,
+      role: verification.user.role,
       deviceVerified: true
     });
   } catch (error) {
@@ -708,19 +612,77 @@ exports.verifyLoginOTP = async (request, reply) => {
   }
 };
 
-// HELPER FUNCTION: Generate device fingerprint
-const generateDeviceFingerprint = (request) => {
-  const userAgent = request.headers['user-agent'] || '';
-  // Use request.ip for Fastify
-  const ip = request.headers['x-forwarded-for'] || request.headers['x-real-ip'] || request.ip || '';
-  const acceptLanguage = request.headers['accept-language'] || '';
-  
-  // Create a simple fingerprint from browser info
-  const fingerprint = require('crypto')
-    .createHash('sha256')
-    .update(`${userAgent}-${ip}-${acceptLanguage}`)
-    .digest('hex');
-    
-  return fingerprint.substring(0, 16); // First 16 chars for storage
-};
+// RESEND LOGIN OTP
+exports.resendLoginOTP = async (request, reply) => {
+  try {
+    const { email } = request.body;
 
+    if (!email) {
+      return reply.status(400).send({ success: false, message: "Email is required" });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Find the user
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!user) {
+      return reply.status(404).send({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    // Generate device fingerprint
+    const deviceFingerprint = generateDeviceFingerprint(request);
+
+    // Generate new OTP
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Delete existing unverified verification records for this user
+    await prisma.loginVerification.deleteMany({
+      where: {
+        userId: user.id,
+        verified: false
+      }
+    });
+
+    // Create new verification record
+    await prisma.loginVerification.create({
+      data: {
+        userId: user.id,
+        email: normalizedEmail,
+        otp: otp,
+        otpExpiry: otpExpiry,
+        deviceFingerprint: deviceFingerprint,
+        verified: false
+      }
+    });
+
+    // Send OTP email
+    const emailResult = await sendOTPEmail(
+      normalizedEmail,
+      otp,
+      user.name,
+      "Email Verification Required"
+    );
+
+    if (!emailResult.success) {
+      return reply.status(500).send({
+        success: false,
+        message: "Failed to send verification email. Please try again."
+      });
+    }
+
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Verification OTP resent to your email." 
+    });
+  } catch (error) {
+    console.error("❌ Resend login OTP error:", error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
