@@ -195,8 +195,13 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
     initializeSLAMonitoring();
   }, 5000); // Wait 5 seconds for server to be fully ready
   
-  // Initialize email verification reminder scheduler
-  setTimeout(() => {
-    scheduleEmailVerificationReminder();
-  }, 5000); // Wait 5 seconds for server to be fully ready
+  // Initialize email verification reminder scheduler (can be disabled via env var)
+  const enableEmailScheduler = process.env.ENABLE_EMAIL_SCHEDULER !== 'false';
+  if (enableEmailScheduler) {
+    setTimeout(() => {
+      scheduleEmailVerificationReminder();
+    }, 5000); // Wait 5 seconds for server to be fully ready
+  } else {
+    console.log("📧 Email verification scheduler disabled via ENABLE_EMAIL_SCHEDULER=false");
+  }
 });
