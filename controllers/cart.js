@@ -9,21 +9,35 @@ exports.addToCart = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "productId is required" });
     }
 
+
+    // Get product stock
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      select: { stock: true }
+    });
+    if (!product) {
+      return reply.status(404).send({ success: false, message: "Product not found" });
+    }
+
     // Find or create cart
     let cart = await prisma.cart.findUnique({
       where: { userId },
       include: { items: true }
     });
 
+    let newQuantity = quantity || 1;
     if (!cart) {
-      // Create new cart with item
+      // If creating new cart, just check requested quantity
+      if (newQuantity > product.stock) {
+        return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
+      }
       cart = await prisma.cart.create({
         data: {
           userId,
           items: {
             create: {
               productId,
-              quantity: quantity || 1
+              quantity: newQuantity
             }
           }
         },
@@ -41,20 +55,26 @@ exports.addToCart = async (request, reply) => {
       });
 
       if (existingItem) {
-        // Update quantity
+        // Calculate new total quantity
+        const totalQuantity = existingItem.quantity + newQuantity;
+        if (totalQuantity > product.stock) {
+          return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
+        }
         await prisma.cartItem.update({
           where: { id: existingItem.id },
           data: {
-            quantity: { increment: quantity || 1 }
+            quantity: totalQuantity
           }
         });
       } else {
-        // Add new item
+        if (newQuantity > product.stock) {
+          return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
+        }
         await prisma.cartItem.create({
           data: {
             cartId: cart.id,
             productId,
-            quantity: quantity || 1
+            quantity: newQuantity
           }
         });
       }
