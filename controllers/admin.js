@@ -723,8 +723,9 @@ exports.createCoupon = async (request, reply) => {
 // GET ALL COUPONS (Admin only)
 exports.getAllCoupons = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
-      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    // Allow all authenticated users to access
+    if (!request.user) {
+      return reply.status(403).send({ message: 'Access denied. Login required.' });
     }
 
     const coupons = await prisma.coupon.findMany({
@@ -845,7 +846,7 @@ exports.deleteCoupon = async (request, reply) => {
 // VALIDATE COUPON (Customer use)
 exports.validateCoupon = async (request, reply) => {
   try {
-    const { code } = request.body;
+    const { code, orderTotal } = request.body;
 
     if (!code) {
       return reply.status(400).send({
@@ -873,6 +874,19 @@ exports.validateCoupon = async (request, reply) => {
       });
     }
 
+    // Validate orderTotal and calculate discount if provided
+    let discountAmount = null;
+    if (orderTotal !== undefined) {
+      const total = parseFloat(orderTotal);
+      if (isNaN(total) || total <= 0) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Order total must be a positive number'
+        });
+      }
+      discountAmount = parseFloat(((total * coupon.discount) / 100).toFixed(2));
+    }
+
     reply.send({
       success: true,
       message: 'Coupon is valid',
@@ -880,7 +894,8 @@ exports.validateCoupon = async (request, reply) => {
         id: coupon.id,
         code: coupon.code,
         discount: coupon.discount,
-        expiresAt: coupon.expiresAt
+        expiresAt: coupon.expiresAt,
+        discountAmount
       }
     });
   } catch (error) {
