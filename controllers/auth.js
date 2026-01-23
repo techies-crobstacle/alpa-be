@@ -694,37 +694,28 @@ const { generateOTP, sendOTPEmail } = require("../utils/emailService");
 
 // HELPER FUNCTION: Generate device fingerprint
 const generateDeviceFingerprint = (request) => {
-  // Use multiple headers for device identification (Render.com compatible)
-  const xForwardedFor = request.headers['x-forwarded-for'] || '';
-  const xRealIP = request.headers['x-real-ip'] || '';
-  const clientIP = request.ip || request.connection?.remoteAddress || '';
+  // Use only stable headers for device identification (exclude IP address)
   const userAgent = request.headers['user-agent'] || '';
   const acceptLanguage = request.headers['accept-language'] || '';
   const acceptEncoding = request.headers['accept-encoding'] || '';
-  
-  // On Render.com, x-forwarded-for typically contains the real client IP
-  // Fall back to other IP sources if needed
-  const effectiveIP = xForwardedFor.split(',')[0].trim() || xRealIP || clientIP;
-  
-  // Create fingerprint from multiple sources
+
+  // Create fingerprint from stable sources only
   const fingerprintData = [
-    effectiveIP,
     userAgent,
     acceptLanguage,
     acceptEncoding
   ].join('|');
-  
+
   const fingerprint = require('crypto')
     .createHash('sha256')
     .update(fingerprintData)
     .digest('hex');
-    
-  console.log("🔐 Device fingerprint created:", {
-    effectiveIP: effectiveIP ? effectiveIP.substring(0, 8) + "..." : "none",
+
+  console.log("🔐 Device fingerprint created (no IP):", {
     userAgentLength: userAgent.length,
     fingerprintPrefix: fingerprint.substring(0, 8)
   });
-    
+
   return fingerprint.substring(0, 32); // First 32 chars for storage
 };
 
