@@ -626,24 +626,32 @@ exports.getAllCategories = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    // Get all categories with product counts using aggregation
-    const categoryData = await prisma.product.groupBy({
-      by: ['category'],
-      _count: {
-        id: true
-      },
-      orderBy: {
-        _count: {
-          id: 'desc' // Order by product count (highest first)
+    // Get all products with their categories
+    const products = await prisma.product.findMany({
+      select: {
+        id: true,
+        category: true
+      }
+    });
+
+    // Group categories manually after trimming whitespace
+    const categoryMap = new Map();
+    
+    products.forEach(product => {
+      const trimmedCategory = product.category?.trim();
+      if (trimmedCategory) {
+        if (categoryMap.has(trimmedCategory)) {
+          categoryMap.set(trimmedCategory, categoryMap.get(trimmedCategory) + 1);
+        } else {
+          categoryMap.set(trimmedCategory, 1);
         }
       }
     });
 
-    // Transform the data to a more readable format
-    const categories = categoryData.map(item => ({
-      name: item.category,
-      productCount: item._count.id
-    }));
+    // Convert to array and sort by product count (highest first)
+    const categories = Array.from(categoryMap.entries())
+      .map(([name, productCount]) => ({ name, productCount }))
+      .sort((a, b) => b.productCount - a.productCount);
 
     // Get total categories and total products
     const totalProducts = await prisma.product.count();
