@@ -54,17 +54,20 @@ model PendingRegistration {
 }
 
 model UserSession {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   userId                String
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceFingerprint     String   // Browser + OS + IP hash for device identification
-  lastVerifiedAt        DateTime @default(now())
-  verificationExpiryAt  DateTime // 7 days from last verification
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceFingerprint     String    // Browser + OS characteristics for device similarity
+  trustedDeviceToken    String?   @map("trusted_device_token") // Secure token for trusted device identification
+  lastVerifiedAt        DateTime  @default(now())
+  verificationExpiryAt  DateTime  // 30 days from last verification for trusted devices
+  isActive              Boolean   @default(true)
+  revokedAt             DateTime? @map("revoked_at") // When device trust was explicitly revoked
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@unique([userId, deviceFingerprint])
+  @@index([trustedDeviceToken])
   @@map("user_sessions")
 }
 
