@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma");
+const { generateSalesReportCSV } = require("../utils/csvExport");
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
@@ -909,6 +910,127 @@ exports.validateCoupon = async (request, reply) => {
   } catch (error) {
     console.error('Validate coupon error:', error);
     reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+
+// Get Analysis and Sales Reports (Admin only)
+
+// GET SALES ANALYTICS (ADMIN)
+exports.getSalesAnalytics = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    // Get all orders with items, products, user, and seller info
+    const orders = await prisma.order.findMany({
+      include: {
+        items: { include: { product: { include: { seller: true } } } },
+        user: { select: { id: true, name: true } }
+      }
+    });
+
+    let totalRevenue = 0;
+    let totalOrders = orders.length;
+    let totalItemsSold = 0;
+    let statusBreakdown = {
+      PENDING: 0, CONFIRMED: 0, PROCESSING: 0, SHIPPED: 0, DELIVERED: 0, CANCELLED: 0
+    };
+    let productSales = {};
+    let topProducts = [];
+
+    orders.forEach(order => {
+      totalRevenue += Number(order.totalAmount || 0);
+      statusBreakdown[order.status] = (statusBreakdown[order.status] || 0) + 1;
+      order.items.forEach(item => {
+        totalItemsSold += item.quantity;
+        const pid = item.productId;
+        if (!productSales[pid]) {
+          productSales[pid] = {
+            productId: pid,
+            title: item.product.title,
+            sellerId: item.product.sellerId,
+            sellerName: item.product.seller?.storeName || item.product.seller?.businessName || '',
+            quantity: 0,
+            revenue: 0
+          };
+        }
+        productSales[pid].quantity += item.quantity;
+        productSales[pid].revenue += Number(item.price) * item.quantity;
+      });
+    });
+
+    // Top products by quantity sold
+    topProducts = Object.values(productSales)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 10);
+
+    const averageOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(2) : "0.00";
+
+    reply.send({
+      success: true,
+      analytics: {
+        totalRevenue: totalRevenue.toFixed(2),
+        totalOrders,
+        totalItemsSold,
+        averageOrderValue,
+        statusBreakdown,
+        topProducts,
+        period: { startDate: "All time", endDate: "Present" }
+      }
+    });
+  } catch (error) {
+    console.error("Sales analytics error:", error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// EXPORT SALES CSV (ADMIN)
+exports.exportSalesCSV = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    // Get all orders with items, products, user, and seller info
+    const orders = await prisma.order.findMany({
+      include: {
+        items: { include: { product: { include: { seller: true } } } },
+        user: { select: { id: true, name: true, email: true, phone: true } }
+      }
+    });
+
+    // Transform orders for CSV utility
+    const csvOrders = orders.map(order => ({
+      id: order.id,
+      createdAt: order.createdAt,
+      status: order.status,
+      paymentMethod: order.paymentMethod,
+      trackingNumber: order.trackingNumber,
+      estimatedDelivery: order.estimatedDelivery,
+      customerName: order.user?.name,
+      customerEmail: order.user?.email,
+      customerPhone: order.user?.phone,
+      shippingAddress: order.shippingAddress,
+      products: order.items.map(item => ({
+        productId: item.productId,
+        title: item.product.title,
+        price: item.price,
+        quantity: item.quantity,
+        sellerId: item.product.sellerId,
+        sellerName: item.product.seller?.storeName || item.product.seller?.businessName || ''
+      }))
+    }));
+
+    const csv = generateSalesReportCSV(csvOrders);
+
+    reply.header('Content-Type', 'text/csv');
+    reply.header('Content-Disposition', 'attachment; filename="sales_report.csv"');
+    reply.send(csv);
+  } catch (error) {
+    console.error("Export sales CSV error:", error);
+    reply.status(500).send({ success: false, message: error.message });
   }
 };
 
