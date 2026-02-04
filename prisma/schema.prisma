@@ -142,6 +142,8 @@ model Product {
   seller      User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   sellerName  String?
   status      ProductStatus @default(PENDING)
+  featured    Boolean       @default(false)
+  tags        String[]      @default([])
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -153,6 +155,7 @@ model Product {
   @@index([sellerId])
   @@index([category])
   @@index([status])
+  @@index([featured])
   @@map("products")
 }
 

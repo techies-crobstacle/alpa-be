@@ -225,7 +225,23 @@ exports.getProductsBySeller = async (request, reply) => {
     }
 
     const products = await prisma.product.findMany({
-      where: { sellerId }
+      where: { sellerId },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        price: true,
+        stock: true,
+        category: true,
+        images: true,
+        status: true,
+        featured: true,
+        tags: true,
+        sellerName: true,
+        createdAt: true,
+        updatedAt: true
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
     return reply.status(200).send({ 

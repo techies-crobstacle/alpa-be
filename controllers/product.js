@@ -7,10 +7,24 @@ const {
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {
-  let { title, description, price, stock, category } = request.body;
+  let { title, description, price, stock, category, featured, tags } = request.body;
   // Parse price and stock to correct types
   if (typeof price === 'string') price = parseFloat(price);
   if (typeof stock === 'string') stock = parseInt(stock);
+  
+  // Parse featured to boolean (default false if not provided)
+  featured = featured === 'true' || featured === true ? true : false;
+  
+  // Parse tags - can be single string or array
+  let parsedTags = [];
+  if (tags) {
+    if (Array.isArray(tags)) {
+      parsedTags = tags.filter(tag => tag && tag.trim() !== '');
+    } else if (typeof tags === 'string') {
+      parsedTags = tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+    }
+  }
+  
   let images = [];
   const { uploadToCloudinary } = require("../config/cloudinary");
 
@@ -66,7 +80,9 @@ exports.addProduct = async (request, reply) => {
         images,
         sellerId,
         sellerName: seller.storeName || seller.businessName,
-        status: productStatus
+        status: productStatus,
+        featured,
+        tags: parsedTags
       }
     });
 
@@ -91,7 +107,9 @@ exports.addProduct = async (request, reply) => {
         stock: product.stock,
         category: product.category,
         images: product.images,
-        status: product.status
+        status: product.status,
+        featured: product.featured,
+        tags: product.tags
       },
       note: productStatus === "PENDING" ? "Product will go live when your store is activated by admin" : "Product is live",
       totalProducts: seller.productCount + 1
@@ -146,10 +164,11 @@ exports.getProductById = async (request, reply) => {
   }
 };
 
-// UPDATE PRODUCT (Seller only)
+// UPDATE PRODUCT (Seller or Admin)
 exports.updateProduct = async (request, reply) => {
   try {
-    const sellerId = request.user.userId; // From authenticateSeller middleware
+    const userId = request.user.userId;
+    const userRole = request.user.role; // From auth middleware
     
     const product = await prisma.product.findUnique({
       where: { id: request.params.id }
@@ -159,14 +178,14 @@ exports.updateProduct = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    // Check if the logged-in seller is the owner
-    if (product.sellerId !== sellerId) {
+    // Check authorization: only seller (owner) or admin can update
+    if (userRole !== "admin" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to update this product" });
     }
 
     // Support both JSON and form/multipart bodies
     const body = request.body || {};
-    let { title, description, price, stock, category } = body;
+    let { title, description, price, stock, category, featured, tags } = body;
     let images = [];
     const { uploadToCloudinary } = require("../config/cloudinary");
 
@@ -174,9 +193,6 @@ exports.updateProduct = async (request, reply) => {
     if (request.files) {
       let filesArray = [];
       if (Array.isArray(request.files)) {
-          // Debug log incoming body and files
-          console.log('UpdateProduct request.body:', request.body);
-          console.log('UpdateProduct request.files:', request.files);
         filesArray = request.files;
       } else if (typeof request.files === 'object') {
         filesArray = [request.files];
@@ -206,6 +222,22 @@ exports.updateProduct = async (request, reply) => {
     if (typeof stock === 'string' && stock.trim() !== '') stock = parseInt(stock);
     else if (typeof stock === 'string') stock = undefined;
 
+    // Parse featured to boolean
+    let parsedFeatured = undefined;
+    if (featured !== undefined) {
+      parsedFeatured = featured === 'true' || featured === true ? true : false;
+    }
+
+    // Parse tags - can be single string or array
+    let parsedTags = undefined;
+    if (tags) {
+      if (Array.isArray(tags)) {
+        parsedTags = tags.filter(tag => tag && tag.trim() !== '');
+      } else if (typeof tags === 'string') {
+        parsedTags = tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+      }
+    }
+
     // Only update fields that are not undefined and not empty string
     const updateData = {};
     if (title !== undefined && title !== '') updateData.title = title;
@@ -214,6 +246,8 @@ exports.updateProduct = async (request, reply) => {
     if (stock !== undefined && stock !== '') updateData.stock = stock;
     if (category !== undefined && category !== '') updateData.category = category;
     if (images.length > 0) updateData.images = images;
+    if (parsedFeatured !== undefined) updateData.featured = parsedFeatured;
+    if (parsedTags !== undefined) updateData.tags = parsedTags;
 
     const updatedProduct = await prisma.product.update({
       where: { id: request.params.id },
