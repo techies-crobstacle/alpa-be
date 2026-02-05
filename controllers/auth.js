@@ -172,6 +172,20 @@ exports.login = async (request, reply) => {
     const deviceFingerprint = generateDeviceFingerprint(request);
     const now = new Date();
 
+    // LANE SELECTION LOGIC
+    const isInternalStaff = user.role === 'ADMIN'; // Treat ADMIN as Internal Staff
+    
+    // Default Session Configuration (Lane 1: External)
+    let sessionDuration = "7d";
+    let cookieMaxAge = 7 * 24 * 60 * 60 * 1000;
+    
+    // Override for Lane 2: Internal Staff
+    if (isInternalStaff) {
+       sessionDuration = "15m";
+       cookieMaxAge = 15 * 60 * 1000;
+       console.log("🔒 Internal Staff Login (Lane 2): Configuring for 15m session and AuthPoint MFA bypass.");
+    }
+
     console.log("🔍 Checking device session for:", { 
       email: normalizedEmail, 
       deviceFingerprint,
@@ -207,45 +221,54 @@ exports.login = async (request, reply) => {
     let needsVerification = false;
     let verificationReason = "";
 
-    // Determine if verification is needed
-    if (!user.emailVerified) {
-      // First login after signup - always require verification
-      console.log("🔐 First login after signup - email verification required");
-      needsVerification = true;
-      verificationReason = "first_login_after_signup";
-    } else if (!existingSession) {
-      // New device - require verification
-      console.log("🆕 New device detected - verification needed");
-      needsVerification = true;
-      verificationReason = "new_device";
-    } else if (now > existingSession.verificationExpiryAt) {
-      // Session expired (7 days passed) - require verification again
-      console.log("⏰ Session expired (7 days passed) - verification needed");
-      needsVerification = true;
-      verificationReason = "session_expired";
+    // Determine if verification is needed (Logic Split)
+    if (isInternalStaff) {
+        // Lane 2: Internal Staff
+        // MFA handled by AuthPoint -> Verification skipped here
+        needsVerification = false;
+        verificationReason = "internal_auth_policy_bypass";
+        console.log("✅ Internal Staff Policy: Bypassing OTP, assuming AuthPoint verified.");
     } else {
-      // Session exists and is valid (within 7 days) - allow direct login
-      // This includes re-login after logout, as long as within 7-day window
-      console.log("✅ Valid session found (same device, within 7 days) - direct login allowed");
-      needsVerification = false;
-      verificationReason = "session_valid";
+        // Lane 1: External Users (Original Logic)
+        if (!user.emailVerified) {
+          // First login after signup - always require verification
+          console.log("🔐 First login after signup - email verification required");
+          needsVerification = true;
+          verificationReason = "first_login_after_signup";
+        } else if (!existingSession) {
+          // New device - require verification
+          console.log("🆕 New device detected - verification needed");
+          needsVerification = true;
+          verificationReason = "new_device";
+        } else if (now > existingSession.verificationExpiryAt) {
+          // Session expired (7 days passed) - require verification again
+          console.log("⏰ Session expired (7 days passed) - verification needed");
+          needsVerification = true;
+          verificationReason = "session_expired";
+        } else {
+          // Session exists and is valid (within 7 days) - allow direct login
+          // This includes re-login after logout, as long as within 7-day window
+          console.log("✅ Valid session found (same device, within 7 days) - direct login allowed");
+          needsVerification = false;
+          verificationReason = "session_valid";
+        }
     }
 
     // If verification is NOT needed, proceed with direct login
     if (!needsVerification) {
-      console.log("✅ Device verified and session active - direct login");
+      console.log(`✅ Direct login - Session Duration: ${sessionDuration}`);
 
       const token = jwt.sign(
         { userId: user.id, uid: user.id, email: user.email, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: sessionDuration }
       );
 
       reply.setCookie('session_token', token, {
         httpOnly: true,
         secure: false,
         sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: cookieMaxAge,
         path: '/'
       });
 
@@ -262,12 +285,15 @@ exports.login = async (request, reply) => {
 
       return reply.status(200).send({
         success: true,
-        message: "Login successful - device already verified",
+        message: isInternalStaff 
+          ? "Login successful (Internal Session: 15m)" 
+          : "Login successful - device already verified",
         token,
         role: user.role,
         user: userResponse,
         deviceVerified: true,
-        verificationReason: verificationReason
+        verificationReason: verificationReason,
+        sessionType: isInternalStaff ? "internal_short" : "external_long_lived"
       });
     }
 
@@ -915,6 +941,61 @@ exports.resendLoginOTP = async (request, reply) => {
     return reply.status(500).send({ success: false, error: error.message });
   }
 };
+
+// SAML Callback Handler (Lane 2)
+exports.samlCallback = async (request, reply) => {
+  try {
+    console.log("🔐 Processing SAML Callback...");
+    
+    // Passport strategies populate user
+    const user = request.user;
+    
+    if (!user) {
+      console.error("❌ No user returned from SAML strategy");
+      const frontendUrl = process.env.FRONTEND_URL || "https://alpa-dashboard.vercel.app";
+      return reply.redirect(`${frontendUrl}/login?error=auth_failed`);
+    }
+    
+    console.log(`✅ SAML Login Success for ${user.email}`);
+    
+    // Lane 2: Internal Admin Session -> 15 Minutes (Strict Requirement)
+    const sessionDuration = "15m";
+    const cookieMaxAge = 15 * 60 * 1000;
+    
+    const token = jwt.sign(
+      { userId: user.id, uid: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: sessionDuration }
+    );
+    
+    // Set Cookie
+    reply.setCookie('session_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: cookieMaxAge,
+      path: '/'
+    });
+    
+    // Handle RelayState or Default Redirect
+    const relayState = request.body.RelayState;
+    const targetUrl = (relayState && relayState.startsWith("http")) 
+      ? relayState 
+      : (process.env.FRONTEND_URL || "https://alpa-dashboard.vercel.app/");
+      
+    console.log(`➡️ Redirecting to: ${targetUrl}`);
+    
+    // Return redirect to frontend with token in query param for client-side persistence if needed
+    // or rely on the cookie if the domains are aligned.
+    return reply.redirect(`${targetUrl}?token=${token}&type=saml`);
+    
+  } catch (error) {
+    console.error("❌ SAML Callback Error:", error);
+    const frontendUrl = process.env.FRONTEND_URL || "https://alpa-dashboard.vercel.app";
+    return reply.redirect(`${frontendUrl}/login?error=server_error`);
+  }
+};
+
 
 
 

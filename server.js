@@ -132,6 +132,24 @@ app.register(require("@fastify/cors"), {
 // Register cookie plugin for session management
 app.register(require("@fastify/cookie"));
 
+// Register Session (Required for Passport)
+app.register(require("@fastify/secure-session"), {
+  secret: process.env.SESSION_SECRET || "averylogphrasebiggerthanthirtytwochars", 
+  salt: process.env.SESSION_SALT || "mq9hDxBq5Jmq9hDx",
+  cookie: {
+    path: '/',
+    httpOnly: true // Use httpOnly for security
+  }
+});
+
+// Register Passport
+const fastifyPassport = require("@fastify/passport");
+app.register(fastifyPassport.initialize());
+app.register(fastifyPassport.secureSession());
+
+// Load Passport Config (SAML)
+require("./config/passport")(app);
+
 app.register(require("@fastify/formbody"));
 app.register(require("@fastify/multipart"), {
   limits: {
