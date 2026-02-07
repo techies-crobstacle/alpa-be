@@ -183,13 +183,65 @@ exports.getSellerDetails = async (request, reply) => {
     return reply.status(200).send({ 
       success: true, 
       seller: {
+        // Basic Info
         id: seller.id,
-        userId: seller.userId,
+        sellerId: seller.userId,
+        contactPerson: seller.contactPerson,
+        
+        // Business Info
         businessName: seller.businessName,
+        businessType: seller.businessType,
+        businessAddress: seller.businessAddress,
+        abn: seller.abn,
+        yearsInBusiness: seller.yearsInBusiness,
+        
+        // Store Info
         storeName: seller.storeName,
+        storeDescription: seller.storeDescription,
+        storeLogo: seller.storeLogo,
+        storeBanner: seller.storeBanner,
+        storeLocation: seller.storeLocation,
+        
+        // Cultural Info
+        culturalBackground: seller.culturalBackground,
+        culturalStory: seller.culturalStory,
+        culturalApprovalStatus: seller.culturalApprovalStatus,
+        culturalApprovalAt: seller.culturalApprovalAt,
+        culturalApprovalFeedback: seller.culturalApprovalFeedback,
+        culturalApprovalBy: seller.culturalApprovalBy,
+        
+        // KYC Documents
+        kycDocuments: seller.kycDocuments || [],
+        kycSubmitted: seller.kycSubmitted,
+        
+        // Bank Details
+        bankDetails: seller.bankDetails,
+        
+        // Status & Metrics
         status: seller.status,
         productCount: seller.productCount,
-        ...seller
+        minimumProductsUploaded: seller.minimumProductsUploaded,
+        onboardingStep: seller.onboardingStep,
+        
+        // Admin Notes
+        adminNotes: seller.adminNotes,
+        
+        // Verification Info
+        verificationDocs: seller.verificationDocs,
+        
+        // Dates
+        createdAt: seller.createdAt,
+        updatedAt: seller.updatedAt,
+        approvedAt: seller.approvedAt,
+        rejectedAt: seller.rejectedAt,
+        suspendedAt: seller.suspendedAt,
+        activatedAt: seller.activatedAt,
+        submittedForReviewAt: seller.submittedForReviewAt,
+        
+        // User Info
+        userEmail: seller.user.email,
+        userPhone: seller.user.phone,
+        userCreatedAt: seller.user.createdAt
       },
       products,
       orders,
