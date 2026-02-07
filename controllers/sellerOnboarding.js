@@ -411,7 +411,7 @@ exports.validateABN = async (request, reply) => {
     const abnResult = await abnLookup(abn);
 
     reply.status(200).send({
-      success: true,
+      success: abnResult.isValid,
       abnValidation: abnResult
     });
   } catch (error) {
