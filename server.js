@@ -113,6 +113,7 @@ const couponRoutes = require("./routes/couponRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const orderNotificationRoutes = require("./routes/orderNotificationRoutes");
+const categoryRoutes = require("./routes/categoryRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 
@@ -188,6 +189,7 @@ app.register(couponRoutes, { prefix: "/api/coupons" });
 app.register(notificationRoutes, { prefix: "/api/notifications" });
 app.register(wishlistRoutes, { prefix: "/api/wishlist" });
 app.register(orderNotificationRoutes, { prefix: "/api/seller" });
+app.register(categoryRoutes, { prefix: "/api/categories" });
 
 
 

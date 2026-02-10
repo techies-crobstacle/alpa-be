@@ -42,8 +42,10 @@ async function adminRoutes(fastify, options) {
   fastify.post("/sellers/activate/:id", { preHandler: adminAuth }, adminController.activateSeller);
 
   // ---------------- CATEGORY MANAGEMENT ----------------
-  // Get all categories with product counts
-  fastify.get("/categories", { preHandler: adminAuth }, adminController.getAllCategories);
+  // Get all categories with product counts (Admin & Seller)
+  fastify.get("/categories", { 
+    preHandler: [authMiddleware, checkRole(['ADMIN', 'SELLER'])]
+  }, adminController.getAllCategories);
 
   // ---------------- COUPON MANAGEMENT ----------------
   // Admin coupon management
