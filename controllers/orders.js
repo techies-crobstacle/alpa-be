@@ -11,6 +11,7 @@ const {
   notifyAdminNewOrder
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
+const PDFDocument = require('pdfkit');
 
 // Stock Management and Inventory Alert with SMS Notification
 exports.createOrder = async (request, reply) => {
@@ -857,6 +858,367 @@ exports.trackGuestOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Track guest order error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// Download Invoice as PDF
+exports.downloadInvoice = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+    const { orderId } = request.params;
+
+    // Get order with all necessary details
+    const order = await prisma.order.findFirst({
+      where: { 
+        id: orderId,
+        userId: userId // Ensure user can only access their own orders
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+                category: true
+              }
+            }
+          }
+        },
+        user: {
+          select: {
+            name: true,
+            email: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ 
+        success: false, 
+        message: "Order not found or you don't have permission to access this order" 
+      });
+    }
+
+    // Check if order status is DELIVERED
+    if (order.status !== 'DELIVERED') {
+      return reply.status(400).send({ 
+        success: false, 
+        message: `Invoice can only be downloaded when order status is DELIVERED. Current status: ${order.status}` 
+      });
+    }
+
+    // Create PDF document
+    const doc = new PDFDocument({ margin: 50 });
+    
+    // Set response headers for PDF download
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
+    
+    // Create buffer to collect PDF data
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    
+    // Return the PDF when it's finished
+    return new Promise((resolve, reject) => {
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        reply.send(pdfBuffer);
+        resolve();
+      });
+      
+      doc.on('error', reject);
+
+    // Add company header
+    doc.fontSize(20)
+       .text('ALPA MARKETPLACE', 50, 50)
+       .fontSize(10)
+       .text('Your Cultural Marketplace', 50, 75)
+       .moveDown();
+
+    // Add invoice title and details
+    doc.fontSize(16)
+       .text('INVOICE', 50, 120)
+       .fontSize(12)
+       .text(`Invoice #: ${order.id}`, 50, 145)
+       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 160)
+       .text(`Status: ${order.status}`, 50, 175);
+
+    // Customer details
+    doc.fontSize(14)
+       .text('Bill To:', 50, 210)
+       .fontSize(12)
+       .text(`${order.customerName}`, 50, 230)
+       .text(`${order.customerEmail}`, 50, 245)
+       .text(`${order.customerPhone}`, 50, 260);
+
+    // Shipping address
+    if (order.shippingAddress) {
+      let address;
+      try {
+        address = typeof order.shippingAddress === 'string' 
+          ? JSON.parse(order.shippingAddress) 
+          : order.shippingAddress;
+      } catch (error) {
+        console.warn('Failed to parse shipping address as JSON, using as string:', order.shippingAddress);
+        address = { street: order.shippingAddress.toString() };
+      }
+      
+      doc.fontSize(14)
+         .text('Ship To:', 300, 210)
+         .fontSize(12)
+         .text(`${address.street || address.toString() || ''}`, 300, 230)
+         .text(`${address.city || ''}, ${address.state || ''}`, 300, 245)
+         .text(`${address.zipCode || address.zip || ''}`, 300, 260)
+         .text(`${address.country || ''}`, 300, 275);
+    }
+
+    // Items table header
+    const tableTop = 320;
+    doc.fontSize(12)
+       .text('Item', 50, tableTop)
+       .text('Quantity', 250, tableTop)
+       .text('Unit Price', 350, tableTop)
+       .text('Total', 450, tableTop);
+
+    // Draw line under header
+    doc.moveTo(50, tableTop + 15)
+       .lineTo(550, tableTop + 15)
+       .stroke();
+
+    let yPosition = tableTop + 30;
+    let subtotal = 0;
+
+    // Add items
+    order.items.forEach((item) => {
+      const itemTotal = Number(item.price) * item.quantity;
+      subtotal += itemTotal;
+
+      doc.text(item.product.title, 50, yPosition)
+         .text(item.quantity.toString(), 250, yPosition)
+         .text(`$${Number(item.price).toFixed(2)}`, 350, yPosition)
+         .text(`$${itemTotal.toFixed(2)}`, 450, yPosition);
+      
+      yPosition += 20;
+    });
+
+    // Add totals
+    yPosition += 20;
+    doc.moveTo(50, yPosition)
+       .lineTo(550, yPosition)
+       .stroke();
+
+    yPosition += 20;
+    doc.fontSize(12)
+       .text('Subtotal:', 350, yPosition)
+       .text(`$${subtotal.toFixed(2)}`, 450, yPosition);
+
+    yPosition += 20;
+    doc.fontSize(14)
+       .text('Total Amount:', 350, yPosition)
+       .text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPosition);
+
+    // Payment method
+    yPosition += 40;
+    doc.fontSize(12)
+       .text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPosition);
+
+    // Footer
+    yPosition += 60;
+    doc.fontSize(10)
+       .text('Thank you for your business!', 50, yPosition)
+       .text('For questions about this invoice, contact support@alpa.com', 50, yPosition + 15);
+
+      // Finalize PDF
+      doc.end();
+    });
+
+  } catch (error) {
+    console.error("Download invoice error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// Download Guest Order Invoice as PDF
+exports.downloadGuestInvoice = async (request, reply) => {
+  try {
+    const { orderId, customerEmail } = request.query;
+
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Order ID and customer email are required" 
+      });
+    }
+
+    // Get order with verification using email
+    const order = await prisma.order.findFirst({
+      where: { 
+        id: orderId,
+        customerEmail: customerEmail // Verify with guest email
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+                category: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ 
+        success: false, 
+        message: "Order not found or email doesn't match" 
+      });
+    }
+
+    // Check if order status is DELIVERED
+    if (order.status !== 'DELIVERED') {
+      return reply.status(400).send({ 
+        success: false, 
+        message: `Invoice can only be downloaded when order status is DELIVERED. Current status: ${order.status}` 
+      });
+    }
+
+    // Create PDF document
+    const doc = new PDFDocument({ margin: 50 });
+    
+    // Set response headers for PDF download
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
+    
+    // Create buffer to collect PDF data
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    
+    // Return the PDF when it's finished
+    return new Promise((resolve, reject) => {
+      doc.on('end', () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        reply.send(pdfBuffer);
+        resolve();
+      });
+      
+      doc.on('error', reject);
+
+    // Add company header
+    doc.fontSize(20)
+       .text('ALPA MARKETPLACE', 50, 50)
+       .fontSize(10)
+       .text('Your Cultural Marketplace', 50, 75)
+       .moveDown();
+
+    // Add invoice title and details
+    doc.fontSize(16)
+       .text('INVOICE', 50, 120)
+       .fontSize(12)
+       .text(`Invoice #: ${order.id}`, 50, 145)
+       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 160)
+       .text(`Status: ${order.status}`, 50, 175);
+
+    // Customer details
+    doc.fontSize(14)
+       .text('Bill To:', 50, 210)
+       .fontSize(12)
+       .text(`${order.customerName}`, 50, 230)
+       .text(`${order.customerEmail}`, 50, 245)
+       .text(`${order.customerPhone}`, 50, 260);
+
+    // Shipping address
+    if (order.shippingAddress) {
+      let address;
+      try {
+        address = typeof order.shippingAddress === 'string' 
+          ? JSON.parse(order.shippingAddress) 
+          : order.shippingAddress;
+      } catch (error) {
+        console.warn('Failed to parse shipping address as JSON, using as string:', order.shippingAddress);
+        address = { street: order.shippingAddress.toString() };
+      }
+      
+      doc.fontSize(14)
+         .text('Ship To:', 300, 210)
+         .fontSize(12)
+         .text(`${address.street || address.toString() || ''}`, 300, 230)
+         .text(`${address.city || ''}, ${address.state || ''}`, 300, 245)
+         .text(`${address.zipCode || address.zip || ''}`, 300, 260)
+         .text(`${address.country || ''}`, 300, 275);
+    }
+
+    // Items table header
+    const tableTop = 320;
+    doc.fontSize(12)
+       .text('Item', 50, tableTop)
+       .text('Quantity', 250, tableTop)
+       .text('Unit Price', 350, tableTop)
+       .text('Total', 450, tableTop);
+
+    // Draw line under header
+    doc.moveTo(50, tableTop + 15)
+       .lineTo(550, tableTop + 15)
+       .stroke();
+
+    let yPosition = tableTop + 30;
+    let subtotal = 0;
+
+    // Add items
+    order.items.forEach((item) => {
+      const itemTotal = Number(item.price) * item.quantity;
+      subtotal += itemTotal;
+
+      doc.text(item.product.title, 50, yPosition)
+         .text(item.quantity.toString(), 250, yPosition)
+         .text(`$${Number(item.price).toFixed(2)}`, 350, yPosition)
+         .text(`$${itemTotal.toFixed(2)}`, 450, yPosition);
+      
+      yPosition += 20;
+    });
+
+    // Add totals
+    yPosition += 20;
+    doc.moveTo(50, yPosition)
+       .lineTo(550, yPosition)
+       .stroke();
+
+    yPosition += 20;
+    doc.fontSize(12)
+       .text('Subtotal:', 350, yPosition)
+       .text(`$${subtotal.toFixed(2)}`, 450, yPosition);
+
+    yPosition += 20;
+    doc.fontSize(14)
+       .text('Total Amount:', 350, yPosition)
+       .text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPosition);
+
+    // Payment method
+    yPosition += 40;
+    doc.fontSize(12)
+       .text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPosition);
+
+    // Footer
+    yPosition += 60;
+    doc.fontSize(10)
+       .text('Thank you for your business!', 50, yPosition)
+       .text('For questions about this invoice, contact support@alpa.com', 50, yPosition + 15);
+
+      // Finalize PDF
+      doc.end();
+    });
+
+  } catch (error) {
+    console.error("Download guest invoice error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

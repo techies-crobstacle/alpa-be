@@ -46,6 +46,9 @@ async function orderRoutes(fastify, options) {
   // Reorder - Add all items from previous order to cart
   fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
 
+  // Download invoice PDF
+  fastify.get("/invoice/:orderId", { preHandler: authenticateUser }, orderController.downloadInvoice);
+
   // ----------- GUEST CHECKOUT ROUTES (No authentication) -----------
 
   // Create guest order (no authentication required)
@@ -53,6 +56,9 @@ async function orderRoutes(fastify, options) {
 
   // Track guest order by Order ID and Email (no authentication required)
   fastify.get("/guest/track", orderController.trackGuestOrder);
+
+  // Download guest invoice PDF (no authentication required)
+  fastify.get("/guest/invoice", orderController.downloadGuestInvoice);
 }
 
 module.exports = orderRoutes;

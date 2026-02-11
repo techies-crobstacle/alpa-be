@@ -276,6 +276,27 @@ model Notification {
   @@map("notifications")
 }
 
+model CategoryRequest {
+  id                String              @id @default(cuid())
+  categoryName      String              @unique
+  description       String?
+  sampleProduct     String?             // Product reference example
+  status            CategoryStatus      @default(PENDING)
+  requestedBy       String?             // User ID who requested it (optional)
+  approvedBy        String?             // Admin ID who approved it
+  rejectedBy        String?             // Admin ID who rejected it
+  approvalMessage   String?             // Message when approved
+  rejectionMessage  String?             // Message when rejected
+  requestedAt       DateTime            @default(now())
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  updatedAt         DateTime            @updatedAt
+
+  @@index([status])
+  @@index([requestedAt])
+  @@map("category_requests")
+}
+
 enum NotificationType {
   ORDER_STATUS_CHANGED
   NEW_ORDER
@@ -339,6 +360,12 @@ enum ProductStatus {
   PENDING
   ACTIVE
   INACTIVE
+}
+
+enum CategoryStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Coupon {

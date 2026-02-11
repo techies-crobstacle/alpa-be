@@ -1,6 +1,6 @@
 const prisma = require("../config/prisma");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
-const { validateABNWithVigil, verifyIdentityDocument } = require("../utils/vigilAPI");
+const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -407,11 +407,11 @@ exports.validateABN = async (request, reply) => {
       });
     }
 
-    // Call Vigil API for ABN validation
-    const abnResult = await validateABNWithVigil(abn);
+    // Call ABR API for ABN lookup
+    const abnResult = await abnLookup(abn);
 
     reply.status(200).send({
-      success: true,
+      success: abnResult.isValid,
       abnValidation: abnResult
     });
   } catch (error) {
