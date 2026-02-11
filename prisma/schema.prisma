@@ -420,6 +420,32 @@ model OrderNotification {
   @@map("order_notifications")
 }
 
+model ShippingMethod {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g., "Express Shipping", "Standard Shipping"
+  description String?  // Additional details about the shipping method
+  cost        Decimal  @db.Decimal(10, 2) // Cost in AUD
+  estimatedDays String? // e.g., "2-3 business days"
+  isActive    Boolean  @default(true) // Can be toggled on/off by admin
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("shipping_methods")
+}
+
+model GST {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g., "Standard GST", "Reduced GST"
+  percentage  Decimal  @db.Decimal(5, 2) // GST percentage (e.g., 10.00 for 10%)
+  description String?  // Additional details about the GST
+  isActive    Boolean  @default(true) // Can be toggled on/off by admin
+  isDefault   Boolean  @default(false) // Mark as default GST to apply
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("gst_settings")
+}
+
 enum NotificationStatus {
   PENDING
   IN_PROGRESS

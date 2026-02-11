@@ -830,6 +830,7 @@ if (process.env.SENDGRID_API_KEY) {
 
 const isDevelopmentMode = !emailConfigured;
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
+const senderName = process.env.SENDER_NAME || 'Aboriginal Art Marketplace';
 
 // Generate 6-digit OTP
 const generateOTP = () => {
@@ -851,7 +852,10 @@ const sendOTPEmail = async (email, otp, name) => {
 
   const msg = {
     to: email,
-    from: senderEmail,
+    from: {
+      // email: senderEmail,
+      name: senderName
+    },
     subject: "Email Verification - OTP",
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -922,7 +926,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     to: email,
     from: {
       email: senderEmail,
-      name: "Aboriginal Art Marketplace"
+      name: senderName
     },
     subject: `Order Confirmation - Invoice #${orderDetails.orderId}`,
     html: `
@@ -1028,8 +1032,9 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   const msg = {
     to: email,
     from: {
-      email: senderEmail,
-      name: "Aboriginal Art Marketplace"
+      name: senderName,
+      email: senderEmail
+      
     },
     subject: `Order Update - #${orderDetails.orderId}`,
     html: `
@@ -1087,7 +1092,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
     to: email,
     from: {
       email: senderEmail,
-      name: "Aboriginal Art Marketplace"
+      name: senderName
     },
     subject: `🎉 New Order #${orderDetails.orderId}`,
     html: `
@@ -1140,7 +1145,10 @@ const sendContactFormEmail = async (email, name, subject, message) => {
 
   const msg = {
     to: email,
-    from: senderEmail,
+    from: {
+      email: senderEmail,
+      name: senderName
+    },
     subject: `Contact Form Received - ${subject}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -1192,7 +1200,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
       to: seller.email,
       from: {
         email: senderEmail,
-        name: "Aboriginal Art Marketplace"
+        name: senderName
       },
       subject: `🚨 ${notificationType} Required - Order #${orderId?.slice(-8)}`,
       html: `
