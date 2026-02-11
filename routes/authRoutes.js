@@ -12,6 +12,12 @@ async function authRoutes(fastify, options) {
   fastify.post("/verify-login-otp", verifyLoginOTP);
   
   // SAML Routes (Lane 2)
+  
+  // FIX: Add this so the IT Head gets a "Success" message when he clicks the link
+  fastify.get("/saml/callback", async (req, reply) => {
+      return reply.send("Status: OK. SAML Callback Endpoint is Active (Expecting HTTP-POST data).");
+  });
+
   // Initiates the SAML login flow (redirects to AuthPoint)
   fastify.get("/saml/login", fastifyPassport.authenticate("saml", {
       session: false 
