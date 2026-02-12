@@ -4,9 +4,10 @@ const prisma = require("../config/prisma");
  * Calculate cart totals with shipping and GST
  * @param {Array} cartItems - Array of cart items with product details
  * @param {String} shippingMethodId - Selected shipping method ID (optional)
+ * @param {String} gstId - Selected GST ID (optional)
  * @returns {Object} - Calculated totals
  */
-const calculateCartTotals = async (cartItems, shippingMethodId = null) => {
+const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = null) => {
   try {
     // Calculate subtotal
     const subtotal = cartItems.reduce((sum, item) => {
@@ -29,12 +30,19 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null) => {
       }
     }
 
-    // Get default GST
-    const defaultGST = await prisma.gST.findFirst({
-      where: { isActive: true, isDefault: true }
-    });
+    // Get GST - either specific GST or default
+    let gstDetails = null;
+    if (gstId) {
+      gstDetails = await prisma.gST.findUnique({
+        where: { id: gstId, isActive: true }
+      });
+    } else {
+      gstDetails = await prisma.gST.findFirst({
+        where: { isActive: true, isDefault: true }
+      });
+    }
 
-    const gstPercentage = defaultGST ? parseFloat(defaultGST.percentage || 0) : 0;
+    const gstPercentage = gstDetails ? parseFloat(gstDetails.percentage || 0) : 0;
     const gstAmount = ((subtotal + shippingCost) * gstPercentage) / 100;
     
     const grandTotal = subtotal + shippingCost + gstAmount;
@@ -46,7 +54,7 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null) => {
       gstAmount: gstAmount.toFixed(2),
       grandTotal: grandTotal.toFixed(2),
       selectedShipping,
-      gstDetails: defaultGST
+      gstDetails
     };
   } catch (error) {
     console.error("Calculate cart totals error:", error);
@@ -56,6 +64,11 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null) => {
 
 exports.addToCart = async (request, reply) => {
   try {
+    // Check if request body exists
+    if (!request.body) {
+      return reply.status(400).send({ success: false, message: "Request body is required" });
+    }
+
     const { productId, quantity } = request.body;
     const userId = request.user.userId; // from auth middleware
 
@@ -149,7 +162,7 @@ exports.addToCart = async (request, reply) => {
 exports.getMyCart = async (request, reply) => {
   try {
     const userId = request.user.userId; // from auth middleware
-    const { shippingMethodId } = request.query; // Optional: selected shipping method
+    const { shippingMethodId, gstId } = request.query; // Optional: selected shipping method and GST
 
     console.log(`🛒 Fetching cart for user: ${userId}`);
 
@@ -230,7 +243,7 @@ exports.getMyCart = async (request, reply) => {
     });
 
     // Calculate totals
-    const calculations = await calculateCartTotals(cleanedCart, shippingMethodId);
+    const calculations = await calculateCartTotals(cleanedCart, shippingMethodId, gstId);
 
     return reply.status(200).send({
       success: true,
@@ -248,6 +261,15 @@ exports.getMyCart = async (request, reply) => {
 exports.updateCartQuantity = async (request, reply) => {
   try {
     const userId = request.user.userId;
+    
+    // Check if request body exists
+    if (!request.body) {
+      return reply.status(400).send({
+        success: false,
+        message: "Request body is required"
+      });
+    }
+
     const { productId, quantity } = request.body;
 
     if (!productId || quantity === undefined) {
@@ -359,7 +381,7 @@ exports.removeFromCart = async (request, reply) => {
  */
 exports.calculateGuestCart = async (request, reply) => {
   try {
-    const { items, shippingMethodId } = request.body;
+    const { items, shippingMethodId, gstId } = request.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return reply.status(400).send({
@@ -422,6 +444,66 @@ exports.calculateGuestCart = async (request, reply) => {
       }
     }
 
+    // Get available options for guest users
+    const availableShipping = await prisma.shippingMethod.findMany({
+      where: { isActive: true },
+      orderBy: { cost: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        cost: true,
+        estimatedDays: true
+      }
+    });
+
+    const availableGST = await prisma.gST.findMany({
+      where: { isActive: true },
+      orderBy: { percentage: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        percentage: true,
+        description: true,
+        isDefault: true
+      }
+    });
+
+    const defaultGST = await prisma.gST.findFirst({
+      where: { isActive: true, isDefault: true },
+      select: {
+        id: true,
+        name: true,
+        percentage: true,
+        description: true
+      }
+    });
+
+    // Calculate totals
+    const calculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
+
+    return reply.status(200).send({
+      success: true,
+      cart: cartItems,
+      availableShipping,
+      availableGST,
+      defaultGST,
+      calculations
+    });
+  } catch (error) {
+    console.error("Calculate guest cart error:", error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * PUBLIC - Get checkout options (shipping methods and GST) for guest users
+ */
+const getCheckoutOptions = async (request, reply) => {
+  try {
     // Get available shipping methods
     const availableShipping = await prisma.shippingMethod.findMany({
       where: { isActive: true },
@@ -432,6 +514,19 @@ exports.calculateGuestCart = async (request, reply) => {
         description: true,
         cost: true,
         estimatedDays: true
+      }
+    });
+
+    // Get all active GST options
+    const availableGST = await prisma.gST.findMany({
+      where: { isActive: true },
+      orderBy: { percentage: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        percentage: true,
+        description: true,
+        isDefault: true
       }
     });
 
@@ -446,18 +541,18 @@ exports.calculateGuestCart = async (request, reply) => {
       }
     });
 
-    // Calculate totals
-    const calculations = await calculateCartTotals(cartItems, shippingMethodId);
-
     return reply.status(200).send({
       success: true,
-      cart: cartItems,
-      availableShipping,
-      gst: defaultGST,
-      calculations
+      data: {
+        shipping: availableShipping,
+        gst: {
+          options: availableGST,
+          default: defaultGST
+        }
+      }
     });
   } catch (error) {
-    console.error("Calculate guest cart error:", error);
+    console.error("Get checkout options error:", error);
     return reply.status(500).send({
       success: false,
       message: error.message
@@ -467,3 +562,4 @@ exports.calculateGuestCart = async (request, reply) => {
 
 // Export the helper function for use in other controllers
 exports.calculateCartTotals = calculateCartTotals;
+exports.getCheckoutOptions = getCheckoutOptions;

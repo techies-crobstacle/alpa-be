@@ -1,5 +1,5 @@
 const { authenticateUser } = require("../middlewares/authMiddleware");
-const { addToCart, getMyCart, updateCartQuantity, removeFromCart, calculateGuestCart } = require("../controllers/cart");
+const { addToCart, getMyCart, updateCartQuantity, removeFromCart, calculateGuestCart, getCheckoutOptions } = require("../controllers/cart");
 
 async function cartRoutes(fastify, options) {
   // ADD TO CART
@@ -11,6 +11,9 @@ async function cartRoutes(fastify, options) {
   
   // GUEST CART CALCULATION (No authentication required)
   fastify.post("/calculate-guest", calculateGuestCart);
+  
+  // PUBLIC CHECKOUT OPTIONS (No authentication required)
+  fastify.get("/checkout-options", getCheckoutOptions);
 }
 
 module.exports = cartRoutes;

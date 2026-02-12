@@ -11,16 +11,17 @@ const {
   notifyAdminNewOrder
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
+const { calculateCartTotals } = require("./cart");
 const PDFDocument = require('pdfkit');
 
 // Stock Management and Inventory Alert with SMS Notification
 exports.createOrder = async (request, reply) => {
   try {
     const userId = request.user.userId;
-    const { shippingAddress, paymentMethod } = request.body;
+    const { shippingAddress, paymentMethod, shippingMethodId, gstId } = request.body;
 
-    if (!shippingAddress || !paymentMethod) {
-      return reply.status(400).send({ success: false, message: "All fields are required" });
+    if (!shippingAddress || !paymentMethod || !shippingMethodId) {
+      return reply.status(400).send({ success: false, message: "All fields including shipping method are required" });
     }
 
     // Get user details for SMS
@@ -48,11 +49,24 @@ exports.createOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Cart is empty" });
     }
 
-    let totalAmount = 0;
+    // Calculate proper cart totals including shipping and GST
+    const cartCalculations = await calculateCartTotals(cart.items, shippingMethodId, gstId);
+    
+    // Get shipping method details
+    const shippingMethod = await prisma.shippingMethod.findUnique({
+      where: { id: shippingMethodId, isActive: true }
+    });
+
+    if (!shippingMethod) {
+      return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+    }
+
+    // Use grand total from cart calculations
+    const totalAmount = parseFloat(cartCalculations.grandTotal);
     let sellerNotifications = new Map();
     const orderItems = [];
 
-    // Stock validation + price calculation
+    // Stock validation + prepare order items
     for (const item of cart.items) {
       const product = item.product;
 
@@ -66,7 +80,6 @@ exports.createOrder = async (request, reply) => {
 
       const itemPrice = Number(product.price);
       const itemTotal = itemPrice * item.quantity;
-      totalAmount += itemTotal;
 
       orderItems.push({
         productId: product.id,
@@ -105,12 +118,29 @@ exports.createOrder = async (request, reply) => {
         });
       }
 
-      // Create order with items
+      // Create order with items and shipping/GST details
       const newOrder = await tx.order.create({
         data: {
           userId,
           totalAmount,
-          shippingAddress,
+          shippingAddress: {
+            ...shippingAddress,
+            // Include order breakdown for invoice purposes
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              shippingCost: cartCalculations.shippingCost,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              shippingMethod: {
+                id: shippingMethod.id,
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays
+              },
+              gstDetails: cartCalculations.gstDetails
+            }
+          },
           paymentMethod,
           status: "PENDING",
           customerName: user.name,
@@ -181,9 +211,22 @@ exports.createOrder = async (request, reply) => {
           quantity: item.quantity,
           price: item.price
         })),
-        shippingAddress,
+        shippingAddress: shippingAddress, // Original shipping address without order summary
         paymentMethod,
-        customerPhone: user.phone
+        customerPhone: user.phone,
+        // Include order breakdown for invoice
+        orderSummary: {
+          subtotal: cartCalculations.subtotal,
+          shippingCost: cartCalculations.shippingCost,
+          gstPercentage: cartCalculations.gstPercentage,
+          gstAmount: cartCalculations.gstAmount,
+          grandTotal: cartCalculations.grandTotal,
+          shippingMethod: {
+            name: shippingMethod.name,
+            cost: shippingMethod.cost,
+            estimatedDays: shippingMethod.estimatedDays
+          }
+        }
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
@@ -249,7 +292,17 @@ exports.createOrder = async (request, reply) => {
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
       orderId: order.id,
-      totalAmount
+      orderSummary: {
+        subtotal: cartCalculations.subtotal,
+        shippingCost: cartCalculations.shippingCost,
+        gstPercentage: cartCalculations.gstPercentage,
+        gstAmount: cartCalculations.gstAmount,
+        totalAmount: cartCalculations.grandTotal,
+        shippingMethod: {
+          name: shippingMethod.name,
+          estimatedDays: shippingMethod.estimatedDays
+        }
+      }
     });
 
   } catch (error) {
@@ -557,6 +610,8 @@ exports.createGuestOrder = async (request, reply) => {
       customerPhone,
       shippingAddress,
       paymentMethod,
+      shippingMethodId, // Add shipping method ID
+      gstId, // Add GST ID
       state,
       country
     } = request.body;
@@ -570,8 +625,8 @@ exports.createGuestOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Customer name, email, and phone are required" });
     }
 
-    if (!shippingAddress || !paymentMethod) {
-      return reply.status(400).send({ success: false, message: "Shipping address and payment method are required" });
+    if (!shippingAddress || !paymentMethod || !shippingMethodId) {
+      return reply.status(400).send({ success: false, message: "Shipping address, payment method, and shipping method are required" });
     }
 
     // state and country are optional for now (will be required after migration)
@@ -582,9 +637,9 @@ exports.createGuestOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Invalid email address" });
     }
 
-    let totalAmount = 0;
     let sellerNotifications = new Map();
     const orderItems = [];
+    const cartItems = []; // Build cart-like structure for calculations
 
     // Process each item in the order
     for (const item of items) {
@@ -612,13 +667,17 @@ exports.createGuestOrder = async (request, reply) => {
       }
 
       const itemPrice = Number(product.price);
-      const itemTotal = itemPrice * quantity;
-      totalAmount += itemTotal;
 
       orderItems.push({
         productId: product.id,
         quantity,
         price: itemPrice
+      });
+
+      // Build cart-like structure for total calculations
+      cartItems.push({
+        product: product,
+        quantity: quantity
       });
 
       // Track seller products for notification
@@ -631,7 +690,7 @@ exports.createGuestOrder = async (request, reply) => {
       }
       const sellerData = sellerNotifications.get(product.sellerId);
       sellerData.productCount += quantity;
-      sellerData.totalAmount += itemTotal;
+      sellerData.totalAmount += itemPrice * quantity;
       sellerData.products.push({
         productId: product.id,
         title: product.title,
@@ -639,6 +698,20 @@ exports.createGuestOrder = async (request, reply) => {
         price: itemPrice
       });
     }
+
+    // Calculate proper totals including shipping and GST
+    const cartCalculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
+    
+    // Get shipping method details
+    const shippingMethod = await prisma.shippingMethod.findUnique({
+      where: { id: shippingMethodId, isActive: true }
+    });
+
+    if (!shippingMethod) {
+      return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+    }
+
+    const totalAmount = parseFloat(cartCalculations.grandTotal);
 
     // Create order using transaction
     const order = await prisma.$transaction(async (tx) => {
@@ -652,11 +725,28 @@ exports.createGuestOrder = async (request, reply) => {
         });
       }
 
-      // Create order without userId (guest order) - use unchecked create to bypass relation requirement
+      // Create order without userId (guest order) with shipping/GST details
       const newOrder = await tx.order.create({
         data: {
           totalAmount,
-          shippingAddress,
+          shippingAddress: {
+            ...shippingAddress,
+            // Include order breakdown for invoice purposes
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              shippingCost: cartCalculations.shippingCost,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              shippingMethod: {
+                id: shippingMethod.id,
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays
+              },
+              gstDetails: cartCalculations.gstDetails
+            }
+          },
           paymentMethod,
           status: "PENDING",
           customerName,
@@ -721,10 +811,23 @@ exports.createGuestOrder = async (request, reply) => {
         quantity: item.quantity,
         price: item.price
       })),
-      shippingAddress,
+      shippingAddress: shippingAddress, // Original shipping address without order summary
       paymentMethod,
       customerPhone,
-      isGuest: true
+      isGuest: true,
+      // Include order breakdown for invoice
+      orderSummary: {
+        subtotal: cartCalculations.subtotal,
+        shippingCost: cartCalculations.shippingCost,
+        gstPercentage: cartCalculations.gstPercentage,
+        gstAmount: cartCalculations.gstAmount,
+        grandTotal: cartCalculations.grandTotal,
+        shippingMethod: {
+          name: shippingMethod.name,
+          cost: shippingMethod.cost,
+          estimatedDays: shippingMethod.estimatedDays
+        }
+      }
     }).catch(error => {
       console.error("Email error (non-blocking):", error.message);
     });
@@ -790,7 +893,17 @@ exports.createGuestOrder = async (request, reply) => {
       success: true,
       message: "Guest order placed successfully! Confirmation email sent.",
       orderId: order.id,
-      totalAmount,
+      orderSummary: {
+        subtotal: cartCalculations.subtotal,
+        shippingCost: cartCalculations.shippingCost,
+        gstPercentage: cartCalculations.gstPercentage,
+        gstAmount: cartCalculations.gstAmount,
+        totalAmount: cartCalculations.grandTotal,
+        shippingMethod: {
+          name: shippingMethod.name,
+          estimatedDays: shippingMethod.estimatedDays
+        }
+      },
       customerEmail
     });
 
