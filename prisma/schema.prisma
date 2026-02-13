@@ -141,6 +141,7 @@ model Product {
   sellerId    String
   seller      User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   sellerName  String?
+  artistName  String?       // Optional artist name field
   status      ProductStatus @default(PENDING)
   featured    Boolean       @default(false)
   tags        String[]      @default([])

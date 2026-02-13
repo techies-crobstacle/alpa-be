@@ -7,7 +7,11 @@ const {
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {
-  let { title, description, price, stock, category, featured, tags } = request.body;
+  let { title, description, price, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = request.body;
+  
+  // Handle both artistName and "artist name" field formats
+  const finalArtistName = artistName || artistNameWithSpace || null;
+  
   // Parse price and stock to correct types
   if (typeof price === 'string') price = parseFloat(price);
   if (typeof stock === 'string') stock = parseInt(stock);
@@ -80,6 +84,7 @@ exports.addProduct = async (request, reply) => {
         images,
         sellerId,
         sellerName: seller.storeName || seller.businessName,
+        artistName: finalArtistName, // Use the processed artist name
         status: productStatus,
         featured,
         tags: parsedTags
@@ -107,6 +112,7 @@ exports.addProduct = async (request, reply) => {
         stock: product.stock,
         category: product.category,
         images: product.images,
+        artistName: product.artistName, // Include artist name in response
         status: product.status,
         featured: product.featured,
         tags: product.tags
@@ -185,7 +191,11 @@ exports.updateProduct = async (request, reply) => {
 
     // Support both JSON and form/multipart bodies
     const body = request.body || {};
-    let { title, description, price, stock, category, featured, tags } = body;
+    let { title, description, price, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = body;
+    
+    // Handle both artistName and "artist name" field formats
+    const finalArtistName = artistName || artistNameWithSpace;
+    
     let images = [];
     const { uploadToCloudinary } = require("../config/cloudinary");
 
@@ -248,6 +258,7 @@ exports.updateProduct = async (request, reply) => {
     if (images.length > 0) updateData.images = images;
     if (parsedFeatured !== undefined) updateData.featured = parsedFeatured;
     if (parsedTags !== undefined) updateData.tags = parsedTags;
+    if (finalArtistName !== undefined && finalArtistName !== '') updateData.artistName = finalArtistName;
 
     const updatedProduct = await prisma.product.update({
       where: { id: request.params.id },
