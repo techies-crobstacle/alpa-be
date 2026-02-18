@@ -67,10 +67,11 @@ exports.getSellerOrders = async (request, reply) => {
   }
 };
 
-// SELLER — UPDATE ORDER STATUS (with SMS notification)
+// SELLER/ADMIN — UPDATE ORDER STATUS (with SMS notification)
 exports.updateOrderStatus = async (request, reply) => {
   try {
-    const sellerId = request.user.userId; // From authenticateSeller middleware
+    const userId = request.user.userId; // From auth middleware
+    const userRole = request.user.role; // From auth middleware
     const { orderId } = request.params;
     const { status } = request.body;
 
@@ -102,10 +103,12 @@ exports.updateOrderStatus = async (request, reply) => {
 
     if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
 
-    const containsSellerItem = order.items.some((item) => item.product.sellerId === sellerId);
-
-    if (!containsSellerItem) {
-      return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+    // Check authorization: admin can update any order, seller can only update orders containing their products
+    if (userRole !== "ADMIN") {
+      const containsSellerItem = order.items.some((item) => item.product.sellerId === userId);
+      if (!containsSellerItem) {
+        return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      }
     }
 
     await prisma.order.update({
@@ -133,20 +136,22 @@ exports.updateOrderStatus = async (request, reply) => {
         console.error("Customer notification error (non-blocking):", error.message);
       });
 
-      // Notify admins about status change
-      const seller = await prisma.user.findUnique({
-        where: { id: sellerId },
-        select: { name: true }
-      });
-      
-      notifyAdminOrderStatusChange(orderId, status, {
-        customerName: order.user.name,
-        sellerName: seller?.name || 'Unknown',
-        totalAmount: order.totalAmount.toString(),
-        itemCount: order.items.length
-      }).catch(error => {
-        console.error("Admin notification error (non-blocking):", error.message);
-      });
+      // Notify admins about status change (only if user is seller, not admin)
+      if (userRole === "SELLER") {
+        const seller = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true }
+        });
+        
+        notifyAdminOrderStatusChange(orderId, status, {
+          customerName: order.user.name,
+          sellerName: seller?.name || 'Unknown',
+          totalAmount: order.totalAmount.toString(),
+          itemCount: order.items.length
+        }).catch(error => {
+          console.error("Admin notification error (non-blocking):", error.message);
+        });
+      }
     }
 
     return reply.status(200).send({ 
@@ -160,10 +165,11 @@ exports.updateOrderStatus = async (request, reply) => {
   }
 };
 
-// SELLER — UPDATE TRACKING INFO (with SMS notification)
+// SELLER/ADMIN — UPDATE TRACKING INFO (with SMS notification)
 exports.updateTrackingInfo = async (request, reply) => {
   try {
-    const sellerId = request.user.userId; // From authenticateSeller middleware
+    const userId = request.user.userId; // From auth middleware
+    const userRole = request.user.role; // From auth middleware
     const { orderId } = request.params;
     const { trackingNumber, estimatedDelivery } = request.body;
 
@@ -181,10 +187,12 @@ exports.updateTrackingInfo = async (request, reply) => {
 
     if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
 
-    const containsSellerItem = order.items.some((item) => item.product.sellerId === sellerId);
-
-    if (!containsSellerItem) {
-      return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+    // Check authorization: admin can update any order, seller can only update orders containing their products
+    if (userRole !== "ADMIN") {
+      const containsSellerItem = order.items.some((item) => item.product.sellerId === userId);
+      if (!containsSellerItem) {
+        return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      }
     }
 
     await prisma.order.update({
@@ -218,21 +226,23 @@ exports.updateTrackingInfo = async (request, reply) => {
         console.error("Customer notification error (non-blocking):", error.message);
       });
 
-      // Notify admins about shipped status
-      const seller = await prisma.user.findUnique({
-        where: { id: sellerId },
-        select: { name: true }
-      });
-      
-      notifyAdminOrderStatusChange(orderId, "shipped", {
-        customerName: order.user.name,
-        sellerName: seller?.name || 'Unknown',
-        totalAmount: order.totalAmount.toString(),
-        itemCount: order.items.length,
-        trackingNumber
-      }).catch(error => {
-        console.error("Admin notification error (non-blocking):", error.message);
-      });
+      // Notify admins about shipped status (only if user is seller, not admin)
+      if (userRole === "SELLER") {
+        const seller = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true }
+        });
+        
+        notifyAdminOrderStatusChange(orderId, "shipped", {
+          customerName: order.user.name,
+          sellerName: seller?.name || 'Unknown',
+          totalAmount: order.totalAmount.toString(),
+          itemCount: order.items.length,
+          trackingNumber
+        }).catch(error => {
+          console.error("Admin notification error (non-blocking):", error.message);
+        });
+      }
     }
 
     return reply.status(200).send({ success: true, message: "Tracking info updated successfully. Customer notified via email." });

@@ -185,7 +185,7 @@ exports.updateProduct = async (request, reply) => {
     }
 
     // Check authorization: only seller (owner) or admin can update
-    if (userRole !== "admin" && product.sellerId !== userId) {
+    if (userRole !== "ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to update this product" });
     }
 
@@ -279,20 +279,19 @@ exports.updateProduct = async (request, reply) => {
 // DELETE PRODUCT (Seller only)
 exports.deleteProduct = async (request, reply) => {
   try {
-    const sellerId = request.user.userId; // From authenticateSeller middleware
+    const userId = request.user.userId; // From auth middleware
+    const userRole = request.user.role; // From auth middleware
     
     const product = await prisma.product.findUnique({
       where: { id: request.params.id }
     });
 
     if (!product) {
-          // Debug log updateData before update
-          console.log('UpdateProduct updateData:', updateData);
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    // Check if the logged-in seller is the owner
-    if (product.sellerId !== sellerId) {
+    // Check authorization: only seller (owner) or admin can delete
+    if (userRole !== "ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
     }
 
@@ -300,19 +299,21 @@ exports.deleteProduct = async (request, reply) => {
       where: { id: request.params.id }
     });
 
-    // Update seller product count
-    const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: sellerId }
-    });
+    // Update seller product count (only for seller actions, not admin)
+    if (userRole === "SELLER") {
+      const seller = await prisma.sellerProfile.findUnique({
+        where: { userId }
+      });
 
-    const newCount = Math.max(0, (seller?.productCount || 1) - 1);
-    await prisma.sellerProfile.update({
-      where: { userId: sellerId },
-      data: {
-        productCount: newCount,
-        minimumProductsUploaded: newCount >= 1
-      }
-    });
+      const newCount = Math.max(0, (seller?.productCount || 1) - 1);
+      await prisma.sellerProfile.update({
+        where: { userId },
+        data: {
+          productCount: newCount,
+          minimumProductsUploaded: newCount >= 1
+        }
+      });
+    }
 
     return reply.status(200).send({ 
       success: true, 

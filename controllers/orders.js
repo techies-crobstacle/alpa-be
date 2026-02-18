@@ -979,14 +979,12 @@ exports.trackGuestOrder = async (request, reply) => {
 exports.downloadInvoice = async (request, reply) => {
   try {
     const userId = request.user.userId;
+    const userRole = request.user.role;
     const { orderId } = request.params;
 
-    // Get order with all necessary details
-    const order = await prisma.order.findFirst({
-      where: { 
-        id: orderId,
-        userId: userId // Ensure user can only access their own orders
-      },
+    // Build query based on user role
+    let orderQuery = {
+      where: { id: orderId },
       include: {
         items: {
           include: {
@@ -995,7 +993,8 @@ exports.downloadInvoice = async (request, reply) => {
                 id: true,
                 title: true,
                 price: true,
-                category: true
+                category: true,
+                sellerId: true  // Include sellerId for authorization
               }
             }
           }
@@ -1008,7 +1007,26 @@ exports.downloadInvoice = async (request, reply) => {
           }
         }
       }
-    });
+    };
+
+    // Apply role-based access control
+    if (userRole === 'USER') {
+      // Customers can only access their own orders
+      orderQuery.where.userId = userId;
+    } else if (userRole === 'SELLER') {
+      // Sellers can access orders containing their products
+      orderQuery.where.items = {
+        some: {
+          product: {
+            sellerId: userId
+          }
+        }
+      };
+    }
+    // Admins can access all orders (no additional where clause)
+
+    // Get order with all necessary details
+    const order = await prisma.order.findFirst(orderQuery);
 
     if (!order) {
       return reply.status(404).send({ 

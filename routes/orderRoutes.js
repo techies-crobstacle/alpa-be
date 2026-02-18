@@ -30,6 +30,7 @@
 
 const orderController = require("../controllers/orders");
 const { authenticateUser } = require("../middlewares/authMiddleware");
+const checkRole = require("../middlewares/checkRole");
 
 async function orderRoutes(fastify, options) {
   // ---------------- USER ORDER ROUTES ----------------
@@ -46,8 +47,8 @@ async function orderRoutes(fastify, options) {
   // Reorder - Add all items from previous order to cart
   fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
 
-  // Download invoice PDF
-  fastify.get("/invoice/:orderId", { preHandler: authenticateUser }, orderController.downloadInvoice);
+  // Download invoice PDF (accessible by customer, seller for their orders, admin for all)
+  fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
 
   // ----------- GUEST CHECKOUT ROUTES (No authentication) -----------
 

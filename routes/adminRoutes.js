@@ -59,6 +59,7 @@ async function adminRoutes(fastify, options) {
   fastify.put("/coupons/:id", { preHandler: adminAuth }, adminController.updateCoupon);
   fastify.delete("/coupons/:id", { preHandler: adminAuth }, adminController.deleteCoupon);
   // ---------------- SALES ANALYTICS & EXPORT ----------------
+  
   fastify.get("/sales/analytics", { preHandler: adminAuth }, adminController.getSalesAnalytics);
   fastify.get("/sales/export", { preHandler: adminAuth }, adminController.exportSalesCSV);
 } 
