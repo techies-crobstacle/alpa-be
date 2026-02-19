@@ -13,6 +13,97 @@ const generateSellerToken = (userId) => {
   });
 };
 
+// Helper function to determine which step data is missing
+const getOnboardingStepDetails = (sellerProfile) => {
+  const steps = [
+    {
+      step: 1,
+      name: "Email Verification",
+      completed: true, // If we have sellerProfile, step 1 is done
+      description: "Email verified and account created"
+    },
+    {
+      step: 2,
+      name: "Password Setup", 
+      completed: true, // If we have sellerProfile, step 2 is done
+      description: "Password set and basic profile created"
+    },
+    {
+      step: 3,
+      name: "Business Details",
+      completed: !!(sellerProfile.businessName && sellerProfile.abn && sellerProfile.businessAddress),
+      description: "Business name, ABN, and address information",
+      missing: []
+    },
+    {
+      step: 4,
+      name: "Cultural Information",
+      completed: sellerProfile.onboardingStep >= 4,
+      description: "Cultural identity and background information"
+    },
+    {
+      step: 5,
+      name: "Store Profile", 
+      completed: !!(sellerProfile.storeName && sellerProfile.storeDescription),
+      description: "Store name, description, and logo"
+    },
+    {
+      step: 6,
+      name: "KYC Documents",
+      completed: sellerProfile.kycSubmitted === true,
+      description: "Identity verification documents"
+    },
+    {
+      step: 7,
+      name: "Bank Details",
+      completed: !!(sellerProfile.bankAccountNumber && sellerProfile.bankBSB),
+      description: "Banking information for payments"
+    },
+    {
+      step: 8,
+      name: "Submit for Review",
+      completed: sellerProfile.status === 'PENDING_APPROVAL' || sellerProfile.status === 'APPROVED',
+      description: "Final submission for admin review"
+    }
+  ];
+
+  // Add missing field details for step 3
+  const step3 = steps[2];
+  if (!step3.completed) {
+    if (!sellerProfile.businessName) step3.missing.push('Business Name');
+    if (!sellerProfile.abn) step3.missing.push('ABN');
+    if (!sellerProfile.businessAddress) step3.missing.push('Business Address');
+  }
+
+  return steps;
+};
+
+// Helper function to get current step
+const getCurrentStep = (sellerProfile) => {
+  const steps = getOnboardingStepDetails(sellerProfile);
+  
+  // Find first incomplete step
+  for (let i = 0; i < steps.length; i++) {
+    if (!steps[i].completed) {
+      return {
+        currentStep: steps[i].step,
+        currentStepInfo: steps[i],
+        nextSteps: steps.slice(i),
+        completedSteps: steps.slice(0, i)
+      };
+    }
+  }
+  
+  // All steps completed
+  return {
+    currentStep: 8,
+    currentStepInfo: steps[7],
+    nextSteps: [],
+    completedSteps: steps,
+    allCompleted: true
+  };
+};
+
 // Step 1: Apply as Seller
 exports.applyAsSeller = async (request, reply) => {
   try {
@@ -283,7 +374,8 @@ exports.sellerLogin = async (request, reply) => {
       success: true,
       message: "Login successful",
       user: userWithoutPassword,
-      token
+      token,
+      onboardingStatus: getCurrentStep(user.sellerProfile)
     });
   } catch (error) {
     console.error("Seller login error:", error);
@@ -416,6 +508,35 @@ exports.validateABN = async (request, reply) => {
     });
   } catch (error) {
     console.error("Validate ABN error:", error);
+    reply.status(500).send({
+      success: false,
+      message: "Failed to validate ABN",
+      error: error.message
+    });
+  }
+};
+
+// Validate ABN (GET method with query params)
+exports.validateABNGet = async (request, reply) => {
+  try {
+    const { abn } = request.query;
+
+    if (!abn) {
+      return reply.status(400).send({
+        success: false,
+        message: "ABN query parameter is required"
+      });
+    }
+
+    // Call ABR API for ABN lookup
+    const abnResult = await abnLookup(abn);
+
+    reply.status(200).send({
+      success: abnResult.isValid,
+      abnValidation: abnResult
+    });
+  } catch (error) {
+    console.error("Validate ABN (GET) error:", error);
     reply.status(500).send({
       success: false,
       message: "Failed to validate ABN",
@@ -707,7 +828,8 @@ exports.getProfile = async (request, reply) => {
 
     reply.status(200).send({
       success: true,
-      user: userWithoutPassword
+      user: userWithoutPassword,
+      onboardingStatus: getCurrentStep(user.sellerProfile)
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -816,6 +938,260 @@ exports.updateProductCount = async (userId, increment = true) => {
   } catch (error) {
     console.error("Update product count error:", error);
     throw error;
+  }
+};
+
+// Get Onboarding Status - Shows current step and what's needed to continue
+exports.getOnboardingStatus = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { sellerProfile: true }
+    });
+
+    if (!user || !user.sellerProfile) {
+      return reply.status(404).send({
+        success: false,
+        message: "Seller profile not found"
+      });
+    }
+
+    const onboardingStatus = getCurrentStep(user.sellerProfile);
+    
+    reply.status(200).send({
+      success: true,
+      onboardingStatus,
+      profile: {
+        id: user.sellerProfile.id,
+        status: user.sellerProfile.status,
+        onboardingStep: user.sellerProfile.onboardingStep,
+        businessName: user.sellerProfile.businessName,
+        storeName: user.sellerProfile.storeName,
+        kycSubmitted: user.sellerProfile.kycSubmitted
+      }
+    });
+  } catch (error) {
+    console.error("Get onboarding status error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// Resume Onboarding - Public endpoint to help users continue their onboarding
+exports.resumeOnboarding = async (request, reply) => {
+  try {
+    const { email } = request.body;
+
+    if (!email) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email is required"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if user exists and is a seller
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { sellerProfile: true }
+    });
+
+    // Check if user is in pending registration (hasn't completed step 2)
+    if (!user) {
+      const pendingReg = await prisma.pendingRegistration.findUnique({
+        where: { email: normalizedEmail }
+      });
+
+      if (pendingReg) {
+        return reply.status(200).send({
+          success: true,
+          message: "Please complete email verification first",
+          step: 1,
+          action: "verify_otp",
+          description: "You need to verify your email and set a password to continue"
+        });
+      } else {
+        return reply.status(404).send({
+          success: false,
+          message: "No seller account found with this email. Please start the application process."
+        });
+      }
+    }
+
+    if (user.role !== 'SELLER' || !user.sellerProfile) {
+      return reply.status(400).send({
+        success: false,
+        message: "This email is not associated with a seller account"
+      });
+    }
+
+    // Check if seller is rejected
+    if (user.sellerProfile.status === 'REJECTED') {
+      return reply.status(403).send({
+        success: false,
+        message: "Your seller account has been rejected. Please contact support."
+      });
+    }
+
+    const onboardingStatus = getCurrentStep(user.sellerProfile);
+    
+    reply.status(200).send({
+      success: true,
+      message: "Please log in with your email and password to continue your seller onboarding",
+      currentStep: onboardingStatus.currentStep,
+      stepName: onboardingStatus.currentStepInfo.name,
+      description: onboardingStatus.currentStepInfo.description,
+      completedSteps: onboardingStatus.completedSteps.length,
+      totalSteps: 8,
+      action: "login_required",
+      loginEndpoint: "/seller-onboarding/login"
+    });
+  } catch (error) {
+    console.error("Resume onboarding error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// Forgot Password for Sellers - Sends reset link/OTP
+exports.forgotPassword = async (request, reply) => {
+  try {
+    const { email } = request.body;
+
+    if (!email) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email is required"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { sellerProfile: true }
+    });
+
+    if (!user || user.role !== 'SELLER') {
+      return reply.status(404).send({
+        success: false,
+        message: "No seller account found with this email"
+      });
+    }
+
+    // Generate OTP for password reset
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Store OTP in pendingRegistration table for password reset
+    await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      update: {
+        otp,
+        otpExpiry,
+        name: user.name,
+        phone: user.phone,
+        role: 'SELLER',
+        updatedAt: new Date()
+      },
+      create: {
+        email: normalizedEmail,
+        name: user.name,
+        phone: user.phone,
+        otp,
+        otpExpiry,
+        role: 'SELLER'
+      }
+    });
+
+    // Send OTP email
+    await sendOTPEmail(normalizedEmail, otp, user.name);
+
+    reply.status(200).send({
+      success: true,
+      message: "Password reset OTP sent to your email"
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// Reset Password for Sellers - Verify OTP and set new password
+exports.resetPassword = async (request, reply) => {
+  try {
+    const { email, otp, newPassword } = request.body;
+
+    if (!email || !otp || !newPassword) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email, OTP, and new password are required"
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return reply.status(400).send({
+        success: false,
+        message: "Password must be at least 6 characters"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    const pending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!pending || pending.otp !== otp) {
+      return reply.status(400).send({
+        success: false,
+        message: "Invalid OTP"
+      });
+    }
+
+    // Check if OTP is expired
+    if (pending.otpExpiry < new Date()) {
+      await prisma.pendingRegistration.delete({
+        where: { id: pending.id }
+      });
+      return reply.status(400).send({
+        success: false,
+        message: "OTP has expired. Please request a new one."
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update user password
+    const user = await prisma.user.update({
+      where: { email: normalizedEmail },
+      data: { password: hashedPassword },
+      include: { sellerProfile: true }
+    });
+
+    // Delete pending registration
+    await prisma.pendingRegistration.delete({
+      where: { id: pending.id }
+    });
+
+    // Generate token
+    const token = generateSellerToken(user.id);
+
+    // Remove password from response
+    const { password: _, ...userWithoutPassword } = user;
+
+    reply.status(200).send({
+      success: true,
+      message: "Password reset successful. You can now continue your onboarding.",
+      user: userWithoutPassword,
+      token,
+      onboardingStatus: getCurrentStep(user.sellerProfile)
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
   }
 };
 
