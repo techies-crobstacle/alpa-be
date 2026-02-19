@@ -60,6 +60,10 @@ async function adminRoutes(fastify, options) {
   // Bulk approve products
   fastify.post("/products/approve-bulk", { preHandler: adminAuth }, adminController.bulkApproveProducts);
 
+  // Activate / Deactivate a product
+  fastify.put("/products/activate/:productId", { preHandler: adminAuth }, adminController.activateProduct);
+  fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
+
   // ---------------- COUPON MANAGEMENT ----------------
   // Admin coupon management
   fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);

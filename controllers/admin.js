@@ -1274,6 +1274,62 @@ exports.rejectProduct = async (request, reply) => {
   }
 };
 
+// ACTIVATE PRODUCT (Admin only) - set product live
+exports.activateProduct = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { productId } = request.params;
+
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      return reply.status(404).send({ success: false, message: 'Product not found' });
+    }
+
+    await prisma.product.update({
+      where: { id: productId },
+      data: { status: 'ACTIVE' }
+    });
+
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
+
+    reply.send({ success: true, message: 'Product activated successfully' });
+  } catch (error) {
+    console.error('Activate product error:', error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// DEACTIVATE PRODUCT (Admin only) - hide product from public
+exports.deactivateProduct = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { productId } = request.params;
+
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      return reply.status(404).send({ success: false, message: 'Product not found' });
+    }
+
+    await prisma.product.update({
+      where: { id: productId },
+      data: { status: 'INACTIVE' }
+    });
+
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
+
+    reply.send({ success: true, message: 'Product deactivated successfully' });
+  } catch (error) {
+    console.error('Deactivate product error:', error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 // BULK APPROVE PRODUCTS (Admin only)
 exports.bulkApproveProducts = async (request, reply) => {
   try {
