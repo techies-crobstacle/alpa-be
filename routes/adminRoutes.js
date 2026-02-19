@@ -47,6 +47,19 @@ async function adminRoutes(fastify, options) {
     preHandler: [authMiddleware, checkRole(['ADMIN', 'SELLER'])]
   }, adminController.getAllCategories);
 
+  // ---------------- PRODUCT APPROVAL MANAGEMENT ----------------
+  // Get all pending products for approval
+  fastify.get("/products/pending", { preHandler: adminAuth }, adminController.getPendingProducts);
+  
+  // Approve a product
+  fastify.post("/products/approve/:productId", { preHandler: adminAuth }, adminController.approveProduct);
+  
+  // Reject a product
+  fastify.delete("/products/reject/:productId", { preHandler: adminAuth }, adminController.rejectProduct);
+  
+  // Bulk approve products
+  fastify.post("/products/approve-bulk", { preHandler: adminAuth }, adminController.bulkApproveProducts);
+
   // ---------------- COUPON MANAGEMENT ----------------
   // Admin coupon management
   fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);

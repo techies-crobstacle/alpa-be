@@ -1102,6 +1102,219 @@ exports.exportSalesCSV = async (request, reply) => {
   }
 };
 
+// ==================== PRODUCT APPROVAL MANAGEMENT ====================
+
+// GET ALL PENDING PRODUCTS (Admin only)
+exports.getPendingProducts = async (request, reply) => {
+  try {
+    // Only admin can access
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const products = await prisma.product.findMany({
+      where: {
+        status: "PENDING" // Use status until Prisma client recognizes isActive
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    reply.send({ 
+      success: true, 
+      products, 
+      count: products.length,
+      message: `${products.length} products pending approval`
+    });
+  } catch (error) {
+    console.error("Get pending products error:", error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// APPROVE PRODUCT (Admin only)
+exports.approveProduct = async (request, reply) => {
+  try {
+    // Only admin can access
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { productId } = request.params;
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    if (!product) {
+      return reply.status(404).send({
+        success: false,
+        message: "Product not found"
+      });
+    }
+
+    // Update product to active - temporarily use both fields
+    const approvedProduct = await prisma.product.update({
+      where: { id: productId },
+      data: {
+        status: "ACTIVE" // Update status field
+        // Note: isActive will be updated via raw SQL until Prisma client is regenerated
+      }
+    });
+
+    // Update isActive using raw SQL since client doesn't recognize it yet
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
+
+    // TODO: Send notification to seller about product approval
+    // notifySellerProductApproved(product.sellerId, productId, product.title);
+
+    reply.send({
+      success: true,
+      message: "Product approved successfully",
+      product: approvedProduct
+    });
+  } catch (error) {
+    console.error("Approve product error:", error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// REJECT PRODUCT (Admin only)
+exports.rejectProduct = async (request, reply) => {
+  try {
+    // Only admin can access
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { productId } = request.params;
+    const { reason } = request.body; // Optional rejection reason
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    if (!product) {
+      return reply.status(404).send({
+        success: false,
+        message: "Product not found"
+      });
+    }
+
+    // Option 1: Keep product but mark as rejected (you can choose this instead)
+    // const rejectedProduct = await prisma.product.update({
+    //   where: { id: productId },
+    //   data: {
+    //     isActive: false,
+    //     status: "INACTIVE",
+    //     rejectionReason: reason
+    //   }
+    // });
+
+    // Option 2: Delete the product (current implementation)
+    await prisma.product.delete({
+      where: { id: productId }
+    });
+
+    // Update seller product count
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: product.sellerId }
+    });
+
+    if (seller) {
+      const newCount = Math.max(0, (seller.productCount || 1) - 1);
+      await prisma.sellerProfile.update({
+        where: { userId: product.sellerId },
+        data: {
+          productCount: newCount,
+          minimumProductsUploaded: newCount >= 1
+        }
+      });
+    }
+
+    // TODO: Send notification to seller about product rejection
+    // notifySellerProductRejected(product.sellerId, product.title, reason);
+
+    reply.send({
+      success: true,
+      message: "Product rejected and removed",
+      reason: reason || "No reason provided"
+    });
+  } catch (error) {
+    console.error("Reject product error:", error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// BULK APPROVE PRODUCTS (Admin only)
+exports.bulkApproveProducts = async (request, reply) => {
+  try {
+    // Only admin can access
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { productIds } = request.body;
+
+    if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+      return reply.status(400).send({
+        success: false,
+        message: "Product IDs array is required"
+      });
+    }
+
+    const result = await prisma.product.updateMany({
+      where: {
+        id: { in: productIds },
+        status: "PENDING" // Only approve pending products
+      },
+      data: {
+        status: "ACTIVE"
+      }
+    });
+
+    // Update isActive using raw SQL for bulk approval
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ANY(${productIds})`;
+
+    reply.send({
+      success: true,
+      message: `${result.count} products approved successfully`,
+      approvedCount: result.count
+    });
+  } catch (error) {
+    console.error("Bulk approve products error:", error);
+    reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 
 
 

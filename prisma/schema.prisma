@@ -143,6 +143,7 @@ model Product {
   sellerName  String?
   artistName  String?       // Optional artist name field
   status      ProductStatus @default(PENDING)
+  isActive    Boolean       @default(false)  // Product approval status
   featured    Boolean       @default(false)
   tags        String[]      @default([])
   createdAt   DateTime      @default(now())
@@ -156,6 +157,7 @@ model Product {
   @@index([sellerId])
   @@index([category])
   @@index([status])
+  @@index([isActive])
   @@index([featured])
   @@map("products")
 }

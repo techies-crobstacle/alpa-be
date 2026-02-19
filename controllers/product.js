@@ -71,8 +71,20 @@ exports.addProduct = async (request, reply) => {
       });
     }
 
-    // Products are pending until seller goes live (status = "ACTIVE")
-    const productStatus = seller.status === "ACTIVE" ? "ACTIVE" : "PENDING";
+    // Determine product status based on user role (temporary - using status)
+    const userRole = request.user.role; // From auth middleware
+    let productStatus = "PENDING"; // Default for sellers - requires approval
+    let isActive = false; // Will be set via raw SQL
+    
+    if (userRole === "ADMIN") {
+      // Admin products go live immediately
+      productStatus = "ACTIVE";
+      isActive = true;
+    } else {
+      // Seller products always require approval
+      productStatus = "PENDING";
+      isActive = false;
+    }
 
     const product = await prisma.product.create({
       data: {
@@ -90,6 +102,9 @@ exports.addProduct = async (request, reply) => {
         tags: parsedTags
       }
     });
+
+    // Set isActive using raw SQL until Prisma client is regenerated
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = ${isActive} WHERE "id" = ${product.id}`;
 
     // Update seller product count
     await prisma.sellerProfile.update({
@@ -114,10 +129,11 @@ exports.addProduct = async (request, reply) => {
         images: product.images,
         artistName: product.artistName, // Include artist name in response
         status: product.status,
+        isActive: product.isActive,
         featured: product.featured,
         tags: product.tags
       },
-      note: productStatus === "PENDING" ? "Product will go live when your store is activated by admin" : "Product is live",
+      note: userRole === "ADMIN" ? "Product is live" : "Product submitted for admin review - will be live after approval",
       totalProducts: seller.productCount + 1
     });
   } catch (err) {
@@ -248,6 +264,17 @@ exports.updateProduct = async (request, reply) => {
       }
     }
 
+    // Determine if product needs re-approval after update
+    let newStatus = product.status; // Keep current status by default
+    let newIsActive = true; // Assume active for now
+    
+    if (userRole === "SELLER" && product.sellerId === userId) {
+      // Seller editing their own product - needs re-approval
+      newStatus = "PENDING";
+      newIsActive = false;
+    }
+    // Admin edits don't change status
+
     // Only update fields that are not undefined and not empty string
     const updateData = {};
     if (title !== undefined && title !== '') updateData.title = title;
@@ -259,16 +286,28 @@ exports.updateProduct = async (request, reply) => {
     if (parsedFeatured !== undefined) updateData.featured = parsedFeatured;
     if (parsedTags !== undefined) updateData.tags = parsedTags;
     if (finalArtistName !== undefined && finalArtistName !== '') updateData.artistName = finalArtistName;
+    
+    // Set status for approval workflow
+    updateData.status = newStatus;
 
     const updatedProduct = await prisma.product.update({
       where: { id: request.params.id },
       data: updateData
     });
 
+    // Update isActive using raw SQL
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = ${newIsActive} WHERE "id" = ${request.params.id}`;
+
     return reply.status(200).send({
       success: true,
-      message: "Product updated successfully",
-      product: updatedProduct
+      message: userRole === "SELLER" && newStatus === "PENDING" ? 
+        "Product updated and sent for admin review" : 
+        "Product updated successfully",
+      product: {
+        ...updatedProduct,
+        isActive: newIsActive // Add isActive to response
+      },
+      requiresApproval: userRole === "SELLER" && newStatus === "PENDING"
     });
   } catch (err) {
     console.error("Update product error:", err);
@@ -329,25 +368,15 @@ exports.deleteProduct = async (request, reply) => {
 // GET ALL PRODUCTS (Public - only active sellers' products)
 exports.getAllProducts = async (request, reply) => {
   try {
-    const products = await prisma.product.findMany({
-      where: {
-        status: "ACTIVE",
-        seller: {
-          sellerProfile: {
-            status: "ACTIVE"
-          }
-        }
-      },
-      include: {
-        seller: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    // Use raw SQL to query with isActive field until Prisma client is regenerated
+    const products = await prisma.$queryRaw`
+      SELECT p.*, u.name as "sellerUserName" 
+      FROM "products" p
+      JOIN "users" u ON p."sellerId" = u.id
+      JOIN "seller_profiles" sp ON u.id = sp."userId"
+      WHERE p."isActive" = true AND sp.status = 'ACTIVE'
+      ORDER BY p."createdAt" DESC
+    `;
 
     return reply.status(200).send({ success: true, products, count: products.length });
   } catch (err) {
