@@ -111,8 +111,17 @@ const handleProductImagesUpload = async (request, reply) => {
           throw new Error(`File ${part.filename} exceeds 3MB limit`);
         }
       } else {
-        // Handle regular form fields
-        fields[part.fieldname] = part.value;
+        // Handle regular form fields - accumulate repeated keys as arrays
+        // so sending galleryImages multiple times results in an array
+        if (fields[part.fieldname] !== undefined) {
+          if (Array.isArray(fields[part.fieldname])) {
+            fields[part.fieldname].push(part.value);
+          } else {
+            fields[part.fieldname] = [fields[part.fieldname], part.value];
+          }
+        } else {
+          fields[part.fieldname] = part.value;
+        }
       }
     }
 
@@ -129,6 +138,7 @@ module.exports = {
   handleSellerDocsUpload,
   handleProductImagesUpload
 };
+
 
 
 

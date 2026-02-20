@@ -853,7 +853,7 @@ const sendOTPEmail = async (email, otp, name) => {
   const msg = {
     to: email,
     from: {
-      // email: senderEmail,
+      email: senderEmail,
       name: senderName
     },
     subject: "Email Verification - OTP",

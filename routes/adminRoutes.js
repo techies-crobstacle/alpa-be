@@ -2,6 +2,7 @@ const { isAdmin } = require("../middlewares/authMiddleware");
 const authMiddleware = require("../middlewares/auth");
 const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
+const feedbackController = require("../controllers/feedback");
 
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
@@ -79,6 +80,10 @@ async function adminRoutes(fastify, options) {
   
   fastify.get("/sales/analytics", { preHandler: adminAuth }, adminController.getSalesAnalytics);
   fastify.get("/sales/export", { preHandler: adminAuth }, adminController.exportSalesCSV);
+
+  // ---------------- SITE FEEDBACK ----------------
+  fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
+  fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);
 } 
 
 module.exports = adminRoutes;

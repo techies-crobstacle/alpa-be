@@ -24,6 +24,7 @@ const orderNotificationRoutes = require("./routes/orderNotificationRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const shippingRoutes = require("./routes/shippingRoutes");
 const gstRoutes = require("./routes/gstRoutes");
+const feedbackRoutes = require("./routes/feedbackRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 
@@ -102,6 +103,7 @@ app.register(orderNotificationRoutes, { prefix: "/api/seller" });
 app.register(categoryRoutes, { prefix: "/api/categories" });
 app.register(shippingRoutes, { prefix: "/api/shipping" });
 app.register(gstRoutes, { prefix: "/api/gst" });
+app.register(feedbackRoutes, { prefix: "/api/feedback" });
 
 
 

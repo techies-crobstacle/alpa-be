@@ -29,7 +29,8 @@ exports.addProduct = async (request, reply) => {
     }
   }
   
-  let images = [];
+  let featuredImageUrl = null;
+  let galleryImages = [];
   const { uploadToCloudinary } = require("../config/cloudinary");
 
   // If files were uploaded, upload them to Cloudinary
@@ -37,17 +38,34 @@ exports.addProduct = async (request, reply) => {
     for (const file of request.files) {
       try {
         const result = await uploadToCloudinary(file.path, 'products');
-        images.push(result.url);
+        if (file.fieldname === 'featuredImage') {
+          featuredImageUrl = result.url; // Only one featured image
+        } else {
+          galleryImages.push(result.url); // galleryImages field name or others
+        }
       } catch (err) {
         console.error('Cloudinary upload error:', err);
       }
     }
-  } else if (request.body.images) {
-    // If images are provided as URLs in the body (fallback)
-    if (Array.isArray(request.body.images)) {
-      images = request.body.images;
-    } else if (typeof request.body.images === 'string') {
-      images = [request.body.images];
+  } else {
+    // Fallback: images provided as URLs in the body
+    if (request.body.featuredImage) {
+      featuredImageUrl = typeof request.body.featuredImage === 'string'
+        ? request.body.featuredImage
+        : request.body.featuredImage[0];
+    }
+    if (request.body.galleryImages) {
+      if (Array.isArray(request.body.galleryImages)) {
+        galleryImages = request.body.galleryImages;
+      } else if (typeof request.body.galleryImages === 'string') {
+        galleryImages = [request.body.galleryImages];
+      }
+    }
+    // Backward compat: old 'images' field maps first to featuredImage, rest to gallery
+    if (!featuredImageUrl && !galleryImages.length && request.body.images) {
+      const imgs = Array.isArray(request.body.images) ? request.body.images : [request.body.images];
+      featuredImageUrl = imgs[0] || null;
+      galleryImages = imgs.slice(1);
     }
   }
 
@@ -93,18 +111,21 @@ exports.addProduct = async (request, reply) => {
         price,
         stock,
         category,
-        images,
         sellerId,
         sellerName: seller.storeName || seller.businessName,
         artistName: finalArtistName, // Use the processed artist name
+        images: galleryImages,
         status: productStatus,
         featured,
         tags: parsedTags
       }
     });
 
-    // Set isActive using raw SQL until Prisma client is regenerated
+    // Set isActive and featuredImage using raw SQL until Prisma client is regenerated
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = ${isActive} WHERE "id" = ${product.id}`;
+    if (featuredImageUrl) {
+      await prisma.$executeRaw`UPDATE "products" SET "featuredImage" = ${featuredImageUrl} WHERE "id" = ${product.id}`;
+    }
 
     // Update seller product count
     await prisma.sellerProfile.update({
@@ -126,8 +147,9 @@ exports.addProduct = async (request, reply) => {
         price: product.price,
         stock: product.stock,
         category: product.category,
-        images: product.images,
-        artistName: product.artistName, // Include artist name in response
+        featuredImage: featuredImageUrl,
+        galleryImages: product.images,
+        artistName: product.artistName,
         status: product.status,
         isActive: product.isActive,
         featured: product.featured,
@@ -145,12 +167,16 @@ exports.addProduct = async (request, reply) => {
 // GET MY PRODUCTS (Seller only)
 exports.getMyProducts = async (request, reply) => {
   try {
-    const sellerId = request.user.userId; // From authenticateSeller middleware
+    const sellerId = request.user.userId;
 
-    const products = await prisma.product.findMany({
-      where: { sellerId },
-      orderBy: { createdAt: 'desc' }
-    });
+    const products = await prisma.$queryRaw`
+      SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
+             "artistName", status, "isActive", featured, tags,
+             "featuredImage", images AS "galleryImages", "createdAt", "updatedAt"
+      FROM "products"
+      WHERE "sellerId" = ${sellerId}
+      ORDER BY "createdAt" DESC
+    `;
 
     return reply.status(200).send({ 
       success: true, 
@@ -166,20 +192,33 @@ exports.getMyProducts = async (request, reply) => {
 // GET PRODUCT BY ID (Public)
 exports.getProductById = async (request, reply) => {
   try {
-    const product = await prisma.product.findUnique({
-      where: { id: request.params.id },
-      include: {
-        seller: {
-          select: { id: true, name: true, email: true }
-        }
-      }
-    });
+    const id = request.params.id;
 
-    if (!product) {
+    const rows = await prisma.$queryRaw`
+      SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+             p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+             p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+             p."createdAt", p."updatedAt",
+             u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email"
+      FROM "products" p
+      JOIN "users" u ON p."sellerId" = u.id
+      WHERE p.id = ${id}
+    `;
+
+    if (!rows.length) {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    reply.status(200).send({ success: true, product });
+    const row = rows[0];
+    const { seller_id, seller_name, seller_email, ...productFields } = row;
+
+    return reply.status(200).send({
+      success: true,
+      product: {
+        ...productFields,
+        seller: { id: seller_id, name: seller_name, email: seller_email }
+      }
+    });
   } catch (err) {
     console.error("Get product by ID error:", err);
     reply.status(500).send({ success: false, error: err.message });
@@ -212,34 +251,61 @@ exports.updateProduct = async (request, reply) => {
     // Handle both artistName and "artist name" field formats
     const finalArtistName = artistName || artistNameWithSpace;
     
-    let images = [];
+    let featuredImageUrl = undefined; // undefined = don't change; null = clear it
+    let galleryImages = [];
+    let hasGalleryUpdate = false;
     const { uploadToCloudinary } = require("../config/cloudinary");
+
+    // Parse existingGalleryImages from body (URLs the frontend wants to keep)
+    let existingGalleryImages = [];
+    if (body.existingGalleryImages) {
+      existingGalleryImages = Array.isArray(body.existingGalleryImages)
+        ? body.existingGalleryImages
+        : [body.existingGalleryImages];
+    }
 
     // If files were uploaded, upload them to Cloudinary
     if (request.files) {
-      let filesArray = [];
-      if (Array.isArray(request.files)) {
-        filesArray = request.files;
-      } else if (typeof request.files === 'object') {
-        filesArray = [request.files];
-      }
+      let filesArray = Array.isArray(request.files) ? request.files : [request.files];
       if (filesArray.length > 0) {
         for (const file of filesArray) {
           try {
             const result = await uploadToCloudinary(file.path, 'products');
-            images.push(result.url);
+            if (file.fieldname === 'featuredImage') {
+              featuredImageUrl = result.url;
+            } else {
+              galleryImages.push(result.url);
+            }
           } catch (err) {
             console.error('Cloudinary upload error:', err);
           }
         }
       }
-    } else if (body.images) {
-      // If images are provided as URLs in the body (fallback)
-      if (Array.isArray(body.images)) {
-        images = body.images;
-      } else if (typeof body.images === 'string') {
-        images = [body.images];
+    } else {
+      // Fallback: images provided as URLs in the body
+      if (body.featuredImage !== undefined) {
+        featuredImageUrl = typeof body.featuredImage === 'string' ? body.featuredImage : body.featuredImage[0];
       }
+      if (body.galleryImages) {
+        if (Array.isArray(body.galleryImages)) {
+          galleryImages = body.galleryImages;
+        } else if (typeof body.galleryImages === 'string') {
+          galleryImages = [body.galleryImages];
+        }
+      }
+      // Backward compat: old 'images' field maps first to featuredImage, rest to gallery
+      if (featuredImageUrl === undefined && !galleryImages.length && body.images) {
+        const imgs = Array.isArray(body.images) ? body.images : [body.images];
+        featuredImageUrl = imgs[0] || undefined;
+        galleryImages = imgs.slice(1);
+      }
+    }
+
+    // Merge: keep existing gallery URLs + add newly uploaded ones
+    const finalGallery = [...existingGalleryImages, ...galleryImages];
+    if (finalGallery.length > 0 || body.existingGalleryImages !== undefined) {
+      hasGalleryUpdate = true;
+      galleryImages = finalGallery;
     }
 
     // Parse price and stock to correct types, ignore empty string
@@ -282,7 +348,7 @@ exports.updateProduct = async (request, reply) => {
     if (price !== undefined && price !== '') updateData.price = price;
     if (stock !== undefined && stock !== '') updateData.stock = stock;
     if (category !== undefined && category !== '') updateData.category = category;
-    if (images.length > 0) updateData.images = images;
+    if (hasGalleryUpdate) updateData.images = galleryImages;
     if (parsedFeatured !== undefined) updateData.featured = parsedFeatured;
     if (parsedTags !== undefined) updateData.tags = parsedTags;
     if (finalArtistName !== undefined && finalArtistName !== '') updateData.artistName = finalArtistName;
@@ -295,8 +361,14 @@ exports.updateProduct = async (request, reply) => {
       data: updateData
     });
 
-    // Update isActive using raw SQL
+    // Update isActive and featuredImage using raw SQL
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = ${newIsActive} WHERE "id" = ${request.params.id}`;
+    if (featuredImageUrl !== undefined) {
+      await prisma.$executeRaw`UPDATE "products" SET "featuredImage" = ${featuredImageUrl} WHERE "id" = ${request.params.id}`;
+    }
+
+    const resolvedFeaturedImage = featuredImageUrl !== undefined ? featuredImageUrl : product.featuredImage;
+    const { images: _imgs, ...productFields } = updatedProduct;
 
     return reply.status(200).send({
       success: true,
@@ -304,8 +376,10 @@ exports.updateProduct = async (request, reply) => {
         "Product updated and sent for admin review" : 
         "Product updated successfully",
       product: {
-        ...updatedProduct,
-        isActive: newIsActive // Add isActive to response
+        ...productFields,
+        featuredImage: resolvedFeaturedImage,
+        galleryImages: updatedProduct.images,
+        isActive: newIsActive
       },
       requiresApproval: userRole === "SELLER" && newStatus === "PENDING"
     });
@@ -378,7 +452,13 @@ exports.getAllProducts = async (request, reply) => {
       ORDER BY p."createdAt" DESC
     `;
 
-    return reply.status(200).send({ success: true, products, count: products.length });
+    const mapped = products.map(({ images, ...p }) => ({
+      ...p,
+      featuredImage: p.featuredImage || null,
+      galleryImages: images
+    }));
+
+    return reply.status(200).send({ success: true, products: mapped, count: mapped.length });
   } catch (err) {
     console.error("Get all products error:", err);
     return reply.status(500).send({ success: false, error: err.message });

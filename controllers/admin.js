@@ -140,12 +140,7 @@ exports.getSellerDetails = async (request, reply) => {
             name: true,
             email: true,
             phone: true,
-            createdAt: true,
-            products: {
-              include: {
-                ratings: true
-              }
-            }
+            createdAt: true
           }
         }
       }
@@ -158,7 +153,16 @@ exports.getSellerDetails = async (request, reply) => {
       });
     }
 
-    const products = seller.user.products;
+    // Use raw SQL so featuredImage is included in product responses
+    const products = await prisma.$queryRaw`
+      SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+             p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+             p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+             p."createdAt", p."updatedAt"
+      FROM "products" p
+      WHERE p."sellerId" = ${sellerId}
+      ORDER BY p."createdAt" DESC
+    `;
 
     // Get seller's orders (orders containing seller's products)
     const orders = await prisma.order.findMany({
@@ -276,25 +280,14 @@ exports.getProductsBySeller = async (request, reply) => {
       });
     }
 
-    const products = await prisma.product.findMany({
-      where: { sellerId },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        price: true,
-        stock: true,
-        category: true,
-        images: true,
-        status: true,
-        featured: true,
-        tags: true,
-        sellerName: true,
-        createdAt: true,
-        updatedAt: true
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const products = await prisma.$queryRaw`
+      SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
+             "artistName", status, "isActive", featured, tags,
+             "featuredImage", images AS "galleryImages", "createdAt", "updatedAt"
+      FROM "products"
+      WHERE "sellerId" = ${sellerId}
+      ORDER BY "createdAt" DESC
+    `;
 
     return reply.status(200).send({ 
       success: true, 
@@ -1112,29 +1105,28 @@ exports.getPendingProducts = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    const products = await prisma.product.findMany({
-      where: {
-        status: "PENDING" // Use status until Prisma client recognizes isActive
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      include: {
-        seller: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
-    });
+    const products = await prisma.$queryRaw`
+      SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+             p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+             p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+             p."createdAt", p."updatedAt",
+             u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email"
+      FROM "products" p
+      JOIN "users" u ON p."sellerId" = u.id
+      WHERE p.status = 'PENDING'
+      ORDER BY p."createdAt" DESC
+    `;
+
+    const mapped = products.map(({ seller_id, seller_name, seller_email, ...p }) => ({
+      ...p,
+      seller: { id: seller_id, name: seller_name, email: seller_email }
+    }));
 
     reply.send({ 
       success: true, 
-      products, 
-      count: products.length,
-      message: `${products.length} products pending approval`
+      products: mapped, 
+      count: mapped.length,
+      message: `${mapped.length} products pending approval`
     });
   } catch (error) {
     console.error("Get pending products error:", error);
@@ -1187,10 +1179,19 @@ exports.approveProduct = async (request, reply) => {
     // TODO: Send notification to seller about product approval
     // notifySellerProductApproved(product.sellerId, productId, product.title);
 
+    // Fetch updated product with featuredImage via raw SQL
+    const rows = await prisma.$queryRaw`
+      SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
+             "artistName", status, "isActive", featured, tags,
+             "featuredImage", images AS "galleryImages", "createdAt", "updatedAt"
+      FROM "products"
+      WHERE id = ${productId}
+    `;
+
     reply.send({
       success: true,
       message: "Product approved successfully",
-      product: approvedProduct
+      product: rows[0] || approvedProduct
     });
   } catch (error) {
     console.error("Approve product error:", error);
