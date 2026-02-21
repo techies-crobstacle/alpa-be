@@ -18,7 +18,17 @@ const PDFDocument = require('pdfkit');
 exports.createOrder = async (request, reply) => {
   try {
     const userId = request.user.userId;
-    const { shippingAddress, paymentMethod, shippingMethodId, gstId } = request.body;
+    const { 
+      shippingAddress, 
+      paymentMethod, 
+      shippingMethodId, 
+      gstId,
+      country,
+      city,
+      zipCode,
+      state,
+      mobileNumber
+    } = request.body;
 
     if (!shippingAddress || !paymentMethod || !shippingMethodId) {
       return reply.status(400).send({ success: false, message: "All fields including shipping method are required" });
@@ -123,7 +133,7 @@ exports.createOrder = async (request, reply) => {
         data: {
           userId,
           totalAmount,
-          shippingAddress: {
+          shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
             ...shippingAddress,
             // Include order breakdown for invoice purposes
             orderSummary: {
@@ -141,11 +151,17 @@ exports.createOrder = async (request, reply) => {
               gstDetails: cartCalculations.gstDetails
             }
           },
+          shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
+          shippingCity: city,
+          shippingState: state,
+          shippingZipCode: zipCode,
+          shippingCountry: country,
+          shippingPhone: mobileNumber,
           paymentMethod,
           status: "PENDING",
           customerName: user.name,
           customerEmail: user.email,
-          customerPhone: user.phone || '',
+          customerPhone: mobileNumber || user.phone || '',
           items: {
             create: orderItems
           }
@@ -612,8 +628,11 @@ exports.createGuestOrder = async (request, reply) => {
       paymentMethod,
       shippingMethodId, // Add shipping method ID
       gstId, // Add GST ID
+      country,
+      city,
+      zipCode,
       state,
-      country
+      mobileNumber
     } = request.body;
 
     // Validation
@@ -729,7 +748,7 @@ exports.createGuestOrder = async (request, reply) => {
       const newOrder = await tx.order.create({
         data: {
           totalAmount,
-          shippingAddress: {
+          shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
             ...shippingAddress,
             // Include order breakdown for invoice purposes
             orderSummary: {
@@ -747,11 +766,17 @@ exports.createGuestOrder = async (request, reply) => {
               gstDetails: cartCalculations.gstDetails
             }
           },
+          shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
+          shippingCity: city,
+          shippingState: state,
+          shippingZipCode: zipCode,
+          shippingCountry: country,
+          shippingPhone: mobileNumber || customerPhone,
           paymentMethod,
           status: "PENDING",
           customerName,
           customerEmail,
-          customerPhone,
+          customerPhone: mobileNumber || customerPhone || '',
           items: {
             create: orderItems
           }
@@ -1055,7 +1080,7 @@ exports.downloadInvoice = async (request, reply) => {
     doc.on('data', chunk => chunks.push(chunk));
     
     // Return the PDF when it's finished
-    return new Promise((resolve, reject) => {
+    const pdfPromise = new Promise((resolve, reject) => {
       doc.on('end', () => {
         const pdfBuffer = Buffer.concat(chunks);
         reply.send(pdfBuffer);
@@ -1063,6 +1088,7 @@ exports.downloadInvoice = async (request, reply) => {
       });
       
       doc.on('error', reject);
+    });
 
     // Add company header
     doc.fontSize(20)
@@ -1085,10 +1111,19 @@ exports.downloadInvoice = async (request, reply) => {
        .fontSize(12)
        .text(`${order.customerName}`, 50, 230)
        .text(`${order.customerEmail}`, 50, 245)
-       .text(`${order.customerPhone}`, 50, 260);
+       .text(`${order.shippingPhone || order.customerPhone}`, 50, 260);
 
-    // Shipping address
-    if (order.shippingAddress) {
+    // Shipping address - Use new specific fields if available
+    doc.fontSize(14)
+       .text('Ship To:', 300, 210)
+       .fontSize(12);
+
+    if (order.shippingAddressLine || order.shippingCity || order.shippingState) {
+       doc.text(`${order.shippingAddressLine || ''}`, 300, 230)
+          .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
+          .text(`${order.shippingZipCode || ''}`, 300, 260)
+          .text(`${order.shippingCountry || ''}`, 300, 275);
+    } else if (order.shippingAddress) {
       let address;
       try {
         address = typeof order.shippingAddress === 'string' 
@@ -1099,12 +1134,9 @@ exports.downloadInvoice = async (request, reply) => {
         address = { street: order.shippingAddress.toString() };
       }
       
-      doc.fontSize(14)
-         .text('Ship To:', 300, 210)
-         .fontSize(12)
-         .text(`${address.street || address.toString() || ''}`, 300, 230)
+      doc.text(`${address.street || address.address || address.addressLine || address.toString() || ''}`, 300, 230)
          .text(`${address.city || ''}, ${address.state || ''}`, 300, 245)
-         .text(`${address.zipCode || address.zip || ''}`, 300, 260)
+         .text(`${address.zipCode || address.zip || address.pincode || ''}`, 300, 260)
          .text(`${address.country || ''}`, 300, 275);
     }
 
@@ -1166,8 +1198,7 @@ exports.downloadInvoice = async (request, reply) => {
 
       // Finalize PDF
       doc.end();
-    });
-
+      return pdfPromise;
   } catch (error) {
     console.error("Download invoice error:", error);
     return reply.status(500).send({ success: false, message: error.message });
@@ -1235,7 +1266,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
     doc.on('data', chunk => chunks.push(chunk));
     
     // Return the PDF when it's finished
-    return new Promise((resolve, reject) => {
+    const pdfPromise = new Promise((resolve, reject) => {
       doc.on('end', () => {
         const pdfBuffer = Buffer.concat(chunks);
         reply.send(pdfBuffer);
@@ -1243,6 +1274,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
       });
       
       doc.on('error', reject);
+    });
 
     // Add company header
     doc.fontSize(20)
@@ -1265,10 +1297,19 @@ exports.downloadGuestInvoice = async (request, reply) => {
        .fontSize(12)
        .text(`${order.customerName}`, 50, 230)
        .text(`${order.customerEmail}`, 50, 245)
-       .text(`${order.customerPhone}`, 50, 260);
+       .text(`${order.shippingPhone || order.customerPhone}`, 50, 260);
 
-    // Shipping address
-    if (order.shippingAddress) {
+    // Shipping address - Use new specific fields if available
+    doc.fontSize(14)
+       .text('Ship To:', 300, 210)
+       .fontSize(12);
+
+    if (order.shippingAddressLine || order.shippingCity || order.shippingState) {
+       doc.text(`${order.shippingAddressLine || ''}`, 300, 230)
+          .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
+          .text(`${order.shippingZipCode || ''}`, 300, 260)
+          .text(`${order.shippingCountry || ''}`, 300, 275);
+    } else if (order.shippingAddress) {
       let address;
       try {
         address = typeof order.shippingAddress === 'string' 
@@ -1279,12 +1320,9 @@ exports.downloadGuestInvoice = async (request, reply) => {
         address = { street: order.shippingAddress.toString() };
       }
       
-      doc.fontSize(14)
-         .text('Ship To:', 300, 210)
-         .fontSize(12)
-         .text(`${address.street || address.toString() || ''}`, 300, 230)
+      doc.text(`${address.street || address.address || address.addressLine || address.toString() || ''}`, 300, 230)
          .text(`${address.city || ''}, ${address.state || ''}`, 300, 245)
-         .text(`${address.zipCode || address.zip || ''}`, 300, 260)
+         .text(`${address.zipCode || address.zip || address.pincode || ''}`, 300, 260)
          .text(`${address.country || ''}`, 300, 275);
     }
 
@@ -1346,8 +1384,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
 
       // Finalize PDF
       doc.end();
-    });
-
+      return pdfPromise;
   } catch (error) {
     console.error("Download guest invoice error:", error);
     return reply.status(500).send({ success: false, message: error.message });

@@ -197,7 +197,13 @@ model Order {
   totalAmount       Decimal     @db.Decimal(10, 2)
   status            OrderStatus @default(PENDING)
   paymentMethod     String?
-  shippingAddress   Json
+  shippingAddress   Json?       // Keeping for backward compatibility or structured storage
+  shippingAddressLine String?
+  shippingCity        String?
+  shippingState       String?
+  shippingZipCode     String?
+  shippingCountry     String?
+  shippingPhone       String?
   trackingNumber    String?
   estimatedDelivery DateTime?
   customerName      String

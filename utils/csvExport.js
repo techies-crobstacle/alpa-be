@@ -36,12 +36,13 @@ const generateSalesReportCSV = (orders) => {
           'Order Status': order.status || 'N/A',
           'Payment Method': order.paymentMethod || 'N/A',
           'Customer Name': order.customerName || 'N/A',
-          'Customer Phone': order.customerPhone || order.shippingAddress?.phone || 'N/A',
+          'Customer Phone': order.shippingPhone || order.customerPhone || order.shippingAddress?.phone || 'N/A',
           'Customer Email': order.customerEmail || 'N/A',
-          'Shipping Address': order.shippingAddress?.address || order.shippingAddress?.street || 'N/A',
-          'Shipping City': order.shippingAddress?.city || 'N/A',
-          'Shipping State': order.shippingAddress?.state || 'N/A',
-          'Shipping Pincode': order.shippingAddress?.pincode || order.shippingAddress?.zipCode || order.shippingAddress?.postalCode || 'N/A',
+          'Shipping Address': order.shippingAddressLine || order.shippingAddress?.address || order.shippingAddress?.street || 'N/A',
+          'Shipping City': order.shippingCity || order.shippingAddress?.city || 'N/A',
+          'Shipping State': order.shippingState || order.shippingAddress?.state || 'N/A',
+          'Shipping Pincode': order.shippingZipCode || order.shippingAddress?.pincode || order.shippingAddress?.zipCode || order.shippingAddress?.postalCode || 'N/A',
+          'Shipping Country': order.shippingCountry || order.shippingAddress?.country || 'N/A',
           'Tracking Number': order.trackingNumber || 'Not shipped yet',
           'Estimated Delivery': order.estimatedDelivery || 'N/A'
         });
