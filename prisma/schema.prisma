@@ -198,7 +198,8 @@ model Order {
   status            OrderStatus @default(PENDING)
   paymentMethod     String?
   stripePaymentIntentId String?   // Stripe PaymentIntent ID
-  paymentStatus     PaymentStatus @default(PENDING) // Stripe payment state
+  paypalOrderId         String?   // PayPal Order ID
+  paymentStatus     PaymentStatus @default(PENDING) // payment state
   shippingAddress   Json?       // Keeping for backward compatibility or structured storage
   shippingAddressLine String?
   shippingCity        String?
