@@ -158,13 +158,34 @@ exports.createOrder = async (request, reply) => {
           })),
           description: `Order from Aboriginal Art Marketplace`,
           custom_id: userId, // carry userId so webhook can look up the order
+          // ── Pre-fill shipping address so PayPal does NOT show its own
+          //    address form inside the popup (shipping_preference below)
+          shipping: {
+            type: "SHIPPING",
+            name: {
+              full_name: (user.name || "Customer").substring(0, 300),
+            },
+            address: {
+              address_line_1:
+                (typeof shippingAddress === "string"
+                  ? shippingAddress
+                  : shippingAddress?.addressLine) || "",
+              admin_area_2: city    || "Sydney",
+              admin_area_1: state   || "NSW",
+              postal_code : zipCode || "2000",
+              country_code: "AU",
+            },
+          },
         },
       ],
       application_context: {
-        brand_name: "Aboriginal Art Marketplace",
+        brand_name: "Alpa Marketplace",
         locale: "en-AU",
         landing_page: "LOGIN",
         user_action: "PAY_NOW",
+        // SET_PROVIDED_ADDRESS → PayPal uses the shipping object above and
+        // skips its own address collection screen inside the popup entirely.
+        shipping_preference: "SET_PROVIDED_ADDRESS",
         // These URLs are for redirect-based flow; if using PayPal JS SDK popup
         // they are effectively ignored but still required by the API.
         return_url: `${process.env.FRONTEND_URL}checkout/paypal/success`,
