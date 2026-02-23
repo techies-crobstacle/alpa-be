@@ -11,7 +11,7 @@ const {
 const mapStatusForDisplay = (dbStatus) => {
   const displayMap = {
     'PENDING': 'pending',
-    'CONFIRMED': 'processing',  // Legacy support
+    'CONFIRMED': 'confirmed',
     'PROCESSING': 'processing',  // New status
     'SHIPPED': 'shipped',
     'DELIVERED': 'delivered',
@@ -76,7 +76,7 @@ exports.updateOrderStatus = async (request, reply) => {
     const { status } = request.body;
 
     const statusMap = {
-      'pending': 'PENDING',
+      'confirmed': 'CONFIRMED',
       'processing': 'PROCESSING',  // Now store as PROCESSING
       'shipped': 'SHIPPED',
       'delivered': 'DELIVERED',
@@ -86,7 +86,7 @@ exports.updateOrderStatus = async (request, reply) => {
     const normalizedStatus = statusMap[status.toLowerCase()];
     
     if (!normalizedStatus) {
-      return reply.status(400).send({ success: false, message: "Invalid status. Use: pending, processing, shipped, delivered, cancelled" });
+      return reply.status(400).send({ success: false, message: "Invalid status. Use: confirmed, processing, shipped, delivered, cancelled" });
     }
 
     const order = await prisma.order.findUnique({

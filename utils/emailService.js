@@ -1110,6 +1110,10 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   let statusTextColor = "#ffffff";
 
   switch (orderDetails.status?.toLowerCase()) {
+    case "confirmed":
+      statusMessage = "Your order has been confirmed! We are now preparing it for you. &#9989;";
+      statusColor = "#4CAF50";
+      break;
     case "packed":
       statusMessage = "Your order has been packed and is ready for shipping! &#128230;";
       statusColor = "#B05E2A";

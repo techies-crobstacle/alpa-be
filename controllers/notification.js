@@ -27,7 +27,7 @@ const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDet
   console.log(`🔔 notifyCustomerOrderStatusChange called: userId=${userId}, orderId=${orderId}, status=${status}`);
   
   const statusMessages = {
-    'pending': 'Your order is being processed',
+    'confirmed': 'Your order has been confirmed',
     'processing': 'Your order is being prepared',
     'shipped': 'Your order has been shipped',
     'delivered': 'Your order has been delivered',
