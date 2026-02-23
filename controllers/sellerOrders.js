@@ -122,7 +122,22 @@ exports.updateOrderStatus = async (request, reply) => {
       
       sendOrderStatusEmail(order.user.email, order.user.name, {
         orderId,
-        status
+        status,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        orderDate: order.createdAt,
+        shippingName: order.customerName,
+        shippingAddress: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        products: order.items?.map(item => ({
+          title: item.product?.title || 'Product',
+          quantity: item.quantity,
+          price: parseFloat(item.price)
+        }))
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
@@ -211,7 +226,23 @@ exports.updateTrackingInfo = async (request, reply) => {
       sendOrderStatusEmail(order.user.email, order.user.name, {
         orderId,
         status: "shipped",
-        trackingNumber
+        trackingNumber,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        orderDate: order.createdAt,
+        estimatedDelivery: estimatedDelivery,
+        shippingName: order.customerName,
+        shippingAddress: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        products: order.items?.map(item => ({
+          title: item.product?.title || 'Product',
+          quantity: item.quantity,
+          price: parseFloat(item.price)
+        }))
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });

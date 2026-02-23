@@ -365,7 +365,14 @@ exports.cancelOrder = async (request, reply) => {
     const userId = request.user.userId;
 
     const order = await prisma.order.findUnique({
-      where: { id: orderId }
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: { select: { id: true, title: true, price: true } }
+          }
+        }
+      }
     });
 
     if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
@@ -390,7 +397,22 @@ exports.cancelOrder = async (request, reply) => {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
       sendOrderStatusEmail(user.email, user.name, {
         orderId,
-        status: "cancelled"
+        status: "cancelled",
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        orderDate: order.createdAt,
+        shippingName: order.customerName,
+        shippingAddress: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        products: order.items?.map(item => ({
+          title: item.product?.title || 'Product',
+          quantity: item.quantity,
+          price: parseFloat(item.price)
+        }))
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
