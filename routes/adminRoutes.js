@@ -55,7 +55,8 @@ async function adminRoutes(fastify, options) {
   // Approve a product
   fastify.post("/products/approve/:productId", { preHandler: adminAuth }, adminController.approveProduct);
   
-  // Reject a product
+  // Reject a product (supports both DELETE and POST for body parsing reliability)
+  fastify.post("/products/reject/:productId", { preHandler: adminAuth }, adminController.rejectProduct);
   fastify.delete("/products/reject/:productId", { preHandler: adminAuth }, adminController.rejectProduct);
   
   // Bulk approve products

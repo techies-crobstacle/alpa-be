@@ -1216,7 +1216,10 @@ exports.rejectProduct = async (request, reply) => {
 
     const { productId } = request.params;
     const body = request.body || {};
-    const { reason } = body; // Optional rejection reason
+    const query = request.query || {};
+    
+    // Handle body or query params, and both 'reason' and 'rejectionReason' field names
+    const reason = body.reason || body.rejectionReason || query.reason || query.rejectionReason;
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -1265,12 +1268,12 @@ exports.rejectProduct = async (request, reply) => {
     }
 
     // Send notification to seller about product rejection
-    await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No reason provided");
+    await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
 
     reply.send({
       success: true,
-      message: "Product rejected and removed",
-      reason: reason || "No reason provided"
+      message: "Product rejected successfully",
+      reason: reason || "No specific reason provided"
     });
   } catch (error) {
     console.error("Reject product error:", error);
@@ -1317,6 +1320,9 @@ exports.deactivateProduct = async (request, reply) => {
     }
 
     const { productId } = request.params;
+    const body = request.body || {};
+    const query = request.query || {};
+    const reason = body.reason || body.rejectionReason || query.reason || query.rejectionReason;
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
@@ -1325,13 +1331,16 @@ exports.deactivateProduct = async (request, reply) => {
 
     await prisma.product.update({
       where: { id: productId },
-      data: { status: 'INACTIVE' }
+      data: { 
+        status: 'INACTIVE',
+        rejectionReason: reason || null
+      }
     });
 
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
 
     // Send notification to seller
-    await notifySellerProductStatusChange(product.sellerId, productId, "INACTIVE", product.title);
+    await notifySellerProductStatusChange(product.sellerId, productId, "INACTIVE", product.title, reason);
 
     reply.send({ success: true, message: 'Product deactivated successfully' });
   } catch (error) {
