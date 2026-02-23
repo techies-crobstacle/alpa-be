@@ -146,6 +146,7 @@ model Product {
   artistName  String?       // Optional artist name field
   status      ProductStatus @default(PENDING)
   isActive    Boolean       @default(false)  // Product approval status
+  rejectionReason String?    // Reason for product rejection
   featured    Boolean       @default(false)
   tags        String[]      @default([])
   createdAt   DateTime      @default(now())
@@ -352,6 +353,7 @@ enum Role {
   CUSTOMER
   SELLER
   ADMIN
+  PASSWORD_RESET
 }
 
 enum OrderStatus {

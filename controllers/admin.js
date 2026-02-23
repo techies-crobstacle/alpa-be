@@ -4,7 +4,8 @@ const {
   notifySellerApproved,
   notifySellerApprovalRejected,
   notifySellerCulturalApproval,
-  notifySellerProductRecommendation
+  notifySellerProductRecommendation,
+  notifySellerProductStatusChange
 } = require("./notification");
 
 // GET ORDERS BY SELLER ID (ADMIN ONLY  )
@@ -1182,8 +1183,8 @@ exports.approveProduct = async (request, reply) => {
     // Update isActive using raw SQL since client doesn't recognize it yet
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
 
-    // TODO: Send notification to seller about product approval
-    // notifySellerProductApproved(product.sellerId, productId, product.title);
+    // Send notification to seller about product approval
+    await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
     // Fetch updated product with featuredImage via raw SQL
     const rows = await prisma.$queryRaw`
@@ -1214,7 +1215,8 @@ exports.rejectProduct = async (request, reply) => {
     }
 
     const { productId } = request.params;
-    const { reason } = request.body; // Optional rejection reason
+    const body = request.body || {};
+    const { reason } = body; // Optional rejection reason
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -1236,19 +1238,14 @@ exports.rejectProduct = async (request, reply) => {
       });
     }
 
-    // Option 1: Keep product but mark as rejected (you can choose this instead)
-    // const rejectedProduct = await prisma.product.update({
-    //   where: { id: productId },
-    //   data: {
-    //     isActive: false,
-    //     status: "INACTIVE",
-    //     rejectionReason: reason
-    //   }
-    // });
-
-    // Option 2: Delete the product (current implementation)
-    await prisma.product.delete({
-      where: { id: productId }
+    // Option 1: Keep product but mark as rejected
+    await prisma.product.update({
+      where: { id: productId },
+      data: {
+        isActive: false,
+        status: "INACTIVE",
+        rejectionReason: reason || "No reason provided"
+      }
     });
 
     // Update seller product count
@@ -1267,8 +1264,8 @@ exports.rejectProduct = async (request, reply) => {
       });
     }
 
-    // TODO: Send notification to seller about product rejection
-    // notifySellerProductRejected(product.sellerId, product.title, reason);
+    // Send notification to seller about product rejection
+    await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No reason provided");
 
     reply.send({
       success: true,
@@ -1302,6 +1299,9 @@ exports.activateProduct = async (request, reply) => {
 
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
 
+    // Send notification to seller
+    await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
+
     reply.send({ success: true, message: 'Product activated successfully' });
   } catch (error) {
     console.error('Activate product error:', error);
@@ -1329,6 +1329,9 @@ exports.deactivateProduct = async (request, reply) => {
     });
 
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
+
+    // Send notification to seller
+    await notifySellerProductStatusChange(product.sellerId, productId, "INACTIVE", product.title);
 
     reply.send({ success: true, message: 'Product deactivated successfully' });
   } catch (error) {

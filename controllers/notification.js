@@ -68,15 +68,15 @@ const notifySellerNewOrder = async (sellerId, orderId, orderDetails = {}) => {
   );
 };
 
-const notifySellerProductStatusChange = async (sellerId, productId, status, productTitle) => {
+const notifySellerProductStatusChange = async (sellerId, productId, status, productTitle, reason = null) => {
   const statusMessages = {
     'ACTIVE': `Your product "${productTitle}" is now active and visible to customers`,
     'PENDING': `Your product "${productTitle}" is pending approval`,
-    'INACTIVE': `Your product "${productTitle}" has been deactivated`,
-    'REJECTED': `Your product "${productTitle}" was rejected and needs review`
+    'INACTIVE': `Your product "${productTitle}" has been deactivated${reason ? `. Reason: ${reason}` : ''}`,
+    'REJECTED': `Your product "${productTitle}" was rejected and needs review${reason ? `. Reason: ${reason}` : ''}`
   };
 
-  const title = `Product ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+  const title = `Product ${status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()}`;
   const message = statusMessages[status] || `Your product "${productTitle}" status has been updated`;
 
   return await createNotification(
@@ -86,7 +86,7 @@ const notifySellerProductStatusChange = async (sellerId, productId, status, prod
     'PRODUCT_STATUS_CHANGED',
     productId,
     'product',
-    { status, productTitle }
+    { status, productTitle, reason }
   );
 };
 
