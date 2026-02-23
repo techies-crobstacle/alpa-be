@@ -791,14 +791,9 @@ exports.createCoupon = async (request, reply) => {
   }
 };
 
-// GET ALL COUPONS (Admin only)
+// GET ALL COUPONS (Public Access)
 exports.getAllCoupons = async (request, reply) => {
   try {
-    // Allow all authenticated users to access
-    if (!request.user) {
-      return reply.status(403).send({ message: 'Access denied. Login required.' });
-    }
-
     const coupons = await prisma.coupon.findMany({
       orderBy: { createdAt: 'desc' }
     });
