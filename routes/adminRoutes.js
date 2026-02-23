@@ -70,10 +70,8 @@ async function adminRoutes(fastify, options) {
   // Admin coupon management
   fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);
   
-  // Get coupons - accessible to all authenticated users (customers, sellers, admin)
-  fastify.get("/coupons", { 
-    preHandler: [authMiddleware, checkRole(['CUSTOMER', 'SELLER', 'ADMIN'])]
-  }, adminController.getAllCoupons);
+  // Get coupons - Public access
+  fastify.get("/coupons", adminController.getAllCoupons);
   
   fastify.put("/coupons/:id", { preHandler: adminAuth }, adminController.updateCoupon);
   fastify.delete("/coupons/:id", { preHandler: adminAuth }, adminController.deleteCoupon);
