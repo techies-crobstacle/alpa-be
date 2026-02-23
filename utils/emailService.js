@@ -858,18 +858,50 @@ const sendOTPEmail = async (email, otp, name) => {
     },
     subject: "Email Verification - OTP",
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">Email Verification</h2>
-        <p>Hi ${name},</p>
-        <p>Thank you for registering! Please use the following OTP to verify your email address:</p>
-        <div style="background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">
-          ${otp}
-        </div>
-        <p style="color: #666;">This OTP will expire in 10 minutes.</p>
-        <p style="color: #666;">If you didn't request this, please ignore this email.</p>
-        <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
-        <p style="color: #999; font-size: 12px;">This is an automated email, please do not reply.</p>
-      </div>
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:1px;">Email Verification</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Verify your identity to continue</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:40px 40px 30px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 8px;">Hi <strong>${name}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 30px;">Thank you for registering! Use the One-Time Password below to verify your email address.</p>
+
+                  <!-- OTP Box -->
+                  <div style="background:linear-gradient(135deg,#F9EDE9 0%,#FDF5F3 100%);border:2px dashed #C4603A;border-radius:10px;padding:28px;text-align:center;margin:0 0 30px;">
+                    <p style="margin:0 0 6px;color:#7D2E1E;font-size:13px;letter-spacing:2px;text-transform:uppercase;">Your OTP Code</p>
+                    <div style="font-size:40px;font-weight:800;letter-spacing:12px;color:#5A1E12;">${otp}</div>
+                    <p style="margin:10px 0 0;color:#C4603A;font-size:13px;">⏱ Expires in 10 minutes</p>
+                  </div>
+
+                  <div style="background-color:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 6px 6px 0;padding:14px 18px;">
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you did not request this OTP, please ignore this email. Your account remains secure.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email — please do not reply.</p>
+                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">© 2026 Aboriginal Art Marketplace. All rights reserved.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
     `,
   };
 
@@ -930,56 +962,124 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     },
     subject: `Order Confirmation - Invoice #${orderDetails.orderId}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; background-color: #fff;">
-        <div style="background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0;">
-          <h1 style="margin: 0; font-size: 28px;">🎨 ORDER CONFIRMED</h1>
-          <p style="margin: 10px 0 0 0; font-size: 14px;">Thank you for your purchase!</p>
-        </div>
-
-        <div style="background-color: #f9f9f9; padding: 20px; border-left: 4px solid #4CAF50;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px 0;"><strong>Invoice Number:</strong></td>
-              <td style="padding: 8px 0; text-align: right;">#${orderDetails.orderId}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0;"><strong>Order Date:</strong></td>
-              <td style="padding: 8px 0; text-align: right;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0;"><strong>Payment Method:</strong></td>
-              <td style="padding: 8px 0; text-align: right;">${orderDetails.paymentMethod || 'COD'}</td>
-            </tr>
-          </table>
-        </div>
-
-        <div style="margin: 20px 0;">
-          <h3 style="color: #333; margin-bottom: 10px;">Order Items</h3>
-          <table style="width: 100%; border-collapse: collapse; background-color: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <thead>
-              <tr style="background-color: #4CAF50; color: white;">
-                <th style="padding: 12px 8px; text-align: left;">Product</th>
-                <th style="padding: 12px 8px; text-align: center;">Quantity</th>
-                <th style="padding: 12px 8px; text-align: right;">Unit Price</th>
-                <th style="padding: 12px 8px; text-align: right;">Total</th>
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127912; Order Confirmed!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">Thank you for your purchase, ${customerName}!</p>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              ${productRows}
-            </tbody>
-            <tfoot>
-              <tr style="background-color: #f9f9f9; font-weight: bold;">
-                <td colspan="3" style="padding: 15px 8px; text-align: right; font-size: 18px;">Grand Total:</td>
-                <td style="padding: 15px 8px; text-align: right; color: #4CAF50; font-size: 20px;">$${orderDetails.totalAmount.toFixed(2)}</td>
+              <!-- Invoice Meta -->
+              <tr>
+                <td style="padding:0;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;border-bottom:3px solid #C4603A;">
+                    <tr>
+                      <td style="padding:16px 40px;">
+                        <table width="100%" cellpadding="0" cellspacing="0">
+                          <tr>
+                            <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Invoice #</strong></td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.orderId}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'COD'}</td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
               </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-          <p style="color: #666; font-size: 14px; margin: 5px 0;">Thank you for supporting Aboriginal artists! 🌟</p>
-        </div>
-      </div>
+              <!-- Shipping Info -->
+              <tr>
+                <td style="padding:28px 40px 10px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td width="48%" valign="top" style="padding-right:10px;">
+                        <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #5A1E12;">
+                          <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Customer Details</p>
+                          <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${customerName}</strong></p>
+                          <p style="margin:4px 0;color:#555;font-size:13px;">${email}</p>
+                          ${orderDetails.customerPhone ? `<p style="margin:4px 0;color:#555;font-size:13px;">${orderDetails.customerPhone}</p>` : ''}
+                        </div>
+                      </td>
+                      <td width="4%"></td>
+                      <td width="48%" valign="top" style="padding-left:10px;">
+                        <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #C4603A;">
+                          <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Shipping Address</p>
+                          <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${(orderDetails.shippingAddress || {}).name || customerName}</strong></p>
+                          <p style="margin:4px 0;color:#555;font-size:13px;line-height:1.6;">${[((orderDetails.shippingAddress||{}).address||(orderDetails.shippingAddress||{}).street),(orderDetails.shippingAddress||{}).city,(orderDetails.shippingAddress||{}).state,((orderDetails.shippingAddress||{}).pincode||(orderDetails.shippingAddress||{}).postalCode)].filter(Boolean).join(', ') || 'Address not provided'}</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Items Table -->
+              <tr>
+                <td style="padding:10px 40px 28px;">
+                  <p style="color:#5A1E12;font-size:16px;font-weight:700;margin:0 0 12px;">Order Items</p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.1);">
+                    <thead>
+                      <tr style="background-color:#5A1E12;">
+                        <th style="padding:13px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
+                        <th style="padding:13px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
+                        <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">Unit Price</th>
+                        <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${productRows}
+                    </tbody>
+                    <tfoot>
+                      <tr style="background-color:#F9EDE9;">
+                        <td colspan="3" style="padding:14px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total:</td>
+                        <td style="padding:14px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${orderDetails.totalAmount.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </td>
+              </tr>
+              <!-- Next Steps -->
+              <tr>
+                <td style="padding:0 40px 28px;">
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">&#128230; What happens next?</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Your order is being processed by our sellers</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; You'll receive a shipping confirmation when dispatched</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Track your order anytime from your account</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;letter-spacing:0.5px;">Track Your Order</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
     `,
   };
 
@@ -1038,23 +1138,61 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
     },
     subject: `Order Update - #${orderDetails.orderId}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #333; border-bottom: 2px solid ${statusColor}; padding-bottom: 10px;">🎨 Order Update</h2>
-        <p>Hi ${customerName},</p>
-        
-        <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin: 20px 0;">
-          <h3 style="margin-top: 0; color: ${statusColor};">${statusMessage}</h3>
-          <p><strong>Order ID:</strong> #${orderDetails.orderId}</p>
-          ${orderDetails.trackingNumber ? `<p><strong>Tracking:</strong> ${orderDetails.trackingNumber}</p>` : ''}
-        </div>
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">&#127912; Order Update</h1>
+                </td>
+              </tr>
+              <!-- Status Banner -->
+              <tr>
+                <td style="background-color:${statusColor};padding:16px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:16px;font-weight:600;">${statusMessage}</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:32px 40px;">
+                  <p style="color:#3D1009;font-size:16px;margin:0 0 24px;">Hi <strong>${customerName}</strong>,</p>
 
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDetails.orderId}" 
-             style="background-color: ${statusColor}; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-            View Order Details
-          </a>
-        </div>
-      </div>
+                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-left:4px solid #5A1E12;margin-bottom:20px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.orderId}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
+                        <td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:13px;font-weight:600;">${orderDetails.status?.toUpperCase()}</span></td>
+                      </tr>
+                      ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
+                    </table>
+                  </div>
+
+                  <div style="text-align:center;margin:28px 0;">
+                    <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 36px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order Details</a>
+                  </div>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
     `,
   };
 
@@ -1096,29 +1234,96 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
     },
     subject: `🎉 New Order #${orderDetails.orderId}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px;">
-        <div style="background-color: #FF9800; color: white; padding: 20px; text-align: center;">
-          <h1 style="margin: 0;">🎉 NEW ORDER RECEIVED</h1>
-        </div>
-
-        <div style="padding: 20px; background-color: #FFF3E0;">
-          <p>Hi <strong>${sellerName}</strong>,</p>
-          <p>You have a new order to process!</p>
-        </div>
-
-        <div style="padding: 20px;">
-          <h3>Order #${orderDetails.orderId}</h3>
-          <p><strong>Total:</strong> $${orderDetails.totalAmount.toFixed(2)}</p>
-          ${productRows ? `<table style="width: 100%;">${productRows}</table>` : ''}
-        </div>
-
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/orders" 
-             style="background-color: #FF9800; color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px;">
-            View in Dashboard
-          </a>
-        </div>
-      </div>
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127881; New Order Received!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">You have a new order to process</p>
+                </td>
+              </tr>
+              <!-- Alert banner -->
+              <tr>
+                <td style="background-color:#C4603A;padding:12px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">&#9888;&#65039; Action required — please process this order promptly</p>
+                </td>
+              </tr>
+              <!-- Seller greeting -->
+              <tr>
+                <td style="padding:28px 40px 16px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 6px;">Hi <strong>${sellerName}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0;">Great news! A customer has placed an order for your product(s). Check the details below and update the status in your seller dashboard.</p>
+                </td>
+              </tr>
+              <!-- Order summary -->
+              <tr>
+                <td style="padding:0 40px 20px;">
+                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                    <p style="margin:0 0 14px;color:#5A1E12;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Summary</p>
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.orderId}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Earnings</strong></td>
+                        <td style="padding:6px 0;color:#5A1E12;font-size:18px;font-weight:800;text-align:right;">$${orderDetails.totalAmount.toFixed(2)}</td>
+                      </tr>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+              <!-- Products -->
+              ${productRows ? `
+              <tr>
+                <td style="padding:0 40px 20px;">
+                  <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Products Ordered</p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;">
+                    <thead><tr style="background-color:#5A1E12;"><th style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;">Product</th><th style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th><th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Price</th></tr></thead>
+                    <tbody>${productRows}</tbody>
+                  </table>
+                </td>
+              </tr>` : ''}
+              <!-- Action required -->
+              <tr>
+                <td style="padding:0 40px 20px;">
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Checklist</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Log into your seller dashboard</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Confirm the order and verify stock</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Pack and ship within 2–3 business days</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Add tracking information once dispatched</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Dashboard</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Aboriginal Art Marketplace seller! &#128188;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
     `,
   };
 
@@ -1151,18 +1356,51 @@ const sendContactFormEmail = async (email, name, subject, message) => {
     },
     subject: `Contact Form Received - ${subject}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2>Hi ${name},</h2>
-        <p>Thank you for contacting us! We've received your message.</p>
-        
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; margin: 30px 0;">
-          <h3>Your Message:</h3>
-          <p><strong>Subject:</strong> ${subject}</p>
-          <p><strong>Message:</strong> ${message}</p>
-        </div>
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">&#128140; Message Received</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We'll be in touch soon!</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for reaching out! We've received your message and our support team will review it shortly.</p>
 
-        <p>Our team will respond within 24-48 hours.</p>
-      </div>
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:22px;">
+                    <p style="margin:0 0 14px;color:#5A1E12;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Message</p>
+                    <p style="margin:0 0 8px;color:#7D2E1E;font-size:14px;"><strong>Subject:</strong> <span style="color:#3D1009;">${subject}</span></p>
+                    <p style="margin:0 0 6px;color:#7D2E1E;font-size:14px;"><strong>Message:</strong></p>
+                    <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">${message}</p>
+                  </div>
+
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128338; Response Time</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24–48 business hours. You'll receive a reply at this email address.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Aboriginal Art Marketplace — Customer Support</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
     `,
   };
 
@@ -1204,25 +1442,82 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
       },
       subject: `🚨 ${notificationType} Required - Order #${orderId?.slice(-8)}`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: ${urgencyColor}; color: white; padding: 20px; text-align: center;">
-            <h1>⚠️ SLA WARNING</h1>
-          </div>
+        <!DOCTYPE html>
+        <html>
+        <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+            <tr><td align="center">
+              <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.15);">
+                <!-- Brand Header -->
+                <tr>
+                  <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:20px 40px;text-align:center;">
+                    <p style="margin:0;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  </td>
+                </tr>
+                <!-- Urgency Banner -->
+                <tr>
+                  <td style="background-color:${urgencyColor};padding:28px 40px;text-align:center;">
+                    <h1 style="margin:0 0 6px;color:#ffffff;font-size:26px;font-weight:800;">&#9888;&#65039; SLA ${slaStatus.status === 'BREACHED' ? 'BREACHED' : 'WARNING'}</h1>
+                    <p style="margin:0;color:rgba(255,255,255,0.9);font-size:14px;">Immediate action required</p>
+                  </td>
+                </tr>
+                <!-- Body -->
+                <tr>
+                  <td style="padding:32px 40px;">
+                    <p style="color:#3D1009;font-size:16px;margin:0 0 24px;">
+                      ${slaStatus.status === 'BREACHED' ? 'This order is <strong>OVERDUE</strong> and requires immediate attention.' : 'This order is approaching its SLA deadline and needs your attention soon.'}
+                    </p>
 
-          <div style="padding: 20px;">
-            <h2>${notificationType.replace('_', ' ')}</h2>
-            <p><strong>Order:</strong> #{orderId?.slice(-8)}</p>
-            <p><strong>Status:</strong> ${slaStatus.status}</p>
-            <p><strong>Time:</strong> ${slaStatus.timeRemaining.toFixed(1)} hours</p>
-          </div>
+                    <!-- Order Details -->
+                    <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;margin-bottom:20px;">
+                      <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Details</p>
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderId?.slice(-8) || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Action Required</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${notificationType.replace(/_/g, ' ')}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>SLA Status</strong></td>
+                          <td style="padding:6px 0;text-align:right;"><span style="background-color:${urgencyColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:13px;font-weight:600;">${slaStatus.status}</span></td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Time</strong></td>
+                          <td style="padding:6px 0;color:${urgencyColor};font-size:14px;font-weight:700;text-align:right;">${slaStatus.isOverdue ? `OVERDUE by ${Math.abs(slaStatus.timeRemaining).toFixed(1)} hrs` : `${slaStatus.timeRemaining.toFixed(1)} hrs remaining`}</td>
+                        </tr>
+                      </table>
+                    </div>
 
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${process.env.FRONTEND_URL}/seller/orders/${orderId}" 
-               style="background-color: ${urgencyColor}; color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px;">
-              Take Action Now
-            </a>
-          </div>
-        </div>
+                    <!-- Steps -->
+                    <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:28px;">
+                      <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Next Steps</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Log into your seller dashboard immediately</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Update the order status</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Add tracking information if shipping</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Contact the customer if required</p>
+                    </div>
+
+                    <!-- CTA -->
+                    <div style="text-align:center;">
+                      <a href="${process.env.FRONTEND_URL}/seller/orders/${orderId}" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">&#128640; Take Action Now</a>
+                    </div>
+                  </td>
+                </tr>
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Aboriginal Art Marketplace — Automated SLA Monitor</p>
+                    <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  </td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
       `,
     };
 
