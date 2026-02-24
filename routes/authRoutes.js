@@ -1,4 +1,5 @@
 const fastifyPassport = require("@fastify/passport");
+const authMiddleware = require("../middlewares/auth");
 const {
   register, login, logout, verifyOTP, resendOTP,
   forgotPassword, resetPassword, verifyLoginOTP, samlCallback,
@@ -16,9 +17,9 @@ async function authRoutes(fastify, options) {
   fastify.post("/verify-login-otp", verifyLoginOTP);
 
   // SSO Handshake (Sellers & Customers only — Admin uses SAML)
-  // Step 1: Website calls this after login to get a short-lived ticket
-  fastify.post("/create-ticket", createTicket);
-  // Step 2: Dashboard calls this to exchange the ticket for its own JWT/cookie
+  // Step 1: Website calls this after login — requires a valid Bearer token
+  fastify.post("/create-ticket", { preHandler: authMiddleware }, createTicket);
+  // Step 2: Dashboard calls this to exchange the ticket for its own JWT/cookie — no auth required
   fastify.post("/exchange-ticket", exchangeTicket);
   
   // SAML Routes (Lane 2)

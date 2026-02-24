@@ -1247,25 +1247,15 @@ exports.samlCallback = async (request, reply) => {
  * immediately pass to the Dashboard domain so it can exchange it for its
  * own session.
  */
+// POST /auth/create-ticket
+// Protected by authMiddleware (preHandler in route) — request.user is already verified.
 exports.createTicket = async (request, reply) => {
   try {
-    // Accept Bearer token OR session cookie
-    let decoded = null;
-
-    const authHeader = request.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } else if (request.cookies && request.cookies.session_token) {
-      decoded = jwt.verify(request.cookies.session_token, process.env.JWT_SECRET);
-    }
-
-    if (!decoded) {
-      return reply.status(401).send({ success: false, message: 'Authentication required' });
-    }
+    // request.user is set by the auth middleware from the Bearer token
+    const { userId, role } = request.user;
 
     // Guard: only SELLER and CUSTOMER — Admin uses SAML
-    if (!['SELLER', 'CUSTOMER'].includes(decoded.role)) {
+    if (!['SELLER', 'CUSTOMER'].includes(role)) {
       return reply.status(403).send({
         success: false,
         message: 'SSO tickets are only available for Sellers and Customers'
@@ -1273,7 +1263,7 @@ exports.createTicket = async (request, reply) => {
     }
 
     // Confirm the user still exists in the DB
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return reply.status(404).send({ success: false, message: 'User not found' });
     }
@@ -1283,7 +1273,7 @@ exports.createTicket = async (request, reply) => {
       where: { userId: user.id, expiresAt: { lt: new Date() } }
     });
 
-    // Create a new 60-second ticket
+    // Create a new 60-second one-time ticket
     const expiresAt = new Date(Date.now() + 60 * 1000);
     const ticket = await prisma.ssoTicket.create({
       data: { userId: user.id, expiresAt }

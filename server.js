@@ -35,9 +35,23 @@ const app = fastify({
   requestTimeout: 30000 // 30 second timeout
 });
 
-// Register CORS - Allow all origins with credentials
+// Register CORS
+// Explicit allowlist — add any new frontend origin here
+const ALLOWED_ORIGINS = [
+  'https://alpa-fe.vercel.app',          // Website (customer/seller facing)
+  'https://alpa-dashboard.vercel.app',   // Dashboard (seller/admin portal)
+  'http://localhost:3000',               // Local dev — website
+  'http://localhost:3001',               // Local dev — dashboard
+  'http://localhost:3002',               // Local dev — extra port
+];
+
 app.register(require("@fastify/cors"), {
-  origin: true, // Allow all origins and echo back the request origin
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin '${origin}' not allowed`), false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
