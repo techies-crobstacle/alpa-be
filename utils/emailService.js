@@ -1043,9 +1043,50 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       ${productRows}
                     </tbody>
                     <tfoot>
-                      <tr style="background-color:#F9EDE9;">
-                        <td colspan="3" style="padding:14px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total:</td>
-                        <td style="padding:14px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${orderDetails.totalAmount.toFixed(2)}</td>
+                      <!-- Subtotal row -->
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">Subtotal (inc. GST)</td>
+                        <td style="padding:10px 12px;text-align:right;color:#333;font-size:14px;">$${
+                          orderDetails.orderSummary
+                            ? parseFloat(orderDetails.orderSummary.subtotal || 0).toFixed(2)
+                            : orderDetails.totalAmount.toFixed(2)
+                        }</td>
+                      </tr>
+                      <!-- Shipping row -->
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
+                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` — ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays} days)` : ''}
+                        </td>
+                        <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
+                          orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0
+                            ? `$${parseFloat(orderDetails.orderSummary.shippingCost).toFixed(2)}`
+                            : '<span style="color:#2e7d32;font-weight:600;">FREE</span>'
+                        }</td>
+                      </tr>
+                      <!-- GST extracted row -->
+                      <tr style="background-color:#fdf5f3;border-top:1px dashed #ddd;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">
+                          GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
+                        </td>
+                        <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
+                          orderDetails.orderSummary
+                            ? parseFloat(orderDetails.orderSummary.gstAmount || 0).toFixed(2)
+                            : '0.00'
+                        }</td>
+                      </tr>
+                      <!-- Net ex-GST row -->
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">Net amount (ex. GST)</td>
+                        <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
+                          orderDetails.orderSummary
+                            ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
+                            : '0.00'
+                        }</td>
+                      </tr>
+                      <!-- Grand Total row -->
+                      <tr style="background-color:#F9EDE9;border-top:2px solid #C4603A;">
+                        <td colspan="3" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
+                        <td style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${orderDetails.totalAmount.toFixed(2)}</td>
                       </tr>
                     </tfoot>
                   </table>

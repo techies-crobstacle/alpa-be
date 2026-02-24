@@ -262,6 +262,11 @@ exports.confirmPayment = async (request, reply) => {
 
     // Send confirmation email (non-blocking)
     if (user?.email) {
+      // orderSummary is embedded in the shippingAddress JSON field
+      const storedSummary = typeof order.shippingAddress === 'object'
+        ? order.shippingAddress?.orderSummary
+        : null;
+
       sendOrderConfirmationEmail(user.email, user.name, {
         orderId: order.id,
         totalAmount: Number(order.totalAmount),
@@ -269,10 +274,12 @@ exports.confirmPayment = async (request, reply) => {
         products: order.items.map((item) => ({
           title: item.product.title,
           quantity: item.quantity,
-          price: item.price,
+          price: Number(item.price),
         })),
         shippingAddress: order.shippingAddressLine,
         paymentMethod: "Stripe",
+        customerPhone: user.phone || "",
+        orderSummary: storedSummary || undefined,
       }).catch((e) =>
         console.error("Email error (non-blocking):", e.message)
       );
