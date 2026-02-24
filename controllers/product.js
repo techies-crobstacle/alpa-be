@@ -442,20 +442,27 @@ exports.deleteProduct = async (request, reply) => {
 // GET ALL PRODUCTS (Public - only active sellers' products)
 exports.getAllProducts = async (request, reply) => {
   try {
-    // Use raw SQL to query with isActive field until Prisma client is regenerated
     const products = await prisma.$queryRaw`
-      SELECT p.*, u.name as "sellerUserName" 
+      SELECT
+        p.*,
+        u.name AS "sellerUserName",
+        ROUND(AVG(r.rating)::numeric, 1)  AS "avgRating",
+        COUNT(r.id)::int                  AS "ratingCount"
       FROM "products" p
       JOIN "users" u ON p."sellerId" = u.id
       JOIN "seller_profiles" sp ON u.id = sp."userId"
+      LEFT JOIN "ratings" r ON r."productId" = p.id
       WHERE p."isActive" = true AND sp.status = 'ACTIVE'
+      GROUP BY p.id, u.name
       ORDER BY p."createdAt" DESC
     `;
 
     const mapped = products.map(({ images, ...p }) => ({
       ...p,
       featuredImage: p.featuredImage || null,
-      galleryImages: images
+      galleryImages: images,
+      avgRating: p.avgRating ? parseFloat(p.avgRating) : null,
+      ratingCount: p.ratingCount ?? 0
     }));
 
     return reply.status(200).send({ success: true, products: mapped, count: mapped.length });
