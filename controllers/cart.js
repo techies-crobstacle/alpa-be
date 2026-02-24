@@ -158,9 +158,21 @@ exports.addToCart = async (request, reply) => {
       }
     }
 
+    // Fetch updated cart item count
+    const updatedCart = await prisma.cart.findUnique({
+      where: { userId },
+      include: { items: true }
+    });
+    const cartItemCount = updatedCart ? updatedCart.items.length : 0;
+    const totalQuantity = updatedCart
+      ? updatedCart.items.reduce((sum, i) => sum + i.quantity, 0)
+      : 0;
+
     return reply.status(200).send({
       success: true,
       message: "Product added to cart successfully",
+      cartItemCount,
+      totalQuantity
     });
   } catch (error) {
     console.error("Add to cart error:", error);
@@ -211,6 +223,8 @@ exports.getMyCart = async (request, reply) => {
         success: true,
         cart: [],
         message: "Cart is empty",
+        cartItemCount: 0,
+        totalQuantity: 0,
         availableShipping: [],
         calculations: {
           subtotal: "0.00",
@@ -258,9 +272,14 @@ exports.getMyCart = async (request, reply) => {
     // Calculate totals
     const calculations = await calculateCartTotals(cleanedCart, shippingMethodId, gstId);
 
+    const cartItemCount = cleanedCart.length;
+    const totalQuantity = cleanedCart.reduce((sum, item) => sum + item.quantity, 0);
+
     return reply.status(200).send({
       success: true,
       cart: cleanedCart,
+      cartItemCount,
+      totalQuantity,
       availableShipping,
       gst: defaultGST,
       calculations
