@@ -9,7 +9,7 @@ const prisma = require("../config/prisma");
  */
 const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = null) => {
   try {
-    // Calculate subtotal
+    // Calculate subtotal — seller prices are GST-inclusive
     const subtotal = cartItems.reduce((sum, item) => {
       const price = parseFloat(item.product.price || 0);
       const quantity = item.quantity || 0;
@@ -30,7 +30,7 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
       }
     }
 
-    // Get GST - either specific GST or default
+    // Get GST — either specific GST or default (used for display/extraction only)
     let gstDetails = null;
     if (gstId) {
       gstDetails = await prisma.gST.findUnique({
@@ -43,16 +43,27 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
     }
 
     const gstPercentage = gstDetails ? parseFloat(gstDetails.percentage || 0) : 0;
-    const gstAmount = ((subtotal + shippingCost) * gstPercentage) / 100;
-    
-    const grandTotal = subtotal + shippingCost + gstAmount;
+
+    // Prices are GST-inclusive — extract the GST component from the subtotal.
+    // Formula: GST = subtotal × rate / (100 + rate)
+    // Example at 10%: $110 × 10 / 110 = $10  →  net ex-GST = $100
+    const gstAmount = gstPercentage > 0
+      ? (subtotal * gstPercentage) / (100 + gstPercentage)
+      : 0;
+
+    const subtotalExGST = subtotal - gstAmount;
+
+    // grandTotal = subtotal (GST already included) + shipping; no extra GST added
+    const grandTotal = subtotal + shippingCost;
 
     return {
-      subtotal: subtotal.toFixed(2),
+      subtotal: subtotal.toFixed(2),           // GST-inclusive product total
+      subtotalExGST: subtotalExGST.toFixed(2), // Net amount ex-GST
       shippingCost: shippingCost.toFixed(2),
       gstPercentage: gstPercentage.toFixed(2),
-      gstAmount: gstAmount.toFixed(2),
+      gstAmount: gstAmount.toFixed(2),          // GST component extracted from subtotal
       grandTotal: grandTotal.toFixed(2),
+      gstInclusive: true,
       selectedShipping,
       gstDetails
     };
@@ -203,10 +214,12 @@ exports.getMyCart = async (request, reply) => {
         availableShipping: [],
         calculations: {
           subtotal: "0.00",
+          subtotalExGST: "0.00",
           shippingCost: "0.00",
           gstPercentage: "0.00",
           gstAmount: "0.00",
-          grandTotal: "0.00"
+          grandTotal: "0.00",
+          gstInclusive: true
         }
       });
     }

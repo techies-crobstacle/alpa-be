@@ -233,10 +233,12 @@ exports.createOrder = async (request, reply) => {
         // Include order breakdown for invoice
         orderSummary: {
           subtotal: cartCalculations.subtotal,
+          subtotalExGST: cartCalculations.subtotalExGST,
           shippingCost: cartCalculations.shippingCost,
           gstPercentage: cartCalculations.gstPercentage,
           gstAmount: cartCalculations.gstAmount,
           grandTotal: cartCalculations.grandTotal,
+          gstInclusive: true,
           shippingMethod: {
             name: shippingMethod.name,
             cost: shippingMethod.cost,
@@ -310,10 +312,12 @@ exports.createOrder = async (request, reply) => {
       orderId: order.id,
       orderSummary: {
         subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
         gstPercentage: cartCalculations.gstPercentage,
         gstAmount: cartCalculations.gstAmount,
         totalAmount: cartCalculations.grandTotal,
+        gstInclusive: true,
         shippingMethod: {
           name: shippingMethod.name,
           estimatedDays: shippingMethod.estimatedDays
