@@ -1065,7 +1065,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       </tr>
                       <!-- GST extracted row -->
                       <tr style="background-color:#fdf5f3;border-top:1px dashed #ddd;">
-                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">
                           GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
                         </td>
                         <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
@@ -1076,7 +1076,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       </tr>
                       <!-- Net ex-GST row -->
                       <tr style="background-color:#fdf5f3;">
-                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">Net amount (ex. GST)</td>
+                        <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">Net amount (ex. GST)</td>
                         <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
                           orderDetails.orderSummary
                             ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
