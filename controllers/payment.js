@@ -110,10 +110,12 @@ exports.createPaymentIntent = async (request, reply) => {
             ...shippingAddress,
             orderSummary: {
               subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
               shippingCost: cartCalculations.shippingCost,
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
+              gstInclusive: true,
               shippingMethod: {
                 id: shippingMethod.id,
                 name: shippingMethod.name,
@@ -156,13 +158,16 @@ exports.createPaymentIntent = async (request, reply) => {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       orderId: order.id,
-      amount: totalAmount,
-      amountInCents,
+      amount: amountInCents,        // in cents (Stripe standard) — e.g. 9500 for $95.00 AUD
+      displayAmount: totalAmount,   // in dollars, for UI display only — e.g. 95.00
       currency: "aud",
       orderSummary: {
         subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
         gstAmount: cartCalculations.gstAmount,
+        gstPercentage: cartCalculations.gstPercentage,
+        gstInclusive: true,
         grandTotal: cartCalculations.grandTotal,
       },
     });
