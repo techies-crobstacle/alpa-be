@@ -255,7 +255,7 @@ exports.createOrder = async (request, reply) => {
         shippingCountry: country,
         shippingPhone: mobileNumber,
         paymentMethod: "PAYPAL",
-        status: "PENDING",
+        status: "CONFIRMED",
         paymentStatus: "PENDING",
         paypalOrderId, // store PayPal order ID
         customerName: user.name,

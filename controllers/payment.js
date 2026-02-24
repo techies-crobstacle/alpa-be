@@ -142,7 +142,7 @@ exports.createPaymentIntent = async (request, reply) => {
         shippingCountry: country,
         shippingPhone: mobileNumber,
         paymentMethod: "STRIPE",
-        status: "PENDING",
+        status: "CONFIRMED",
         paymentStatus: "PENDING",
         stripePaymentIntentId: paymentIntent.id,
         customerName: user.name,

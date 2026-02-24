@@ -48,7 +48,7 @@ async function orderRoutes(fastify, options) {
   fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
 
   // Download invoice PDF (accessible by customer, seller for their orders, admin for all)
-  fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
+  fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['CUSTOMER', 'USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
 
   // ----------- GUEST CHECKOUT ROUTES (No authentication) -----------
 
