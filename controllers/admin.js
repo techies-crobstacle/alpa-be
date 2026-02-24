@@ -1385,6 +1385,103 @@ exports.bulkApproveProducts = async (request, reply) => {
   }
 };
 
+// ==================== REVENUE & ORDERS CHART (ADMIN) ====================
+// GET /admin/analytics/revenue-chart?period=7D|30D|1Y
+// Returns daily (7D/30D) or monthly (1Y) revenue & order count for DELIVERED orders
+exports.getRevenueOrdersChart = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const period = (request.query.period || '7D').toUpperCase();
+    const validPeriods = ['7D', '30D', '1Y'];
+    if (!validPeriods.includes(period)) {
+      return reply.status(400).send({ success: false, message: `Invalid period. Use one of: ${validPeriods.join(', ')}` });
+    }
+
+    // Determine interval and grouping
+    const intervalMap = { '7D': 7, '30D': 30, '1Y': 365 };
+    const days = intervalMap[period];
+    const groupByMonth = period === '1Y';
+
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - days);
+
+    // Query delivered orders grouped by date or month
+    let rows;
+    if (groupByMonth) {
+      rows = await prisma.$queryRaw`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', "updatedAt"), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int                                            AS orders,
+          COALESCE(SUM("totalAmount"), 0)::float                  AS revenue
+        FROM orders
+        WHERE status = 'DELIVERED'
+          AND "updatedAt" >= ${startDate}
+        GROUP BY DATE_TRUNC('month', "updatedAt")
+        ORDER BY DATE_TRUNC('month', "updatedAt") ASC
+      `;
+    } else {
+      rows = await prisma.$queryRaw`
+        SELECT
+          TO_CHAR(DATE("updatedAt"), 'YYYY-MM-DD') AS date,
+          COUNT(*)::int                            AS orders,
+          COALESCE(SUM("totalAmount"), 0)::float   AS revenue
+        FROM orders
+        WHERE status = 'DELIVERED'
+          AND "updatedAt" >= ${startDate}
+        GROUP BY DATE("updatedAt")
+        ORDER BY DATE("updatedAt") ASC
+      `;
+    }
+
+    // Build a complete date list for the period (fill missing dates with 0)
+    const resultMap = {};
+    for (const row of rows) {
+      resultMap[row.date] = { orders: row.orders, revenue: Number(row.revenue) };
+    }
+
+    const chartData = [];
+    if (groupByMonth) {
+      // Iterate month by month
+      const cursor = new Date(now.getFullYear(), now.getMonth() - 11, 1); // 12 months back
+      for (let i = 0; i < 12; i++) {
+        const key = cursor.toISOString().slice(0, 10); // YYYY-MM-DD (1st of month)
+        chartData.push({
+          date: key,
+          orders: resultMap[key]?.orders ?? 0,
+          revenue: resultMap[key]?.revenue ?? 0
+        });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    } else {
+      // Iterate day by day
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+        chartData.push({
+          date: key,
+          orders: resultMap[key]?.orders ?? 0,
+          revenue: resultMap[key]?.revenue ?? 0
+        });
+      }
+    }
+
+    return reply.send({
+      success: true,
+      period,
+      note: 'Revenue and order counts are based on orders with DELIVERED status.',
+      data: chartData
+    });
+  } catch (error) {
+    console.error('Revenue orders chart error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 
 
 

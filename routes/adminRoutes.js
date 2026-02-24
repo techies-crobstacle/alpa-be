@@ -80,6 +80,10 @@ async function adminRoutes(fastify, options) {
   fastify.get("/sales/analytics", { preHandler: adminAuth }, adminController.getSalesAnalytics);
   fastify.get("/sales/export", { preHandler: adminAuth }, adminController.exportSalesCSV);
 
+  // ---------------- REVENUE & ORDERS CHART ----------------
+  // GET /admin/analytics/revenue-chart?period=7D|30D|1Y
+  fastify.get("/analytics/revenue-chart", { preHandler: adminAuth }, adminController.getRevenueOrdersChart);
+
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
   fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);
