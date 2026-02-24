@@ -38,7 +38,7 @@ const app = fastify({
 // Register CORS
 // Explicit allowlist — add any new frontend origin here
 const ALLOWED_ORIGINS = [
-  'https://alpa-fe.vercel.app',          // Website (customer/seller facing)
+  'https://apla-fe.vercel.app',          // Website (customer/seller facing)
   'https://alpa-dashboard.vercel.app',   // Dashboard (seller/admin portal)
   'http://localhost:3000',               // Local dev — website
   'http://localhost:3001',               // Local dev — dashboard
