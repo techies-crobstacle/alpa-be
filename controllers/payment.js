@@ -110,10 +110,12 @@ exports.createPaymentIntent = async (request, reply) => {
             ...shippingAddress,
             orderSummary: {
               subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
               shippingCost: cartCalculations.shippingCost,
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
+              gstInclusive: true,
               shippingMethod: {
                 id: shippingMethod.id,
                 name: shippingMethod.name,
@@ -156,13 +158,16 @@ exports.createPaymentIntent = async (request, reply) => {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       orderId: order.id,
-      amount: totalAmount,
-      amountInCents,
+      amount: amountInCents,        // in cents (Stripe standard) — e.g. 9500 for $95.00 AUD
+      displayAmount: totalAmount,   // in dollars, for UI display only — e.g. 95.00
       currency: "aud",
       orderSummary: {
         subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
         gstAmount: cartCalculations.gstAmount,
+        gstPercentage: cartCalculations.gstPercentage,
+        gstInclusive: true,
         grandTotal: cartCalculations.grandTotal,
       },
     });
@@ -257,6 +262,11 @@ exports.confirmPayment = async (request, reply) => {
 
     // Send confirmation email (non-blocking)
     if (user?.email) {
+      // orderSummary is embedded in the shippingAddress JSON field
+      const storedSummary = typeof order.shippingAddress === 'object'
+        ? order.shippingAddress?.orderSummary
+        : null;
+
       sendOrderConfirmationEmail(user.email, user.name, {
         orderId: order.id,
         totalAmount: Number(order.totalAmount),
@@ -264,10 +274,12 @@ exports.confirmPayment = async (request, reply) => {
         products: order.items.map((item) => ({
           title: item.product.title,
           quantity: item.quantity,
-          price: item.price,
+          price: Number(item.price),
         })),
         shippingAddress: order.shippingAddressLine,
         paymentMethod: "Stripe",
+        customerPhone: user.phone || "",
+        orderSummary: storedSummary || undefined,
       }).catch((e) =>
         console.error("Email error (non-blocking):", e.message)
       );
