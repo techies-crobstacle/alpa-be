@@ -1236,6 +1236,172 @@ exports.samlCallback = async (request, reply) => {
 // };
 
 // // LOGIN
+// ─────────────────────────────────────────────────────────────────────────────
+// SSO TICKET ENDPOINTS  (Sellers & Customers only — Admin uses SAML / SSO)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /auth/create-ticket
+ * Called by the Website after a successful Seller/Customer login.
+ * Returns a short-lived (60 s) one-time ticketId that the frontend can
+ * immediately pass to the Dashboard domain so it can exchange it for its
+ * own session.
+ */
+exports.createTicket = async (request, reply) => {
+  try {
+    // Accept Bearer token OR session cookie
+    let decoded = null;
+
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } else if (request.cookies && request.cookies.session_token) {
+      decoded = jwt.verify(request.cookies.session_token, process.env.JWT_SECRET);
+    }
+
+    if (!decoded) {
+      return reply.status(401).send({ success: false, message: 'Authentication required' });
+    }
+
+    // Guard: only SELLER and CUSTOMER — Admin uses SAML
+    if (!['SELLER', 'CUSTOMER'].includes(decoded.role)) {
+      return reply.status(403).send({
+        success: false,
+        message: 'SSO tickets are only available for Sellers and Customers'
+      });
+    }
+
+    // Confirm the user still exists in the DB
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) {
+      return reply.status(404).send({ success: false, message: 'User not found' });
+    }
+
+    // Housekeeping: remove any already-expired tickets for this user
+    await prisma.ssoTicket.deleteMany({
+      where: { userId: user.id, expiresAt: { lt: new Date() } }
+    });
+
+    // Create a new 60-second ticket
+    const expiresAt = new Date(Date.now() + 60 * 1000);
+    const ticket = await prisma.ssoTicket.create({
+      data: { userId: user.id, expiresAt }
+    });
+
+    console.log(`🎫 SSO Ticket created for ${user.email} (${user.role}): ${ticket.id} — expires in 60s`);
+
+    return reply.status(200).send({
+      success: true,
+      ticketId: ticket.id,
+      expiresIn: 60,
+      message: 'SSO ticket created. Use this ticket within 60 seconds.'
+    });
+  } catch (error) {
+    console.error('❌ Create SSO ticket error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+/**
+ * POST /auth/exchange-ticket
+ * Called by the Dashboard domain (no existing session).
+ * Consumes the ticket (deletes it immediately) and issues a fresh JWT +
+ * sets a session cookie valid on the Dashboard domain.
+ */
+exports.exchangeTicket = async (request, reply) => {
+  try {
+    // Accept both `ticket` (sent by the Dashboard /login-callback page) and
+    // `ticketId` (legacy / direct API callers) so neither breaks.
+    const { ticket, ticketId } = request.body;
+    const resolvedTicketId = ticket || ticketId;
+
+    if (!resolvedTicketId) {
+      return reply.status(400).send({ success: false, message: 'ticket is required' });
+    }
+
+    // Look up the ticket
+    const ssoTicket = await prisma.ssoTicket.findUnique({ where: { id: resolvedTicketId } });
+
+    if (!ssoTicket) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Invalid or already-used ticket'
+      });
+    }
+
+    // Check expiry before doing anything else
+    if (new Date() > ssoTicket.expiresAt) {
+      await prisma.ssoTicket.delete({ where: { id: resolvedTicketId } });
+      return reply.status(401).send({
+        success: false,
+        message: 'Ticket has expired. Please log in again.'
+      });
+    }
+
+    // *** One-time use: delete the ticket immediately ***
+    await prisma.ssoTicket.delete({ where: { id: resolvedTicketId } });
+
+    // Fetch the full user record
+    const user = await prisma.user.findUnique({ where: { id: ssoTicket.userId } });
+    if (!user) {
+      return reply.status(404).send({ success: false, message: 'User not found' });
+    }
+
+    // Guard: only Sellers and Customers — Admin uses SAML
+    if (!['SELLER', 'CUSTOMER'].includes(user.role)) {
+      return reply.status(403).send({
+        success: false,
+        message: 'Only Sellers and Customers can exchange tickets'
+      });
+    }
+
+    // Issue a fresh 7-day JWT for the Dashboard
+    const token = jwt.sign(
+      { userId: user.id, uid: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    // Cross-domain cookie:
+    //   - httpOnly: false so the Dashboard JS (localStorage / js-cookie) can also read it
+    //   - SameSite: None + Secure: true required for cross-origin credentialed requests in prod
+    reply.setCookie('session_token', token, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+      path: '/'
+    });
+
+    const userResponse = {
+      id: user.id,
+      uid: user.id,
+      name: user.name,
+      email: user.email,
+      mobile: user.phone,
+      role: user.role,
+      emailVerified: user.emailVerified,
+      createdAt: user.createdAt
+    };
+
+    console.log(`✅ SSO Ticket exchanged successfully for ${user.email} (${user.role})`);
+
+    // Response shape the Dashboard /login-callback page expects:
+    // { token, role, user }
+    return reply.status(200).send({
+      success: true,
+      message: 'SSO authentication successful',
+      token,
+      role: user.role,
+      user: userResponse
+    });
+  } catch (error) {
+    console.error('❌ Exchange SSO ticket error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
 // exports.login = async (request, reply) => {
 //   try {
 //     const { email, password, clientFingerprint, trustedDeviceToken } = request.body;

@@ -34,6 +34,7 @@ model User {
   userSessions  UserSession[]
   loginVerifications LoginVerification[]
   siteFeedback  SiteFeedback[]
+  ssoTickets    SsoTicket[]
 
   @@map("users")
 }
@@ -483,6 +484,19 @@ model GST {
   updatedAt   DateTime @updatedAt
 
   @@map("gst_settings")
+}
+
+// SSO Ticket: One-time handshake tokens for cross-domain authentication (Sellers & Customers only)
+model SsoTicket {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sso_tickets")
 }
 
 enum NotificationStatus {

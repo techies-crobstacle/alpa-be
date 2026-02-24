@@ -1,5 +1,9 @@
 const fastifyPassport = require("@fastify/passport");
-const { register, login, logout, verifyOTP, resendOTP, forgotPassword, resetPassword, verifyLoginOTP, samlCallback } = require("../controllers/auth");
+const {
+  register, login, logout, verifyOTP, resendOTP,
+  forgotPassword, resetPassword, verifyLoginOTP, samlCallback,
+  createTicket, exchangeTicket
+} = require("../controllers/auth");
 
 async function authRoutes(fastify, options) {
   fastify.post("/signup", register);
@@ -10,6 +14,12 @@ async function authRoutes(fastify, options) {
   fastify.post("/forgot-password", forgotPassword);
   fastify.post("/reset-password", resetPassword);
   fastify.post("/verify-login-otp", verifyLoginOTP);
+
+  // SSO Handshake (Sellers & Customers only — Admin uses SAML)
+  // Step 1: Website calls this after login to get a short-lived ticket
+  fastify.post("/create-ticket", createTicket);
+  // Step 2: Dashboard calls this to exchange the ticket for its own JWT/cookie
+  fastify.post("/exchange-ticket", exchangeTicket);
   
   // SAML Routes (Lane 2)
   
