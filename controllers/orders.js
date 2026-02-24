@@ -158,7 +158,7 @@ exports.createOrder = async (request, reply) => {
           shippingCountry: country,
           shippingPhone: mobileNumber,
           paymentMethod,
-          status: "PENDING",
+          status: "CONFIRMED",
           customerName: user.name,
           customerEmail: user.email,
           customerPhone: mobileNumber || user.phone || '',
@@ -351,7 +351,13 @@ exports.getMyOrders = async (request, reply) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    return reply.status(200).send({ success: true, orders });
+    // Normalise legacy PENDING status → CONFIRMED
+    const normalised = orders.map(o => ({
+      ...o,
+      status: o.status === 'PENDING' ? 'CONFIRMED' : o.status
+    }));
+
+    return reply.status(200).send({ success: true, orders: normalised });
   } catch (error) {
     console.error("Get my orders error:", error);
     return reply.status(500).send({ success: false, message: error.message });
@@ -379,7 +385,7 @@ exports.cancelOrder = async (request, reply) => {
 
     if (order.userId !== userId) return reply.status(403).send({ success: false, message: "Not authorized" });
 
-    if (order.status !== "PENDING") {
+    if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
       return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
     }
 
@@ -795,7 +801,7 @@ exports.createGuestOrder = async (request, reply) => {
           shippingCountry: country,
           shippingPhone: mobileNumber || customerPhone,
           paymentMethod,
-          status: "PENDING",
+          status: "CONFIRMED",
           customerName,
           customerEmail,
           customerPhone: mobileNumber || customerPhone || '',
