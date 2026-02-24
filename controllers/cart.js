@@ -576,3 +576,152 @@ const getCheckoutOptions = async (request, reply) => {
 // Export the helper function for use in other controllers
 exports.calculateCartTotals = calculateCartTotals;
 exports.getCheckoutOptions = getCheckoutOptions;
+
+// ─────────────────────────────────────────────
+// POST /api/cart/sync  — Guest → Authenticated merge
+// ─────────────────────────────────────────────
+exports.syncCart = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+
+    // ── 1. Validate payload ──────────────────────────────────────────────────
+    const { guest_cart } = request.body || {};
+
+    if (!Array.isArray(guest_cart) || guest_cart.length === 0) {
+      return reply.status(400).send({
+        success: false,
+        code: "INVALID_PAYLOAD",
+        message: "guest_cart must be a non-empty array"
+      });
+    }
+
+    // Deduplicate guest items by product_id — sum quantities for duplicates
+    const guestMap = new Map();
+    for (const item of guest_cart) {
+      if (!item.product_id || typeof item.quantity !== "number" || item.quantity < 1) {
+        return reply.status(400).send({
+          success: false,
+          code: "INVALID_PAYLOAD",
+          message: "Each guest_cart item requires a valid product_id and quantity >= 1"
+        });
+      }
+      const prev = guestMap.get(item.product_id) || 0;
+      guestMap.set(item.product_id, prev + Math.floor(item.quantity));
+    }
+
+    // ── 2. Validate products exist in DB ─────────────────────────────────────
+    const guestProductIds = Array.from(guestMap.keys());
+
+    const validProducts = await prisma.product.findMany({
+      where: { id: { in: guestProductIds } },
+      select: { id: true, title: true, price: true, stock: true, images: true }
+    });
+
+    const validProductMap = new Map(validProducts.map(p => [p.id, p]));
+    const removedItems = guestProductIds.filter(id => !validProductMap.has(id));
+
+    // ── 3. Find or create the user's DB cart ─────────────────────────────────
+    let cart = await prisma.cart.findUnique({
+      where: { userId },
+      include: { items: true }
+    });
+
+    if (!cart) {
+      cart = await prisma.cart.create({
+        data: { userId },
+        include: { items: true }
+      });
+    }
+
+    // Build a fast lookup of existing DB cart items: productId → CartItem
+    const dbItemMap = new Map(cart.items.map(i => [i.productId, i]));
+
+    // ── 4. Merge: upsert each valid guest item ────────────────────────────────
+    const MAX_QUANTITY = 99;
+
+    for (const [productId, guestQty] of guestMap.entries()) {
+      const product = validProductMap.get(productId);
+      if (!product) continue; // orphaned — skip
+
+      const existing = dbItemMap.get(productId);
+
+      if (existing) {
+        // Product exists in both → SUM, capped at stock & MAX_QUANTITY
+        const merged = Math.min(existing.quantity + guestQty, product.stock, MAX_QUANTITY);
+        await prisma.cartItem.update({
+          where: { id: existing.id },
+          data: { quantity: merged }
+        });
+      } else {
+        // Net new from guest → insert capped at stock & MAX_QUANTITY
+        const capped = Math.min(guestQty, product.stock, MAX_QUANTITY);
+        await prisma.cartItem.create({
+          data: {
+            cartId: cart.id,
+            productId,
+            quantity: capped
+          }
+        });
+      }
+    }
+
+    // ── 5. Fetch the final consolidated cart from DB ──────────────────────────
+    const updatedCart = await prisma.cart.findUnique({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                price: true,
+                images: true,
+                stock: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // ── 6. Build response ─────────────────────────────────────────────────────
+    const cartItems = updatedCart.items.map(item => ({
+      product_id: item.productId,
+      quantity: item.quantity,
+      price: parseFloat(item.product.price || 0),
+      name: item.product.title,
+      thumbnail: item.product.images?.[0] || null
+    }));
+
+    const totalPrice = cartItems.reduce(
+      (sum, i) => sum + i.price * i.quantity,
+      0
+    );
+
+    const status = removedItems.length > 0 ? "partial" : "merged";
+
+    const response = {
+      status,
+      cart: cartItems,
+      meta: {
+        items_count: cartItems.length,
+        total_price: parseFloat(totalPrice.toFixed(2)),
+        merged_at: new Date().toISOString()
+      }
+    };
+
+    if (removedItems.length > 0) {
+      response.removed_items = removedItems;
+    }
+
+    return reply.status(200).send(response);
+  } catch (error) {
+    console.error("Cart sync error:", error);
+    return reply.status(500).send({
+      success: false,
+      code: "SYNC_FAILED",
+      message: error.message
+    });
+  }
+};
