@@ -99,8 +99,10 @@ model SellerProfile {
   businessType            String?
   yearsInBusiness         Int?
   website                 String?
-  culturalBackground      String?
-  culturalStory           String?
+  culturalBackground      String?       // kept for migration compatibility
+  culturalStory           String?       // kept for migration compatibility
+  artistName              String?
+  artistDescription       String?
   storeName               String?
   storeDescription        String?
   storeLogo               String?
@@ -110,10 +112,6 @@ model SellerProfile {
   kycSubmitted            Boolean       @default(false)
   bankDetails             Json?
   status                  SellerStatus  @default(PENDING)
-  culturalApprovalStatus  String        @default("pending")
-  culturalApprovalAt      DateTime?
-  culturalApprovalFeedback String?
-  culturalApprovalBy      String?
   onboardingStep          Int           @default(1)
   submittedForReviewAt    DateTime?
   approvedAt              DateTime?
@@ -504,4 +502,22 @@ enum NotificationStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+model Blog {
+  id         String     @id @default(cuid())
+  title      String
+  slug       String     @unique
+  content    String
+  coverImage String
+  status     BlogStatus @default(DRAFT)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@map("blogs")
+}
+
+enum BlogStatus {
+  DRAFT
+  PUBLISHED
 }

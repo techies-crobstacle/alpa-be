@@ -78,7 +78,11 @@ const abnLookup = async (abn) => {
           status: abrData.AbnStatus || "Not Found",
           gst: abrData.Gst || "Not Registered",
           businessName: abrData.BusinessName?.[0]?.OrganisationName || abrData.EntityName || "N/A",
-          acn: abrData.Acn || ""
+          acn: abrData.Acn || "",
+          address: {
+            state: abrData.AddressState || "",
+            postcode: abrData.AddressPostcode || ""
+          }
         }
       };
   } catch (error) {

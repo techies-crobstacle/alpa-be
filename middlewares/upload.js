@@ -134,9 +134,61 @@ const handleProductImagesUpload = async (request, reply) => {
   }
 };
 
+// Fastify multipart handler for blog cover image
+const handleBlogImageUpload = async (request, reply) => {
+  try {
+    const contentType = request.headers['content-type'] || '';
+    // If not multipart, body is already parsed (raw JSON) — skip
+    if (!contentType.includes('multipart/form-data')) return;
+
+    const parts = request.parts();
+    const files = [];
+    const fields = {};
+
+    for await (const part of parts) {
+      if (part.file) {
+        if (!ALLOWED_IMAGE_TYPES.includes(part.mimetype)) {
+          throw new Error('Only image files (JPEG, JPG, PNG, WEBP) are allowed');
+        }
+
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(part.filename);
+        const filename = `blog-${uniqueSuffix}${ext}`;
+        const filepath = path.join(productsDir, filename); // reuse existing uploads/products dir
+
+        await pipeline(part.file, fs.createWriteStream(filepath));
+
+        const fileSize = fs.statSync(filepath).size;
+        if (fileSize > MAX_IMAGE_SIZE) {
+          fs.unlinkSync(filepath);
+          throw new Error(`File ${part.filename} exceeds 3MB limit`);
+        }
+
+        files.push({
+          fieldname: part.fieldname,
+          originalname: part.filename,
+          filename,
+          path: filepath,
+          mimetype: part.mimetype,
+          size: fileSize
+        });
+      } else {
+        fields[part.fieldname] = part.value;
+      }
+    }
+
+    request.files = files;
+    request.body = fields;
+  } catch (error) {
+    reply.status(400).send({ success: false, message: error.message });
+    throw error;
+  }
+};
+
 module.exports = {
   handleSellerDocsUpload,
-  handleProductImagesUpload
+  handleProductImagesUpload,
+  handleBlogImageUpload
 };
 
 

@@ -27,6 +27,7 @@ const gstRoutes = require("./routes/gstRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const paypalRoutes  = require("./routes/paypalRoutes");
+const blogsRoutes   = require("./routes/blogsRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 
@@ -122,6 +123,7 @@ app.register(gstRoutes, { prefix: "/api/gst" });
 app.register(feedbackRoutes, { prefix: "/api/feedback" });
 app.register(paymentRoutes, { prefix: "/api/payments" });
 app.register(paypalRoutes,  { prefix: "/api/payments/paypal" });
+app.register(blogsRoutes,   { prefix: "/api/blogs" });
 
 
 

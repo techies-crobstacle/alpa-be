@@ -1655,6 +1655,212 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
   }
 };
 
+// Send Seller Application Submitted Email
+const sendSellerApplicationSubmittedEmail = async (email, name) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Application Submitted");
+    console.log("=".repeat(50));
+    console.log(`To: ${email}`);
+    console.log(`Name: ${name}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const msg = {
+    to: email,
+    from: { email: senderEmail, name: senderName },
+    subject: "Your Seller Application Has Been Submitted — Alpa Art Marketplace",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#128203; Application Submitted!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We've received your seller application</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for completing your seller application on Aboriginal Art Marketplace! Your application has been received and is now under review by our team.</p>
+
+                  <!-- Status box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What Happens Next?</p>
+                    <table cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">1</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Our admin team will review your submitted details and KYC documents.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">2</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">You will receive an email once your application has been approved or if any additional information is needed.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">3</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Once approved, you can start listing your Aboriginal artworks and selling to customers across Australia.</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <!-- Review time note -->
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#9200; Review Timeline</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2–3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Aboriginal Art Marketplace! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Application submitted email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send Seller Approved Email
+const sendSellerApprovedEmail = async (email, name) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Approved");
+    console.log("=".repeat(50));
+    console.log(`To: ${email}`);
+    console.log(`Name: ${name}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const msg = {
+    to: email,
+    from: { email: senderEmail, name: senderName },
+    subject: "Congratulations! Your Seller Account Has Been Approved",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; You're Approved!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Welcome to the Aboriginal Art Marketplace seller community</p>
+                </td>
+              </tr>
+              <!-- Approved banner -->
+              <tr>
+                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10003; Seller Account Approved &amp; Active</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">We're thrilled to let you know that your seller application has been <strong style="color:#5A1E12;">approved</strong>! You can now log in to your seller dashboard, upload your artworks, and start selling to customers across Australia.</p>
+
+                  <!-- What you can do -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Get Started</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#127912;</span>
+                          <span style="color:#555;font-size:14px;">Upload your first artwork listing from the seller dashboard</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#128247;</span>
+                          <span style="color:#555;font-size:14px;">Add high-quality photos and detailed descriptions for best results</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#128176;</span>
+                          <span style="color:#555;font-size:14px;">Ensure your bank details are saved to receive payments promptly</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#128179;</span>
+                          <span style="color:#555;font-size:14px;">Once you have products uploaded, contact us to go fully live</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <!-- Important note -->
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; Important</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Your products will be reviewed by our team before going live to customers. Upload your artworks and our admin will activate your store once everything is in order.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Aboriginal Art Marketplace family! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller approved email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
@@ -1674,6 +1880,8 @@ module.exports = {
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail,
   sendContactFormEmail,
-  sendSLAWarningEmail
+  sendSLAWarningEmail,
+  sendSellerApplicationSubmittedEmail,
+  sendSellerApprovedEmail
 };
 

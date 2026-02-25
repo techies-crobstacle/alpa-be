@@ -1,5 +1,5 @@
 const prisma = require("../config/prisma");
-const { generateOTP, sendOTPEmail } = require("../utils/emailService");
+const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
@@ -37,9 +37,9 @@ const getOnboardingStepDetails = (sellerProfile) => {
     },
     {
       step: 4,
-      name: "Cultural Information",
-      completed: sellerProfile.onboardingStep >= 4,
-      description: "Cultural identity and background information"
+      name: "Artist Information",
+      completed: !!(sellerProfile.artistName),
+      description: "Artist name and description"
     },
     {
       step: 5,
@@ -279,8 +279,7 @@ exports.verifyOTP = async (request, reply) => {
           onboardingStep: 2,
           status: 'PENDING',
           productCount: 0,
-          minimumProductsUploaded: false,
-          culturalApprovalStatus: 'pending'
+          minimumProductsUploaded: false
         }
       });
 
@@ -545,18 +544,25 @@ exports.validateABNGet = async (request, reply) => {
   }
 };
 
-// Step 4: Submit Cultural Information
+// Step 4: Submit Artist Information
 exports.submitCulturalInfo = async (request, reply) => {
   try {
     const userId = request.user.userId;
-    const { culturalBackground, culturalStory } = request.body;
+    const { artistName, description } = request.body;
+
+    if (!artistName) {
+      return reply.status(400).send({
+        success: false,
+        message: "artistName is required"
+      });
+    }
 
     // Update seller profile
     const sellerProfile = await prisma.sellerProfile.update({
       where: { userId },
       data: {
-        culturalBackground,
-        culturalStory,
+        artistName,
+        artistDescription: description || null,
         onboardingStep: 4,
         updatedAt: new Date()
       }
@@ -564,11 +570,11 @@ exports.submitCulturalInfo = async (request, reply) => {
 
     reply.status(200).send({
       success: true,
-      message: "Cultural information submitted successfully",
+      message: "Artist information saved successfully",
       sellerProfile
     });
   } catch (error) {
-    console.error("Submit cultural info error:", error);
+    console.error("Submit artist info error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
   }
 };
@@ -791,7 +797,18 @@ exports.submitForReview = async (request, reply) => {
       }
     });
 
-    // TODO: Send notification to admin for review
+    // Send confirmation email to seller
+    try {
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: request.user.userId },
+        select: { email: true, name: true }
+      });
+      if (sellerUser) {
+        await sendSellerApplicationSubmittedEmail(sellerUser.email, sellerUser.name || "Seller");
+      }
+    } catch (emailErr) {
+      console.error("Application submission email error (non-fatal):", emailErr.message);
+    }
 
     reply.status(200).send({
       success: true,
@@ -888,7 +905,6 @@ exports.getGoLiveStatus = async (request, reply) => {
     const requirements = {
       accountApproved: sellerProfile.status === 'APPROVED' || sellerProfile.status === 'ACTIVE',
       minimumProducts: sellerProfile.minimumProductsUploaded,
-      culturalApproved: sellerProfile.culturalApprovalStatus === 'approved',
       kycCompleted: sellerProfile.kycSubmitted,
       bankDetailsAdded: !!sellerProfile.bankDetails
     };

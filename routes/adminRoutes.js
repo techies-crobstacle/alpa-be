@@ -36,9 +36,6 @@ async function adminRoutes(fastify, options) {
   // Update seller notes
   fastify.put("/sellers/notes/:id", { preHandler: adminAuth }, adminController.updateSellerNotes);
 
-  // Cultural approval (SOW Requirement)
-  fastify.post("/sellers/cultural-approval/:id", { preHandler: adminAuth }, adminController.culturalApproval);
-
   // Activate seller (Go Live - SOW Requirement)
   fastify.post("/sellers/activate/:id", { preHandler: adminAuth }, adminController.activateSeller);
 

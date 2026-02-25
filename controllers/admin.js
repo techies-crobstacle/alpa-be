@@ -1,9 +1,9 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
+const { sendSellerApprovedEmail } = require("../utils/emailService");
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
-  notifySellerCulturalApproval,
   notifySellerProductRecommendation,
   notifySellerProductStatusChange
 } = require("./notification");
@@ -207,13 +207,9 @@ exports.getSellerDetails = async (request, reply) => {
         storeBanner: seller.storeBanner,
         storeLocation: seller.storeLocation,
         
-        // Cultural Info
-        culturalBackground: seller.culturalBackground,
-        culturalStory: seller.culturalStory,
-        culturalApprovalStatus: seller.culturalApprovalStatus,
-        culturalApprovalAt: seller.culturalApprovalAt,
-        culturalApprovalFeedback: seller.culturalApprovalFeedback,
-        culturalApprovalBy: seller.culturalApprovalBy,
+        // Artist Info
+        artistName: seller.artistName,
+        artistDescription: seller.artistDescription,
         
         // KYC Documents
         kycDocuments: seller.kycDocuments || [],
@@ -383,6 +379,13 @@ exports.approveSeller = async (request, reply) => {
 
     // Send approval notification
     await notifySellerApproved(sellerId, seller.user.name);
+
+    // Send approval email to seller
+    try {
+      await sendSellerApprovedEmail(seller.user.email, seller.user.name || "Seller");
+    } catch (emailErr) {
+      console.error("Seller approval email error (non-fatal):", emailErr.message);
+    }
     
     // Send product recommendation notification
     await notifySellerProductRecommendation(sellerId, seller.user.name);
@@ -516,93 +519,6 @@ exports.updateSellerNotes = async (request, reply) => {
   }
 };
 
-// CULTURAL APPROVAL
-exports.culturalApproval = async (request, reply) => {
-  try {
-    const { id } = request.params;
-    const { approved, feedback } = request.body;
-    const adminId = request.user?.userId || "admin";
-
-    console.log("Cultural approval request - ID:", id);
-    console.log("Approved value:", approved, "Type:", typeof approved);
-    console.log("Admin ID:", adminId);
-
-    // Convert string "yes"/"no" to boolean
-    let isApproved = false;
-    if (typeof approved === "boolean") {
-      isApproved = approved;
-    } else if (typeof approved === "string") {
-      isApproved = approved.toLowerCase() === "yes" || approved.toLowerCase() === "true";
-    }
-
-    const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: id },
-      include: { user: true }
-    });
-
-    if (!seller) {
-      return reply.status(404).send({
-        success: false,
-        message: "Seller not found"
-      });
-    }
-
-    console.log("Seller status:", seller.status);
-
-    if (seller.status !== "APPROVED") {
-      return reply.status(400).send({
-        success: false,
-        message: "Seller must be approved before cultural approval"
-      });
-    }
-
-    const updateData = {
-      culturalApprovalStatus: isApproved ? "APPROVED" : "REJECTED",
-      culturalApprovalAt: new Date(),
-      culturalApprovalFeedback: feedback || ""
-    };
-
-    // Only add culturalApprovalBy if adminId exists and is not default
-    if (adminId && adminId !== "admin") {
-      updateData.culturalApprovalBy = adminId;
-    }
-
-    console.log("Updating with data:", updateData);
-
-    const updatedSeller = await prisma.sellerProfile.update({
-      where: { userId: id },
-      data: updateData
-    });
-
-    // Send cultural approval notification
-    await notifySellerCulturalApproval(
-      id, 
-      isApproved, 
-      feedback || "", 
-      seller.user.name
-    );
-
-    // If approved, also send product recommendation notification
-    if (isApproved) {
-      await notifySellerProductRecommendation(id, seller.user.name);
-      console.log(`📬 Product recommendation notification sent to seller ${id}`);
-    }
-
-    reply.status(200).send({
-      success: true,
-      message: isApproved 
-        ? "Cultural approval granted. Seller can now go live if minimum products are uploaded." 
-        : "Cultural approval rejected. Feedback provided to seller.",
-      seller: updatedSeller
-    });
-  } catch (error) {
-    console.error("Cultural approval error:", error);
-    console.error("Error message:", error.message);
-    console.error("Error stack:", error.stack);
-    reply.status(500).send({ success: false, message: "Server error", error: error.message });
-  }
-};
-
 // ACTIVATE SELLER (GO LIVE)
 exports.activateSeller = async (request, reply) => {
   try {
@@ -632,13 +548,6 @@ exports.activateSeller = async (request, reply) => {
       return reply.status(400).send({
         success: false,
         message: "Seller must upload at least 1-2 products before going live. 5+ products recommended."
-      });
-    }
-
-    if (seller.culturalApprovalStatus !== "APPROVED") {
-      return reply.status(400).send({
-        success: false,
-        message: "Cultural approval is required before activation"
       });
     }
 
