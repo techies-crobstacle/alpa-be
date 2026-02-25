@@ -25,8 +25,10 @@ if (process.env.REDIS_URL) {
     redisClient = new Redis(process.env.REDIS_URL, {
       lazyConnect: true,
       enableOfflineQueue: false,
-      // Don't crash the process when Redis is unavailable
+      // Disable ALL automatic reconnect attempts — we handle fallback ourselves
+      retryStrategy: () => null,
       reconnectOnError: () => false,
+      maxRetriesPerRequest: 0,
     });
 
     redisClient.on('connect', () => {
@@ -34,13 +36,17 @@ if (process.env.REDIS_URL) {
       console.log('✅ [TokenDenylist] Connected to Redis');
     });
 
-    redisClient.on('error', (err) => {
-      console.error('⚠️  [TokenDenylist] Redis error — falling back to in-memory:', err.message);
+    // Only log once; then disconnect so ioredis never retries again
+    redisClient.once('error', (err) => {
+      console.warn(`⚠️  [TokenDenylist] Redis unavailable (${err.message}) — using in-memory fallback`);
       useRedis = false;
+      // Fully shut down the client so no further reconnect/error events fire
+      redisClient.disconnect();
+      redisClient = null;
     });
 
     redisClient.connect().catch(() => {
-      console.warn('⚠️  [TokenDenylist] Could not connect to Redis — using in-memory fallback');
+      // Error already handled by the 'error' listener above
     });
   } catch (err) {
     console.warn('⚠️  [TokenDenylist] ioredis not available — using in-memory fallback');
