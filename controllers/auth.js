@@ -2,7 +2,9 @@
 const prisma = require("../config/prisma");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
+const { addToBlacklist, isBlacklisted } = require("../utils/tokenDenylist");
 
 // HELPER FUNCTION: Generate device fingerprint
 const generateDeviceFingerprint = (request) => {
@@ -259,7 +261,7 @@ exports.login = async (request, reply) => {
       console.log(`✅ Direct login - Session Duration: ${sessionDuration}`);
 
       const token = jwt.sign(
-        { userId: user.id, uid: user.id, email: user.email, role: user.role },
+        { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
         process.env.JWT_SECRET,
         { expiresIn: sessionDuration }
       );
@@ -420,7 +422,7 @@ exports.verifyOTP = async (request, reply) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id, uid: user.id, email: user.email, role: user.role },
+      { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -664,15 +666,41 @@ exports.resetPassword = async (request, reply) => {
   }
 };
 
-// LOGOUT - Clear session cookie (but keep device trust within 7 days)
+// LOGOUT - Clear session cookie and denylist the JWT so SSO tickets can no longer be created
 exports.logout = async (request, reply) => {
   try {
     console.log("🚪 Logout request received");
-    
+
+    // Extract token from Authorization header OR session cookie
+    const authHeader = request.headers.authorization;
+    const rawToken =
+      (authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.split(' ')[1]
+        : null) ||
+      (request.cookies && request.cookies.session_token) ||
+      null;
+
+    if (rawToken) {
+      try {
+        // Decode without re-verifying — we trust this token since the user is
+        // calling logout themselves.  We only need the jti and exp claims.
+        const decoded = jwt.decode(rawToken);
+        if (decoded && decoded.jti && decoded.exp) {
+          const remainingTtl = decoded.exp - Math.floor(Date.now() / 1000);
+          if (remainingTtl > 0) {
+            await addToBlacklist(decoded.jti, remainingTtl);
+          }
+        }
+      } catch (decodeErr) {
+        // Non-fatal: if we can't decode the token, just clear the cookie and continue
+        console.warn("⚠️  Could not decode token on logout:", decodeErr.message);
+      }
+    }
+
     // NOTE: We don't deactivate the session because users should be able to login
     // again on the same device within 7 days without OTP verification.
     // The session cookie being cleared ensures the browser session is ended.
-    
+
     // Clear the session cookie
     reply.clearCookie('session_token', {
       httpOnly: true,
@@ -681,7 +709,7 @@ exports.logout = async (request, reply) => {
       path: '/'
     });
 
-    console.log("✅ Session cookie cleared - device trust maintained for 7 days");
+    console.log("✅ Session cookie cleared + token invalidated in denylist");
 
     return reply.status(200).send({ 
       success: true, 
@@ -793,7 +821,7 @@ exports.verifyLoginOTP = async (request, reply) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: verification.user.id, uid: verification.user.id, email: verification.user.email, role: verification.user.role },
+      { userId: verification.user.id, uid: verification.user.id, email: verification.user.email, role: verification.user.role, jti: crypto.randomUUID() },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -963,7 +991,7 @@ exports.samlCallback = async (request, reply) => {
     const cookieMaxAge = 15 * 60 * 1000;
     
     const token = jwt.sign(
-      { userId: user.id, uid: user.id, email: user.email, role: user.role },
+      { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
       process.env.JWT_SECRET,
       { expiresIn: sessionDuration }
     );
@@ -1348,7 +1376,7 @@ exports.exchangeTicket = async (request, reply) => {
 
     // Issue a fresh 7-day JWT for the Dashboard
     const token = jwt.sign(
-      { userId: user.id, uid: user.id, email: user.email, role: user.role },
+      { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );

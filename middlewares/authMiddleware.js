@@ -1,5 +1,6 @@
 const prisma = require("../config/prisma");
 const jwt = require("jsonwebtoken");
+const { isBlacklisted } = require("../utils/tokenDenylist");
 
 // Authenticate Seller (JWT-based with Prisma)
 exports.authenticateSeller = async (request, reply) => {
@@ -18,7 +19,15 @@ exports.authenticateSeller = async (request, reply) => {
     try {
       // Verify JWT token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
+
+      // Reject tokens invalidated via logout
+      if (decoded.jti && await isBlacklisted(decoded.jti)) {
+        return reply.status(401).send({
+          success: false,
+          message: "Token has been invalidated. Please log in again."
+        });
+      }
+
       // Support both userId and sellerId for backward compatibility
       const userId = decoded.userId || decoded.sellerId;
       
@@ -91,6 +100,15 @@ exports.authenticateUser = async (request, reply) => {
     try {
       // Verify JWT token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Reject tokens invalidated via logout
+      if (decoded.jti && await isBlacklisted(decoded.jti)) {
+        return reply.status(401).send({
+          success: false,
+          message: "Token has been invalidated. Please log in again."
+        });
+      }
+
       // Support both userId and uid for backward compatibility
       const userId = decoded.userId || decoded.uid;
 
@@ -155,6 +173,15 @@ exports.isAdmin = async (request, reply) => {
     try {
       // Verify JWT token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Reject tokens invalidated via logout
+      if (decoded.jti && await isBlacklisted(decoded.jti)) {
+        return reply.status(401).send({
+          success: false,
+          message: "Token has been invalidated. Please log in again."
+        });
+      }
+
       // Support both userId and uid for backward compatibility
       const userId = decoded.userId || decoded.uid;
 
