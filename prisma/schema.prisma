@@ -49,6 +49,7 @@ model PendingRegistration {
   role      Role
   otp       String
   otpExpiry DateTime
+  formData  Json?    @map("form_data")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

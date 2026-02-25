@@ -5,6 +5,8 @@ const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const fs = require('fs').promises;
+const os = require('os');
+const path = require('path');
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
@@ -1208,6 +1210,352 @@ exports.resetPassword = async (request, reply) => {
   } catch (error) {
     console.error("Reset password error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// =============================================================================
+// NEW SINGLE-PAYLOAD ONBOARDING FLOW
+// =============================================================================
+
+// STEP FINAL-1: Collect full form, send OTP to email (NO token required)
+// Frontend collects all steps locally, then calls this to submit & trigger OTP
+// Accepts multipart/form-data — text fields + KYC files in one request
+exports.submitSellerOnboarding = async (request, reply) => {
+  try {
+    // @fastify/multipart v9 WITHOUT attachFieldsToBody:
+    // Must manually iterate parts() to collect text fields AND files
+    const fields = {};
+    const uploadedParts = [];
+
+    const parts = request.parts();
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        // Save file buffer in memory for Cloudinary upload
+        const buf = await part.toBuffer();
+        uploadedParts.push({
+          fieldname: part.fieldname,
+          filename: part.filename,
+          mimetype: part.mimetype,
+          buffer: buf
+        });
+      } else {
+        fields[part.fieldname] = part.value;
+      }
+    }
+
+    const {
+      email, phone, contactPerson, password,
+      businessName, abn, businessAddress, businessType,
+      artistName, description,
+      storeName, storeDescription, storeLogo,
+      bankName, accountName, bsb, accountNumber,
+      documentType,
+      firstName: kycFirstName,
+      lastName: kycLastName,
+      dateOfBirth
+    } = fields;
+
+    if (!email || !phone || !contactPerson || !password) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email, phone, contact person, and password are required"
+      });
+    }
+
+    if (password.length < 6) {
+      return reply.status(400).send({
+        success: false,
+        message: "Password must be at least 6 characters"
+      });
+    }
+
+    // Separate uploaded files by fieldname
+    const storeLogoParts = uploadedParts.filter(f => f.fieldname === 'storeLogo');
+    const kycFileParts = uploadedParts.filter(f => f.fieldname !== 'storeLogo');
+
+    // Validate all required fields
+    const missingFields = [];
+    if (!businessName) missingFields.push("businessName");
+    if (!abn) missingFields.push("abn");
+    if (!businessAddress) missingFields.push("businessAddress");
+    if (!businessType) missingFields.push("businessType");
+    if (!artistName) missingFields.push("artistName");
+    if (!description) missingFields.push("description");
+    if (!storeName) missingFields.push("storeName");
+    if (!storeDescription) missingFields.push("storeDescription");
+    if (!storeLogo && storeLogoParts.length === 0) missingFields.push("storeLogo");
+    if (!bankName) missingFields.push("bankName");
+    if (!accountName) missingFields.push("accountName");
+    if (!bsb) missingFields.push("bsb");
+    if (!accountNumber) missingFields.push("accountNumber");
+
+    if (missingFields.length > 0) {
+      return reply.status(400).send({
+        success: false,
+        message: `The following fields are required: ${missingFields.join(", ")}`
+      });
+    }
+
+    // Upload storeLogo to Cloudinary if sent as file
+    let storeLogoUrl = storeLogo || null;
+    if (storeLogoParts.length > 0) {
+      const logoFile = storeLogoParts[0];
+      const tmpPath = path.join(os.tmpdir(), `storeLogo-${Date.now()}-${logoFile.filename || 'logo'}`);
+      try {
+        await fs.writeFile(tmpPath, logoFile.buffer);
+        const result = await uploadToCloudinary(tmpPath, 'store-logos');
+        storeLogoUrl = result.url;
+      } catch (err) {
+        console.error('storeLogo upload failed:', err.message);
+        return reply.status(500).send({ success: false, message: 'Failed to upload store logo' });
+      } finally {
+        await fs.unlink(tmpPath).catch(() => {});
+      }
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if already fully registered
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (existingUser) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email already registered. Please login instead."
+      });
+    }
+
+    // Upload KYC files to Cloudinary
+    if (!documentType) return reply.status(400).send({ success: false, message: "documentType is required" });
+    if (!kycFirstName) return reply.status(400).send({ success: false, message: "firstName is required" });
+    if (!kycLastName) return reply.status(400).send({ success: false, message: "lastName is required" });
+    if (!dateOfBirth) return reply.status(400).send({ success: false, message: "dateOfBirth is required" });
+    if (!kycFileParts || kycFileParts.length === 0) {
+      return reply.status(400).send({ success: false, message: "At least one KYC document file (idDocument) is required" });
+    }
+
+    const kycDocuments = [];
+    for (const file of kycFileParts) {
+      // Write buffer to a tmp file, upload to Cloudinary, then delete tmp
+      const tmpPath = path.join(os.tmpdir(), `kyc-${Date.now()}-${file.filename || 'doc'}`);
+      try {
+        await fs.writeFile(tmpPath, file.buffer);
+        const result = await uploadToCloudinary(tmpPath, 'kyc-documents');
+        kycDocuments.push({
+          documentType: documentType || file.fieldname,
+          firstName: kycFirstName || null,
+          lastName: kycLastName || null,
+          dateOfBirth: dateOfBirth || null,
+          documentUrl: result.url,
+          publicId: result.publicId,
+          originalName: file.filename,
+          uploadedAt: new Date()
+        });
+      } catch (uploadErr) {
+        console.error(`KYC upload failed for ${file.filename}:`, uploadErr.message);
+      } finally {
+        await fs.unlink(tmpPath).catch(() => {});
+      }
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+
+    // Store all form data + KYC Cloudinary URLs as JSON alongside OTP
+    const formData = {
+      phone,
+      contactPerson,
+      password, // plain — will be hashed on verify-and-submit
+      businessName: businessName || null,
+      abn: abn || null,
+      businessAddress: businessAddress || null,
+      businessType: businessType || null,
+      artistName: artistName || null,
+      description: description || null,
+      storeName: storeName || null,
+      storeDescription: storeDescription || null,
+      storeLogo: storeLogoUrl,
+      bankName: bankName || null,
+      accountName: accountName || null,
+      bsb: bsb || null,
+      accountNumber: accountNumber || null,
+      kycDocuments: kycDocuments.length > 0 ? kycDocuments : null
+    };
+
+    // Upsert: if the email had a previous abandoned attempt, overwrite it
+    await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      update: {
+        name: contactPerson,
+        phone,
+        otp,
+        otpExpiry,
+        formData,
+        updatedAt: new Date()
+      },
+      create: {
+        email: normalizedEmail,
+        name: contactPerson,
+        phone,
+        otp,
+        otpExpiry,
+        role: 'SELLER',
+        formData
+      }
+    });
+
+    // Send OTP email
+    await sendOTPEmail(normalizedEmail, otp, contactPerson);
+
+    return reply.status(200).send({
+      success: true,
+      message: "OTP sent to your email. Please verify to complete registration.",
+      email: normalizedEmail,
+      kycUploaded: kycDocuments.length
+    });
+  } catch (error) {
+    console.error("submitSellerOnboarding error:", error);
+    reply.status(500).send({ success: false, message: "Server error", debug: error?.message });
+  }
+};
+
+// STEP FINAL-2: Verify OTP and create User + SellerProfile (PENDING approval)
+// No token returned — account goes to admin queue for approval
+exports.verifyAndSubmit = async (request, reply) => {
+  try {
+    const { email, otp } = request.body;
+
+    if (!email || !otp) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email and OTP are required"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    const pending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!pending || pending.otp !== otp) {
+      return reply.status(400).send({
+        success: false,
+        message: "Invalid OTP"
+      });
+    }
+
+    if (pending.otpExpiry < new Date()) {
+      await prisma.pendingRegistration.delete({ where: { id: pending.id } });
+      return reply.status(400).send({
+        success: false,
+        message: "OTP has expired. Please request a new one."
+      });
+    }
+
+    const fd = pending.formData || {};
+
+    if (!fd.password) {
+      return reply.status(400).send({
+        success: false,
+        message: "Registration data is incomplete. Please restart the onboarding."
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(fd.password, 10);
+
+    // Create User + SellerProfile in a single transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hashedPassword,
+          name: fd.contactPerson,
+          phone: fd.phone || null,
+          role: 'SELLER',
+          emailVerified: true
+        }
+      });
+
+      const sellerProfile = await tx.sellerProfile.create({
+        data: {
+          userId: user.id,
+          contactPerson: fd.contactPerson,
+          businessName: fd.businessName || null,
+          abn: fd.abn || null,
+          businessAddress: fd.businessAddress
+            ? (typeof fd.businessAddress === 'string' ? fd.businessAddress : JSON.stringify(fd.businessAddress))
+            : null,
+          businessType: fd.businessType || null,
+          artistName: fd.artistName || null,
+          artistDescription: fd.description || null,
+          storeName: fd.storeName || null,
+          storeDescription: fd.storeDescription || null,
+          storeLogo: fd.storeLogo || null,
+          bankDetails: (fd.bankName && fd.accountName && fd.bsb && fd.accountNumber)
+            ? { bankName: fd.bankName, accountName: fd.accountName, bsb: fd.bsb, accountNumber: fd.accountNumber }
+            : undefined,
+          kycDocuments: fd.kycDocuments || undefined,
+          kycSubmitted: fd.kycDocuments && fd.kycDocuments.length > 0 ? true : false,
+          onboardingStep: 2,
+          status: 'PENDING',
+          productCount: 0,
+          minimumProductsUploaded: false
+        }
+      });
+
+      // Clean up pending registration
+      await tx.pendingRegistration.delete({ where: { id: pending.id } });
+
+      return { user, sellerProfile };
+    });
+
+    // Notify admin of new seller application
+    try {
+      await sendSellerApplicationSubmittedEmail(normalizedEmail, fd.contactPerson, fd.businessName);
+    } catch (e) {
+      console.error('Admin notification email failed:', e.message);
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: "Application submitted successfully! Your account is under review. We'll notify you once an admin approves your application.",
+    });
+  } catch (error) {
+    console.error("verifyAndSubmit error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// Validate ABN - Public version (no token) for use during onboarding form
+exports.validateABNPublic = async (request, reply) => {
+  try {
+    const abn = request.body?.abn || request.query?.abn;
+
+    if (!abn) {
+      return reply.status(400).send({
+        success: false,
+        message: "ABN is required"
+      });
+    }
+
+    const abnResult = await abnLookup(abn);
+
+    reply.status(200).send({
+      success: abnResult.isValid,
+      abnValidation: abnResult
+    });
+  } catch (error) {
+    console.error("validateABNPublic error:", error);
+    reply.status(500).send({
+      success: false,
+      message: "Failed to validate ABN",
+      error: error.message
+    });
   }
 };
 

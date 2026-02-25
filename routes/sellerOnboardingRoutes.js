@@ -26,6 +26,17 @@ async function sellerOnboardingRoutes(fastify, options) {
   // Reset Password
   fastify.post("/reset-password", sellerController.resetPassword);
 
+  // ---- NEW SINGLE-PAYLOAD ONBOARDING (No Auth Required) ----
+  // Final step: submit full form data + KYC files — saves to pending + sends OTP
+  fastify.post("/submit-onboarding", sellerController.submitSellerOnboarding);
+
+  // Verify OTP and create account + seller profile in one shot
+  fastify.post("/verify-and-submit", sellerController.verifyAndSubmit);
+
+  // ABN validation - public (no token) for use during onboarding form
+  fastify.post("/validate-abn-public", sellerController.validateABNPublic);
+  fastify.get("/validate-abn-public", sellerController.validateABNPublic);
+
   // ==================== SELLER ROUTES (Auth Required) ====================
 
   // Step 3: Business Details & ABN
