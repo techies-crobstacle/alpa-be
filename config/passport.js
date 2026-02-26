@@ -42,7 +42,7 @@ module.exports = function (app) {
   // Define SAML Strategy
   const samlStrategy = new SamlStrategy(
     {
-      callbackUrl: process.env.SAML_CALLBACK_URL || "https://alpa-be.onrender.com/api/auth/saml/callback",
+      callbackUrl: process.env.SAML_CALLBACK_URL || "https://alpa-be.onrender.com/api/auth/saml/callback"|| "https://alpa-be-1.onrender.com/api/auth/saml/callback",
       entryPoint: entryPoint || "PLACEHOLDER_ENTRY_POINT_FROM_METADATA_XML",
       issuer: "https://alpa-be.onrender.com", // EntityID
       idpCert: idpCert, // IDP Public Key
