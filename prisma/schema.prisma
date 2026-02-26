@@ -35,8 +35,26 @@ model User {
   loginVerifications LoginVerification[]
   siteFeedback  SiteFeedback[]
   ssoTickets    SsoTicket[]
+  addresses     UserAddress[]
 
   @@map("users")
+}
+
+model UserAddress {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shippingAddress String   @map("shipping_address")
+  city            String
+  state           String
+  country         String
+  zipCode         String   @map("zip_code")
+  mobileNumber    String?  @map("mobile_number")
+  isDefault       Boolean  @default(false) @map("is_default")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("user_addresses")
 }
 
 model PendingRegistration {

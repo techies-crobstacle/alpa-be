@@ -111,7 +111,7 @@ app.register(supportRoutes, { prefix: "/api/support" });
 app.register(adminRoutes, { prefix: "/api/admin" });
 app.register(ratingRoutes, { prefix: "/api/ratings" });
 app.register(locationRoutes, { prefix: "/api" });
-app.register(require("./routes/userRoute"), { prefix: "/api/users" });
+app.register(userRoutes, { prefix: "/api/users" });
 app.register(profileRoutes, { prefix: "/api" });
 app.register(couponRoutes, { prefix: "/api/coupons" });
 app.register(notificationRoutes, { prefix: "/api/notifications" });
