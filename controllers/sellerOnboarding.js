@@ -1543,6 +1543,18 @@ exports.validateABNPublic = async (request, reply) => {
       });
     }
 
+    // Check if ABN is already registered with an existing seller
+    const existingSeller = await prisma.sellerProfile.findFirst({
+      where: { abn: abn.replace(/\s/g, '') }
+    });
+
+    if (existingSeller) {
+      return reply.status(400).send({
+        success: false,
+        message: "This ABN is already registered with another seller account."
+      });
+    }
+
     const abnResult = await abnLookup(abn);
 
     reply.status(200).send({
