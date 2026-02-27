@@ -287,6 +287,34 @@ exports.createOrder = async (request, reply) => {
     // Send email to customer (non-blocking)
     if (user.email) {
       console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
+
+      // Generate invoice PDF to attach
+      const invoiceOrderForPDF = {
+        id: order.id,
+        createdAt: order.createdAt,
+        status: order.status,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: city,
+        shippingState: state,
+        shippingZipCode: zipCode,
+        shippingCountry: country,
+        shippingPhone: mobileNumber,
+        totalAmount: order.totalAmount,
+        discountAmount: order.discountAmount,
+        couponCode: order.couponCode,
+        paymentMethod,
+        items: order.items
+      };
+      let invoicePDFBuffer = null;
+      try {
+        invoicePDFBuffer = await generateInvoiceBuffer(invoiceOrderForPDF);
+      } catch (pdfErr) {
+        console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
+      }
+
       sendOrderConfirmationEmail(user.email, user.name, {
         orderId: order.id,
         totalAmount,
@@ -296,10 +324,7 @@ exports.createOrder = async (request, reply) => {
           quantity: item.quantity,
           price: item.price
         })),
-        shippingAddress: shippingAddress, // Original shipping address without order summary
-        paymentMethod,
-        customerPhone: user.phone,
-        // Include order breakdown for invoice
+        shippingAddress: shippingAddress,
         orderSummary: {
           subtotal: cartCalculations.subtotal,
           subtotalExGST: cartCalculations.subtotalExGST,
@@ -313,7 +338,8 @@ exports.createOrder = async (request, reply) => {
             cost: shippingMethod.cost,
             estimatedDays: shippingMethod.estimatedDays
           }
-        }
+        },
+        invoicePDFBuffer
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
@@ -483,6 +509,33 @@ exports.cancelOrder = async (request, reply) => {
 
     if (user && user.email) {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
+
+      // Generate invoice PDF for cancellation email
+      let cancelInvoicePDF = null;
+      try {
+        cancelInvoicePDF = await generateInvoiceBuffer({
+          id: orderId,
+          createdAt: order.createdAt,
+          status: 'CANCELLED',
+          customerName: order.customerName,
+          customerEmail: user.email,
+          customerPhone: order.customerPhone,
+          shippingAddressLine: order.shippingAddressLine,
+          shippingCity: order.shippingCity,
+          shippingState: order.shippingState,
+          shippingZipCode: order.shippingZipCode,
+          shippingCountry: order.shippingCountry,
+          shippingPhone: order.shippingPhone,
+          totalAmount: order.totalAmount,
+          discountAmount: order.discountAmount,
+          couponCode: order.couponCode,
+          paymentMethod: order.paymentMethod,
+          items: order.items
+        });
+      } catch (pdfErr) {
+        console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
+      }
+
       sendOrderStatusEmail(user.email, user.name, {
         orderId,
         status: "cancelled",
@@ -500,12 +553,12 @@ exports.cancelOrder = async (request, reply) => {
           title: item.product?.title || 'Product',
           quantity: item.quantity,
           price: parseFloat(item.price)
-        }))
+        })),
+        invoicePDFBuffer: cancelInvoicePDF
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
 
-      // Create notification for customer about cancellation
       notifyCustomerOrderStatusChange(user.id, orderId, "cancelled", {
         totalAmount: order.totalAmount.toString(),
         itemCount: order.items?.length || 0
@@ -1114,6 +1167,89 @@ exports.trackGuestOrder = async (request, reply) => {
   }
 };
 
+// ─── Invoice PDF Helper ────────────────────────────────────────────
+// Generates an invoice PDF buffer for any order (no status restriction)
+const generateInvoiceBuffer = (order) => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    // Header
+    doc.fontSize(20).text('ALPA MARKETPLACE', 50, 50)
+       .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
+
+    // Invoice title
+    doc.fontSize(16).text('INVOICE', 50, 120)
+       .fontSize(12)
+       .text(`Invoice #: ${order.id}`, 50, 145)
+       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 160)
+       .text(`Status: ${order.status}`, 50, 175);
+
+    // Customer details
+    doc.fontSize(14).text('Bill To:', 50, 210)
+       .fontSize(12)
+       .text(order.customerName || '', 50, 230)
+       .text(order.customerEmail || '', 50, 245)
+       .text(order.shippingPhone || order.customerPhone || '', 50, 260);
+
+    // Shipping address
+    doc.fontSize(14).text('Ship To:', 300, 210).fontSize(12);
+    if (order.shippingAddressLine || order.shippingCity) {
+      doc.text(order.shippingAddressLine || '', 300, 230)
+         .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
+         .text(order.shippingZipCode || '', 300, 260)
+         .text(order.shippingCountry || '', 300, 275);
+    }
+
+    // Items table
+    const tableTop = 320;
+    doc.fontSize(12)
+       .text('Item', 50, tableTop).text('Quantity', 250, tableTop)
+       .text('Unit Price', 350, tableTop).text('Total', 450, tableTop);
+    doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+
+    let yPos = tableTop + 30;
+    let subtotal = 0;
+    (order.items || []).forEach(item => {
+      const lineTotal = Number(item.price) * item.quantity;
+      subtotal += lineTotal;
+      doc.text(item.product?.title || 'Product', 50, yPos)
+         .text(item.quantity.toString(), 250, yPos)
+         .text(`$${Number(item.price).toFixed(2)}`, 350, yPos)
+         .text(`$${lineTotal.toFixed(2)}`, 450, yPos);
+      yPos += 20;
+    });
+
+    yPos += 10;
+    doc.moveTo(50, yPos).lineTo(550, yPos).stroke();
+    yPos += 15;
+
+    // Coupon / discount line
+    if (order.discountAmount && parseFloat(order.discountAmount) > 0) {
+      doc.fontSize(12)
+         .text(`Coupon (${order.couponCode || ''}) Discount:`, 300, yPos)
+         .text(`-$${parseFloat(order.discountAmount).toFixed(2)}`, 450, yPos);
+      yPos += 20;
+    }
+
+    doc.fontSize(12).text('Subtotal:', 350, yPos).text(`$${subtotal.toFixed(2)}`, 450, yPos);
+    yPos += 20;
+    doc.fontSize(14).text('Total Amount:', 350, yPos).text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPos);
+
+    yPos += 40;
+    doc.fontSize(12).text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPos);
+    yPos += 60;
+    doc.fontSize(10)
+       .text('Thank you for your business!', 50, yPos)
+       .text('For questions about this invoice, contact support@alpa.com', 50, yPos + 15);
+
+    doc.end();
+  });
+};
+
 // Download Invoice as PDF
 exports.downloadInvoice = async (request, reply) => {
   try {
@@ -1175,144 +1311,19 @@ exports.downloadInvoice = async (request, reply) => {
     }
 
     // Check if order status is DELIVERED
-    if (order.status !== 'DELIVERED') {
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
       return reply.status(400).send({ 
         success: false, 
-        message: `Invoice can only be downloaded when order status is DELIVERED. Current status: ${order.status}` 
+        message: `Invoice is not available for orders with status: ${order.status}` 
       });
     }
 
-    // Create PDF document
-    const doc = new PDFDocument({ margin: 50 });
-    
-    // Set response headers for PDF download
+    // Generate PDF
+    const pdfBuffer = await generateInvoiceBuffer(order);
+
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
-    
-    // Create buffer to collect PDF data
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    
-    // Return the PDF when it's finished
-    const pdfPromise = new Promise((resolve, reject) => {
-      doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(chunks);
-        reply.send(pdfBuffer);
-        resolve();
-      });
-      
-      doc.on('error', reject);
-    });
-
-    // Add company header
-    doc.fontSize(20)
-       .text('ALPA MARKETPLACE', 50, 50)
-       .fontSize(10)
-       .text('Your Cultural Marketplace', 50, 75)
-       .moveDown();
-
-    // Add invoice title and details
-    doc.fontSize(16)
-       .text('INVOICE', 50, 120)
-       .fontSize(12)
-       .text(`Invoice #: ${order.id}`, 50, 145)
-       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 160)
-       .text(`Status: ${order.status}`, 50, 175);
-
-    // Customer details
-    doc.fontSize(14)
-       .text('Bill To:', 50, 210)
-       .fontSize(12)
-       .text(`${order.customerName}`, 50, 230)
-       .text(`${order.customerEmail}`, 50, 245)
-       .text(`${order.shippingPhone || order.customerPhone}`, 50, 260);
-
-    // Shipping address - Use new specific fields if available
-    doc.fontSize(14)
-       .text('Ship To:', 300, 210)
-       .fontSize(12);
-
-    if (order.shippingAddressLine || order.shippingCity || order.shippingState) {
-       doc.text(`${order.shippingAddressLine || ''}`, 300, 230)
-          .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
-          .text(`${order.shippingZipCode || ''}`, 300, 260)
-          .text(`${order.shippingCountry || ''}`, 300, 275);
-    } else if (order.shippingAddress) {
-      let address;
-      try {
-        address = typeof order.shippingAddress === 'string' 
-          ? JSON.parse(order.shippingAddress) 
-          : order.shippingAddress;
-      } catch (error) {
-        console.warn('Failed to parse shipping address as JSON, using as string:', order.shippingAddress);
-        address = { street: order.shippingAddress.toString() };
-      }
-      
-      doc.text(`${address.street || address.address || address.addressLine || address.toString() || ''}`, 300, 230)
-         .text(`${address.city || ''}, ${address.state || ''}`, 300, 245)
-         .text(`${address.zipCode || address.zip || address.pincode || ''}`, 300, 260)
-         .text(`${address.country || ''}`, 300, 275);
-    }
-
-    // Items table header
-    const tableTop = 320;
-    doc.fontSize(12)
-       .text('Item', 50, tableTop)
-       .text('Quantity', 250, tableTop)
-       .text('Unit Price', 350, tableTop)
-       .text('Total', 450, tableTop);
-
-    // Draw line under header
-    doc.moveTo(50, tableTop + 15)
-       .lineTo(550, tableTop + 15)
-       .stroke();
-
-    let yPosition = tableTop + 30;
-    let subtotal = 0;
-
-    // Add items
-    order.items.forEach((item) => {
-      const itemTotal = Number(item.price) * item.quantity;
-      subtotal += itemTotal;
-
-      doc.text(item.product.title, 50, yPosition)
-         .text(item.quantity.toString(), 250, yPosition)
-         .text(`$${Number(item.price).toFixed(2)}`, 350, yPosition)
-         .text(`$${itemTotal.toFixed(2)}`, 450, yPosition);
-      
-      yPosition += 20;
-    });
-
-    // Add totals
-    yPosition += 20;
-    doc.moveTo(50, yPosition)
-       .lineTo(550, yPosition)
-       .stroke();
-
-    yPosition += 20;
-    doc.fontSize(12)
-       .text('Subtotal:', 350, yPosition)
-       .text(`$${subtotal.toFixed(2)}`, 450, yPosition);
-
-    yPosition += 20;
-    doc.fontSize(14)
-       .text('Total Amount:', 350, yPosition)
-       .text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPosition);
-
-    // Payment method
-    yPosition += 40;
-    doc.fontSize(12)
-       .text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPosition);
-
-    // Footer
-    yPosition += 60;
-    doc.fontSize(10)
-       .text('Thank you for your business!', 50, yPosition)
-       .text('For questions about this invoice, contact support@alpa.com', 50, yPosition + 15);
-
-      // Finalize PDF
-      doc.end();
-      return pdfPromise;
+    return reply.send(pdfBuffer);
   } catch (error) {
     console.error("Download invoice error:", error);
     return reply.status(500).send({ success: false, message: error.message });

@@ -954,6 +954,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     shippingAddress.pincode || shippingAddress.zipCode || shippingAddress.postalCode
   ].filter(Boolean).join(', ');
 
+  // Build message with optional PDF attachment
   const msg = {
     to: email,
     from: {
@@ -1008,7 +1009,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                     <tr>
                       <td width="48%" valign="top" style="padding-right:10px;">
                         <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #5A1E12;">
-                          <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Customer Details</p>
+                          <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Your Details</p>
                           <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${customerName}</strong></p>
                           <p style="margin:4px 0;color:#555;font-size:13px;">${email}</p>
                           ${orderDetails.customerPhone ? `<p style="margin:4px 0;color:#555;font-size:13px;">${orderDetails.customerPhone}</p>` : ''}
@@ -1125,6 +1126,15 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   };
 
   try {
+    // Attach invoice PDF if provided
+    if (orderDetails.invoicePDFBuffer) {
+      msg.attachments = [{
+        content: orderDetails.invoicePDFBuffer.toString('base64'),
+        filename: `invoice-${orderDetails.orderId}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      }];
+    }
     await sgMail.send(msg);
     console.log(`✅ Order confirmation email sent to ${email}`);
     return { success: true, message: "Email sent successfully" };
@@ -1323,6 +1333,15 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   };
 
   try {
+    // Attach invoice PDF if provided
+    if (orderDetails.invoicePDFBuffer) {
+      msg.attachments = [{
+        content: orderDetails.invoicePDFBuffer.toString('base64'),
+        filename: `invoice-${orderDetails.orderId}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      }];
+    }
     await sgMail.send(msg);
     return { success: true };
   } catch (error) {
