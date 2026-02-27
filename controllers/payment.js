@@ -398,7 +398,14 @@ async function handlePaymentSucceeded(paymentIntentId) {
         quantity: item.quantity,
         price:    Number(item.price),
       })),
-      shippingAddress: order.shippingAddressLine,
+      // Pass structured address so the email template can render city/state/zip
+      shippingAddress: {
+        addressLine: order.shippingAddressLine,
+        city:        order.shippingCity,
+        state:       order.shippingState,
+        zipCode:     order.shippingZipCode,
+        country:     order.shippingCountry,
+      },
       paymentMethod:   order.paymentMethod || 'Stripe',
       customerPhone:   order.customerPhone || '',
       orderSummary:    storedSummary || undefined,

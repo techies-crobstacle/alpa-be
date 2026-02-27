@@ -946,13 +946,17 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     </tr>
   `).join('');
 
-  const shippingAddress = orderDetails.shippingAddress || {};
-  const addressParts = [
-    shippingAddress.address || shippingAddress.street,
-    shippingAddress.city,
-    shippingAddress.state,
-    shippingAddress.pincode || shippingAddress.zipCode || shippingAddress.postalCode
-  ].filter(Boolean).join(', ');
+  // Normalise: shippingAddress may be a plain string (legacy) or an object
+  const shippingAddrObj = typeof orderDetails.shippingAddress === 'string'
+    ? { addressLine: orderDetails.shippingAddress }
+    : (orderDetails.shippingAddress || {});
+
+  const shippingLine  = shippingAddrObj.addressLine || shippingAddrObj.address || shippingAddrObj.street || '';
+  const shippingCity  = shippingAddrObj.city  || '';
+  const shippingState = shippingAddrObj.state || '';
+  const shippingZip   = shippingAddrObj.pincode || shippingAddrObj.zipCode || shippingAddrObj.postalCode || '';
+  const shippingName  = shippingAddrObj.name || customerName;
+  const addressParts  = [shippingLine, shippingCity, shippingState, shippingZip].filter(Boolean).join(', ');
 
   // Build message with optional PDF attachment
   const msg = {
@@ -1019,8 +1023,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       <td width="48%" valign="top" style="padding-left:10px;">
                         <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #C4603A;">
                           <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Shipping Address</p>
-                          <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${(orderDetails.shippingAddress || {}).name || customerName}</strong></p>
-                          <p style="margin:4px 0;color:#555;font-size:13px;line-height:1.6;">${[((orderDetails.shippingAddress||{}).address||(orderDetails.shippingAddress||{}).street),(orderDetails.shippingAddress||{}).city,(orderDetails.shippingAddress||{}).state,((orderDetails.shippingAddress||{}).pincode||(orderDetails.shippingAddress||{}).postalCode)].filter(Boolean).join(', ') || 'Address not provided'}</p>
+                          <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${shippingName}</strong></p>
+                          <p style="margin:4px 0;color:#555;font-size:13px;line-height:1.6;">${addressParts || 'Address not provided'}</p>
                         </div>
                       </td>
                     </tr>
@@ -1056,7 +1060,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       <!-- Shipping row -->
                       <tr style="background-color:#fdf5f3;">
                         <td colspan="3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
-                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` — ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays} days)` : ''}
+                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` — ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
                         </td>
                         <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
                           orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0

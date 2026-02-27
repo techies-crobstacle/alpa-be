@@ -30,15 +30,22 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
       }
     }
 
-    // Get GST — either specific GST or default (used for display/extraction only)
+    // Get GST — either specific GST, or default, or first active (fallback chain)
     let gstDetails = null;
     if (gstId) {
-      gstDetails = await prisma.gST.findUnique({
+      gstDetails = await prisma.gST.findFirst({
         where: { id: gstId, isActive: true }
       });
-    } else {
+    }
+    if (!gstDetails) {
       gstDetails = await prisma.gST.findFirst({
         where: { isActive: true, isDefault: true }
+      });
+    }
+    if (!gstDetails) {
+      // Final fallback: use any active GST record
+      gstDetails = await prisma.gST.findFirst({
+        where: { isActive: true }
       });
     }
 
