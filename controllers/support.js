@@ -72,7 +72,7 @@ exports.getReturnPolicy = async (request, reply) => {
         },
         {
           heading: "Refund Method",
-          content: "Refunds will be issued to the original payment method. For Cash on Delivery orders, refunds will be processed via bank transfer."
+          content: "Refunds will be issued to the original payment method (Stripe or PayPal). Refunds are typically processed within 5-10 business days depending on your bank."
         },
         {
           heading: "Shipping Costs",

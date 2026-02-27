@@ -993,7 +993,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                           </tr>
                           <tr>
                             <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td>
-                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'COD'}</td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'Stripe'}</td>
                           </tr>
                         </table>
                       </td>

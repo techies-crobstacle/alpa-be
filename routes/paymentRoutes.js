@@ -104,6 +104,50 @@ async function paymentRoutes(fastify, options) {
     { preHandler: authenticateUser },
     paymentController.getPaymentStatus
   );
+
+  // ─── Guest payment routes (no authentication) ─────────────────────────────
+
+  /**
+   * POST /api/payments/guest/create-intent
+   *
+   * Guest equivalent of /create-intent. Accepts cart items directly in the body
+   * instead of reading from a DB cart. No auth token required.
+   *
+   * Request body:
+   * {
+   *   "items"          : [{ "productId": "...", "quantity": 2 }],
+   *   "customerName"   : "Jane Doe",
+   *   "customerEmail"  : "jane@example.com",
+   *   "customerPhone"  : "0400000000",
+   *   "shippingAddress": { "addressLine": "123 Main St", ... },
+   *   "shippingMethodId": "<id>",
+   *   "gstId"          : "<id>",       // optional
+   *   "country"        : "Australia",
+   *   "city"           : "Sydney",
+   *   "zipCode"        : "2000",
+   *   "state"          : "NSW",
+   *   "mobileNumber"   : "0400000000", // optional, falls back to customerPhone
+   *   "couponCode"     : "SAVE10"      // optional
+   * }
+   */
+  fastify.post("/guest/create-intent", paymentController.createGuestPaymentIntent);
+
+  /**
+   * POST /api/payments/guest/confirm
+   *
+   * Call after stripe.confirmPayment() succeeds on the frontend.
+   *
+   * Request body:
+   * { "paymentIntentId": "pi_xxx", "customerEmail": "jane@example.com" }
+   */
+  fastify.post("/guest/confirm", paymentController.confirmGuestPayment);
+
+  /**
+   * GET /api/payments/guest/status?orderId=xxx&customerEmail=xxx
+   *
+   * Poll to check payment + order status for a guest order.
+   */
+  fastify.get("/guest/status", paymentController.getGuestPaymentStatus);
 }
 
 module.exports = paymentRoutes;

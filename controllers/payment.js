@@ -422,6 +422,14 @@ async function handlePaymentSucceeded(paymentIntentId) {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
 
+    // Increment coupon usedCount if a coupon was applied
+    if (order.couponCode) {
+      await tx.coupon.updateMany({
+        where: { code: order.couponCode },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+
     await tx.order.update({
       where: { id: order.id },
       data: { status: "CONFIRMED", paymentStatus: "PAID" },
@@ -430,3 +438,350 @@ async function handlePaymentSucceeded(paymentIntentId) {
 
   console.log(`✅ [Webhook] Order ${order.id} confirmed via payment_intent.succeeded`);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUEST — Create Stripe PaymentIntent + Pending Order (no auth required)
+// POST /api/payments/guest/create-intent
+// Body: { items, customerName, customerEmail, customerPhone, shippingAddress,
+//         shippingMethodId, gstId, country, city, zipCode, state, mobileNumber, couponCode }
+// ─────────────────────────────────────────────────────────────────────────────
+exports.createGuestPaymentIntent = async (request, reply) => {
+  try {
+    const {
+      items,
+      customerName,
+      customerEmail,
+      customerPhone,
+      shippingAddress,
+      shippingMethodId,
+      gstId,
+      country,
+      city,
+      zipCode,
+      state,
+      mobileNumber,
+      couponCode,
+    } = request.body;
+
+    // Basic validation
+    if (!items || items.length === 0) {
+      return reply.status(400).send({ success: false, message: "Order items are required" });
+    }
+    if (!customerName || !customerEmail || !customerPhone) {
+      return reply.status(400).send({ success: false, message: "Customer name, email, and phone are required" });
+    }
+    if (!shippingAddress || !shippingMethodId) {
+      return reply.status(400).send({ success: false, message: "shippingAddress and shippingMethodId are required" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerEmail)) {
+      return reply.status(400).send({ success: false, message: "Invalid email address" });
+    }
+
+    // Validate shipping method
+    const shippingMethod = await prisma.shippingMethod.findUnique({
+      where: { id: shippingMethodId, isActive: true },
+    });
+    if (!shippingMethod) {
+      return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+    }
+
+    // Fetch and validate products + build cart-like structure
+    const cartItems = [];
+    const orderItems = [];
+
+    for (const item of items) {
+      const { productId, quantity } = item;
+      if (!productId || !quantity || quantity < 1) {
+        return reply.status(400).send({ success: false, message: "Invalid item in order" });
+      }
+
+      const product = await prisma.product.findUnique({ where: { id: productId } });
+      if (!product) {
+        return reply.status(404).send({ success: false, message: `Product ${productId} not found` });
+      }
+      if (product.stock < quantity) {
+        return reply.status(400).send({
+          success: false,
+          message: `Insufficient stock for: ${product.title}`,
+        });
+      }
+
+      cartItems.push({ product, quantity });
+      orderItems.push({ productId: product.id, quantity, price: Number(product.price) });
+    }
+
+    // Calculate totals
+    const cartCalculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
+    const originalTotal = parseFloat(cartCalculations.grandTotal);
+
+    // ── Coupon validation ──────────────────────────────────────────────────
+    let appliedCoupon = null;
+    let discountAmount = 0;
+
+    if (couponCode) {
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: couponCode.toUpperCase() },
+      });
+      if (!coupon) return reply.status(400).send({ success: false, message: "Invalid coupon code" });
+      if (!coupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
+      if (new Date() > coupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
+      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit)
+        return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
+      if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue)
+        return reply.status(400).send({
+          success: false,
+          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required`,
+        });
+
+      if (coupon.discountType === "percentage") {
+        discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
+        if (coupon.maxDiscount !== null) discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+      } else {
+        discountAmount = Math.min(coupon.discountValue, originalTotal);
+      }
+      appliedCoupon = coupon;
+    }
+
+    const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
+    const amountInCents = Math.round(totalAmount * 100);
+    // ──────────────────────────────────────────────────────────────────────
+
+    // Create Stripe PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "aud",
+      metadata: { isGuest: "true", customerEmail },
+      automatic_payment_methods: { enabled: true },
+    });
+
+    // Build shippingAddress JSON with order summary
+    const shippingAddressData =
+      typeof shippingAddress === "string"
+        ? { address: shippingAddress }
+        : {
+            ...shippingAddress,
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
+              shippingCost: cartCalculations.shippingCost,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              couponCode: appliedCoupon ? appliedCoupon.code : null,
+              discountAmount,
+              finalTotal: totalAmount,
+              gstInclusive: true,
+              shippingMethod: {
+                id: shippingMethod.id,
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays,
+              },
+              gstDetails: cartCalculations.gstDetails,
+            },
+          };
+
+    // Create PENDING guest order (stock deducted on payment success via webhook / confirm)
+    const order = await prisma.order.create({
+      data: {
+        // userId intentionally omitted — guest order
+        totalAmount,
+        originalTotal,
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        discountAmount: discountAmount > 0 ? discountAmount : null,
+        shippingAddress: shippingAddressData,
+        shippingAddressLine:
+          typeof shippingAddress === "string" ? shippingAddress : shippingAddress?.addressLine,
+        shippingCity: city,
+        shippingState: state,
+        shippingZipCode: zipCode,
+        shippingCountry: country,
+        shippingPhone: mobileNumber || customerPhone,
+        paymentMethod: "STRIPE",
+        status: "CONFIRMED",
+        paymentStatus: "PENDING",
+        stripePaymentIntentId: paymentIntent.id,
+        customerName,
+        customerEmail,
+        customerPhone: mobileNumber || customerPhone || "",
+        items: { create: orderItems },
+      },
+    });
+
+    console.log(`✅ Guest Stripe PaymentIntent created: ${paymentIntent.id}, order: ${order.id}`);
+
+    return reply.status(200).send({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      orderId: order.id,
+      amount: amountInCents,
+      displayAmount: totalAmount,
+      currency: "aud",
+      orderSummary: {
+        subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
+        shippingCost: cartCalculations.shippingCost,
+        gstAmount: cartCalculations.gstAmount,
+        gstPercentage: cartCalculations.gstPercentage,
+        gstInclusive: true,
+        originalTotal: originalTotal.toFixed(2),
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
+        grandTotal: totalAmount.toFixed(2),
+      },
+    });
+  } catch (error) {
+    console.error("❌ createGuestPaymentIntent error:", error);
+    return reply.status(500).send({
+      success: false,
+      message: "Failed to create guest payment intent",
+      error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUEST — Confirm Stripe Payment (no auth required)
+// POST /api/payments/guest/confirm
+// Body: { paymentIntentId, customerEmail }
+// ─────────────────────────────────────────────────────────────────────────────
+exports.confirmGuestPayment = async (request, reply) => {
+  try {
+    const { paymentIntentId, customerEmail } = request.body;
+
+    if (!paymentIntentId || !customerEmail) {
+      return reply.status(400).send({
+        success: false,
+        message: "paymentIntentId and customerEmail are required",
+      });
+    }
+
+    // Verify payment with Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.status !== "succeeded") {
+      return reply.status(400).send({
+        success: false,
+        message: `Payment not successful. Stripe status: ${paymentIntent.status}`,
+      });
+    }
+
+    // Find the guest order — matched by paymentIntentId + customerEmail (no userId)
+    const order = await prisma.order.findFirst({
+      where: {
+        stripePaymentIntentId: paymentIntentId,
+        customerEmail,
+        userId: null, // guest orders only
+      },
+      include: { items: { include: { product: true } } },
+    });
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: "Guest order not found for this payment",
+      });
+    }
+
+    // Idempotency guard
+    if (order.paymentStatus === "PAID") {
+      return reply.status(200).send({
+        success: true,
+        message: "Payment already confirmed",
+        orderId: order.id,
+      });
+    }
+
+    // Deduct stock + mark order PAID (transactional)
+    // Note: coupon usedCount is incremented inside handlePaymentSucceeded (webhook path).
+    // For the direct confirm path we call the same helper to keep logic in one place.
+    await handlePaymentSucceeded(paymentIntentId);
+
+    console.log(`✅ Guest Stripe payment confirmed for order: ${order.id}`);
+
+    // Send confirmation email (non-blocking)
+    const storedSummary =
+      typeof order.shippingAddress === "object" ? order.shippingAddress?.orderSummary : null;
+
+    sendOrderConfirmationEmail(customerEmail, order.customerName, {
+      orderId: order.id,
+      totalAmount: Number(order.totalAmount),
+      itemCount: order.items.length,
+      products: order.items.map((item) => ({
+        title: item.product.title,
+        quantity: item.quantity,
+        price: Number(item.price),
+      })),
+      shippingAddress: order.shippingAddressLine,
+      paymentMethod: "Stripe",
+      customerPhone: order.customerPhone || "",
+      isGuest: true,
+      orderSummary: storedSummary || undefined,
+    }).catch((e) => console.error("Guest email error (non-blocking):", e.message));
+
+    // Notify admins (non-blocking)
+    notifyAdminNewOrder(order.id, {
+      customerName: order.customerName,
+      totalAmount: Number(order.totalAmount).toFixed(2),
+      itemCount: order.items.length,
+      orderId: order.id,
+    }).catch((e) => console.error("Admin notification error (non-blocking):", e.message));
+
+    return reply.status(200).send({
+      success: true,
+      message: "Guest payment confirmed and order placed successfully",
+      orderId: order.id,
+      status: "CONFIRMED",
+      paymentStatus: "PAID",
+    });
+  } catch (error) {
+    console.error("❌ confirmGuestPayment error:", error);
+    return reply.status(500).send({
+      success: false,
+      message: "Failed to confirm guest payment",
+      error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUEST — Check payment + order status (no auth - verified by email)
+// GET /api/payments/guest/status?orderId=xxx&customerEmail=xxx
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getGuestPaymentStatus = async (request, reply) => {
+  try {
+    const { orderId, customerEmail } = request.query;
+
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({
+        success: false,
+        message: "orderId and customerEmail are required",
+      });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, customerEmail, userId: null },
+      select: {
+        id: true,
+        status: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        totalAmount: true,
+        createdAt: true,
+      },
+    });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: "Order not found" });
+    }
+
+    return reply.status(200).send({ success: true, order });
+  } catch (error) {
+    console.error("❌ getGuestPaymentStatus error:", error);
+    return reply.status(500).send({
+      success: false,
+      message: "Failed to get guest payment status",
+    });
+  }
+};

@@ -35,6 +35,15 @@ exports.createOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "All fields including shipping method are required" });
     }
 
+    // Only Stripe and PayPal are accepted — COD is not supported
+    const ALLOWED_PAYMENT_METHODS = ['STRIPE', 'PAYPAL'];
+    if (!ALLOWED_PAYMENT_METHODS.includes(paymentMethod.toUpperCase())) {
+      return reply.status(400).send({
+        success: false,
+        message: `Payment method '${paymentMethod}' is not supported. Accepted methods: Stripe, PayPal`
+      });
+    }
+
     // Get user details for SMS
     const user = await prisma.user.findUnique({
       where: { id: userId }
@@ -709,7 +718,8 @@ exports.reorder = async (request, reply) => {
   }
 };
 
-// GUEST CHECKOUT — Create order without authentication
+// GUEST CHECKOUT — route removed. No COD. Guests use Stripe via POST /api/payments/guest/create-intent.
+// This function is intentionally unreachable via any route.
 exports.createGuestOrder = async (request, reply) => {
   try {
     const { 
@@ -725,7 +735,8 @@ exports.createGuestOrder = async (request, reply) => {
       city,
       zipCode,
       state,
-      mobileNumber
+      mobileNumber,
+      couponCode        // Optional coupon code
     } = request.body;
 
     // Validation
@@ -823,7 +834,50 @@ exports.createGuestOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
     }
 
-    const totalAmount = parseFloat(cartCalculations.grandTotal);
+    const originalTotal = parseFloat(cartCalculations.grandTotal);
+
+    // ── Coupon validation (server-side) ──────────────────────────────────────
+    let appliedCoupon = null;
+    let discountAmount = 0;
+
+    if (couponCode) {
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: couponCode.toUpperCase() }
+      });
+
+      if (!coupon) {
+        return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
+      }
+      if (!coupon.isActive) {
+        return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
+      }
+      if (new Date() > coupon.expiresAt) {
+        return reply.status(400).send({ success: false, message: 'Coupon has expired' });
+      }
+      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
+        return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+      }
+      if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue) {
+        return reply.status(400).send({
+          success: false,
+          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required for this coupon`
+        });
+      }
+
+      if (coupon.discountType === 'percentage') {
+        discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
+        if (coupon.maxDiscount !== null) {
+          discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+        }
+      } else {
+        discountAmount = Math.min(coupon.discountValue, originalTotal);
+      }
+
+      appliedCoupon = coupon;
+    }
+
+    const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Create order using transaction
     const order = await prisma.$transaction(async (tx) => {
@@ -837,10 +891,21 @@ exports.createGuestOrder = async (request, reply) => {
         });
       }
 
+      // Increment coupon usedCount inside the transaction (atomic)
+      if (appliedCoupon) {
+        await tx.coupon.update({
+          where: { id: appliedCoupon.id },
+          data: { usedCount: { increment: 1 } }
+        });
+      }
+
       // Create order without userId (guest order) with shipping/GST details
       const newOrder = await tx.order.create({
         data: {
           totalAmount,
+          originalTotal,
+          couponCode: appliedCoupon ? appliedCoupon.code : null,
+          discountAmount: discountAmount > 0 ? discountAmount : null,
           shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
             ...shippingAddress,
             // Include order breakdown for invoice purposes
@@ -850,6 +915,9 @@ exports.createGuestOrder = async (request, reply) => {
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
+              couponCode: appliedCoupon ? appliedCoupon.code : null,
+              discountAmount,
+              finalTotal: totalAmount,
               shippingMethod: {
                 id: shippingMethod.id,
                 name: shippingMethod.name,
@@ -1013,10 +1081,14 @@ exports.createGuestOrder = async (request, reply) => {
       orderId: order.id,
       orderSummary: {
         subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
         gstPercentage: cartCalculations.gstPercentage,
         gstAmount: cartCalculations.gstAmount,
-        totalAmount: cartCalculations.grandTotal,
+        originalTotal: originalTotal.toFixed(2),
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : null,
+        totalAmount: totalAmount.toFixed(2),
         shippingMethod: {
           name: shippingMethod.name,
           estimatedDays: shippingMethod.estimatedDays

@@ -51,9 +51,7 @@ async function orderRoutes(fastify, options) {
   fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['CUSTOMER', 'USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
 
   // ----------- GUEST CHECKOUT ROUTES (No authentication) -----------
-
-  // Create guest order (no authentication required)
-  fastify.post("/guest/checkout", orderController.createGuestOrder);
+  // Note: Guest checkout is Stripe-only. There is no COD option.
 
   // Track guest order by Order ID and Email (no authentication required)
   fastify.get("/guest/track", orderController.trackGuestOrder);
