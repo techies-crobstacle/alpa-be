@@ -228,6 +228,9 @@ model Order {
   shippingPhone       String?
   trackingNumber    String?
   estimatedDelivery DateTime?
+  couponCode        String?      // coupon applied to this order
+  discountAmount    Decimal?     @db.Decimal(10, 2)  // discount value applied
+  originalTotal     Decimal?     @db.Decimal(10, 2)  // total before discount
   customerName      String
   customerEmail     String
   customerPhone     String
@@ -426,13 +429,20 @@ enum CategoryStatus {
 }
 
 model Coupon {
-  id         String   @id @default(cuid())
-  code       String   @unique
-  discount   Float
-  expiresAt  DateTime
-  createdBy  String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id             String   @id @default(cuid())
+  code           String   @unique
+  discountType   String   @default("percentage") @map("discount_type") // "percentage" | "flat"
+  discountValue  Float    @map("discount_value")
+  maxDiscount    Float?   @map("max_discount")    // cap on discount amount (for percentage type)
+  minCartValue   Float?   @map("min_cart_value")  // minimum cart total to apply coupon
+  expiresAt      DateTime @map("expires_at")
+  usageLimit     Int?     @map("usage_limit")     // total times coupon can be used (null = unlimited)
+  usagePerUser   Int      @default(1) @map("usage_per_user") // max uses per user
+  usageCount     Int      @default(0) @map("usage_count")    // total times used so far
+  isActive       Boolean  @default(true) @map("is_active")
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@map("coupons")
 }

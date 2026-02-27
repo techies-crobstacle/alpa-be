@@ -652,57 +652,71 @@ exports.createCoupon = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    const { code, discount, expiresAt } = request.body;
+    const {
+      code,
+      discountType = 'percentage',  // 'percentage' | 'flat'
+      discountValue,
+      maxDiscount,                   // optional cap for percentage type
+      minCartValue,                  // optional minimum cart total
+      expiresAt,
+      usageLimit,                    // optional total usage cap
+      usagePerUser = 1,
+      isActive = true
+    } = request.body;
 
-    if (!code || !discount || !expiresAt) {
+    if (!code || discountValue === undefined || !expiresAt) {
       return reply.status(400).send({
         success: false,
-        message: 'Coupon code, discount percentage, and expiry date are required'
+        message: 'code, discountValue, and expiresAt are required'
       });
     }
 
-    if (discount <= 0 || discount > 100) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Discount must be between 1 and 100 percent'
-      });
+    if (!['percentage', 'flat'].includes(discountType)) {
+      return reply.status(400).send({ success: false, message: "discountType must be 'percentage' or 'flat'" });
     }
 
-    // Check if coupon code already exists
-    const existingCoupon = await prisma.coupon.findUnique({
-      where: { code: code.toUpperCase() }
-    });
+    if (discountType === 'percentage' && (discountValue <= 0 || discountValue > 100)) {
+      return reply.status(400).send({ success: false, message: 'Percentage discount must be between 1 and 100' });
+    }
 
+    if (discountType === 'flat' && discountValue <= 0) {
+      return reply.status(400).send({ success: false, message: 'Flat discount must be greater than 0' });
+    }
+
+    const existingCoupon = await prisma.coupon.findUnique({ where: { code: code.toUpperCase() } });
     if (existingCoupon) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Coupon code already exists'
-      });
+      return reply.status(400).send({ success: false, message: 'Coupon code already exists' });
     }
 
     const coupon = await prisma.coupon.create({
       data: {
         code: code.toUpperCase(),
-        discount: parseFloat(discount),
-        expiresAt: new Date(expiresAt),
-        createdBy: request.user.userId || request.user.uid
+        discountType,
+        discountValue: parseFloat(discountValue),
+        maxDiscount:   maxDiscount   ? parseFloat(maxDiscount)   : null,
+        minCartValue:  minCartValue  ? parseFloat(minCartValue)  : null,
+        expiresAt:     new Date(expiresAt),
+        usageLimit:    usageLimit    ? parseInt(usageLimit)      : null,
+        usagePerUser:  parseInt(usagePerUser) || 1,
+        isActive:      Boolean(isActive),
+        createdBy:     request.user.userId || request.user.uid
       }
     });
 
-    reply.status(201).send({
-      success: true,
-      message: 'Coupon created successfully',
-      coupon
-    });
+    reply.status(201).send({ success: true, message: 'Coupon created successfully', coupon });
   } catch (error) {
     console.error('Create coupon error:', error);
     reply.status(500).send({ success: false, error: error.message });
   }
 };
 
-// GET ALL COUPONS (Public Access)
+// GET ALL COUPONS (Admin only)
 exports.getAllCoupons = async (request, reply) => {
   try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ success: false, message: 'Access denied. Admins only.' });
+    }
+
     const coupons = await prisma.coupon.findMany({
       orderBy: { createdAt: 'desc' }
     });
@@ -718,6 +732,39 @@ exports.getAllCoupons = async (request, reply) => {
   }
 };
 
+// GET ACTIVE COUPONS (Public — for users to browse available offers)
+exports.getActiveCoupons = async (request, reply) => {
+  try {
+    const now = new Date();
+    const coupons = await prisma.coupon.findMany({
+      where: {
+        isActive: true,
+        expiresAt: { gt: now }
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id:            true,
+        code:          true,
+        discountType:  true,
+        discountValue: true,
+        maxDiscount:   true,
+        minCartValue:  true,
+        expiresAt:     true,
+        usagePerUser:  true
+      }
+    });
+
+    reply.send({
+      success: true,
+      coupons,
+      count: coupons.length
+    });
+  } catch (error) {
+    console.error('Get active coupons error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
 // UPDATE COUPON (Admin only)
 exports.updateCoupon = async (request, reply) => {
   try {
@@ -726,57 +773,53 @@ exports.updateCoupon = async (request, reply) => {
     }
 
     const { id } = request.params;
-    const { code, discount, expiresAt } = request.body;
+    const {
+      code, discountType, discountValue,
+      maxDiscount, minCartValue,
+      expiresAt, usageLimit, usagePerUser, isActive
+    } = request.body;
 
-    // Check if coupon exists
-    const existingCoupon = await prisma.coupon.findUnique({
-      where: { id }
-    });
-
+    const existingCoupon = await prisma.coupon.findUnique({ where: { id } });
     if (!existingCoupon) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Coupon not found'
-      });
+      return reply.status(404).send({ success: false, message: 'Coupon not found' });
     }
 
-    // Prepare update data
     const updateData = {};
-    if (code) updateData.code = code.toUpperCase();
-    if (discount !== undefined) {
-      if (discount <= 0 || discount > 100) {
-        return reply.status(400).send({
-          success: false,
-          message: 'Discount must be between 1 and 100 percent'
-        });
-      }
-      updateData.discount = parseFloat(discount);
-    }
-    if (expiresAt) updateData.expiresAt = new Date(expiresAt);
 
-    // Check if new code conflicts with existing codes (if code is being updated)
-    if (code && code.toUpperCase() !== existingCoupon.code) {
-      const conflictingCoupon = await prisma.coupon.findUnique({
-        where: { code: code.toUpperCase() }
-      });
-      if (conflictingCoupon) {
-        return reply.status(400).send({
-          success: false,
-          message: 'Coupon code already exists'
-        });
+    if (code) {
+      const upper = code.toUpperCase();
+      if (upper !== existingCoupon.code) {
+        const conflict = await prisma.coupon.findUnique({ where: { code: upper } });
+        if (conflict) return reply.status(400).send({ success: false, message: 'Coupon code already exists' });
       }
+      updateData.code = upper;
     }
 
-    const updatedCoupon = await prisma.coupon.update({
-      where: { id },
-      data: updateData
-    });
+    if (discountType !== undefined) {
+      if (!['percentage', 'flat'].includes(discountType))
+        return reply.status(400).send({ success: false, message: "discountType must be 'percentage' or 'flat'" });
+      updateData.discountType = discountType;
+    }
 
-    reply.send({
-      success: true,
-      message: 'Coupon updated successfully',
-      coupon: updatedCoupon
-    });
+    const effectiveType = discountType || existingCoupon.discountType;
+    if (discountValue !== undefined) {
+      if (effectiveType === 'percentage' && (discountValue <= 0 || discountValue > 100))
+        return reply.status(400).send({ success: false, message: 'Percentage discount must be between 1 and 100' });
+      if (effectiveType === 'flat' && discountValue <= 0)
+        return reply.status(400).send({ success: false, message: 'Flat discount must be greater than 0' });
+      updateData.discountValue = parseFloat(discountValue);
+    }
+
+    if (maxDiscount  !== undefined) updateData.maxDiscount  = maxDiscount  ? parseFloat(maxDiscount)  : null;
+    if (minCartValue !== undefined) updateData.minCartValue = minCartValue ? parseFloat(minCartValue) : null;
+    if (expiresAt    !== undefined) updateData.expiresAt    = new Date(expiresAt);
+    if (usageLimit   !== undefined) updateData.usageLimit   = usageLimit   ? parseInt(usageLimit)     : null;
+    if (usagePerUser !== undefined) updateData.usagePerUser = parseInt(usagePerUser);
+    if (isActive     !== undefined) updateData.isActive     = Boolean(isActive);
+
+    const updatedCoupon = await prisma.coupon.update({ where: { id }, data: updateData });
+
+    reply.send({ success: true, message: 'Coupon updated successfully', coupon: updatedCoupon });
   } catch (error) {
     console.error('Update coupon error:', error);
     reply.status(500).send({ success: false, error: error.message });
@@ -824,53 +867,73 @@ exports.validateCoupon = async (request, reply) => {
     const { code, orderTotal } = request.body;
 
     if (!code) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Coupon code is required'
-      });
+      return reply.status(400).send({ success: false, message: 'Coupon code is required' });
     }
 
-    const coupon = await prisma.coupon.findUnique({
-      where: { code: code.toUpperCase() }
-    });
+    const coupon = await prisma.coupon.findUnique({ where: { code: code.toUpperCase() } });
 
     if (!coupon) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Invalid coupon code'
-      });
+      return reply.status(404).send({ success: false, message: 'Invalid coupon code' });
     }
 
-    // Check if coupon is expired
+    if (!coupon.isActive) {
+      return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
+    }
+
     if (new Date() > coupon.expiresAt) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Coupon has expired'
-      });
+      return reply.status(400).send({ success: false, message: 'Coupon has expired' });
     }
 
-    // Validate orderTotal and calculate discount if provided
+    if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
+      return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+    }
+
+    // Validate orderTotal and calculate discount
     let discountAmount = null;
+    let finalTotal = null;
+
     if (orderTotal !== undefined) {
       const total = parseFloat(orderTotal);
       if (isNaN(total) || total <= 0) {
+        return reply.status(400).send({ success: false, message: 'Order total must be a positive number' });
+      }
+
+      if (coupon.minCartValue !== null && total < coupon.minCartValue) {
         return reply.status(400).send({
           success: false,
-          message: 'Order total must be a positive number'
+          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required to use this coupon`
         });
       }
-      discountAmount = parseFloat(((total * coupon.discount) / 100).toFixed(2));
+
+      if (coupon.discountType === 'percentage') {
+        discountAmount = parseFloat(((total * coupon.discountValue) / 100).toFixed(2));
+        if (coupon.maxDiscount !== null && discountAmount > coupon.maxDiscount) {
+          discountAmount = coupon.maxDiscount;
+        }
+      } else {
+        // flat
+        discountAmount = Math.min(coupon.discountValue, total);
+      }
+
+      finalTotal = parseFloat((total - discountAmount).toFixed(2));
     }
 
     reply.send({
       success: true,
       message: 'Coupon is valid',
       coupon: {
-        id: coupon.id,
-        code: coupon.code,
-        discount: coupon.discount,
-        expiresAt: coupon.expiresAt,
-        discountAmount
+        id:            coupon.id,
+        code:          coupon.code,
+        discountType:  coupon.discountType,
+        discountValue: coupon.discountValue,
+        maxDiscount:   coupon.maxDiscount,
+        minCartValue:  coupon.minCartValue,
+        expiresAt:     coupon.expiresAt,
+        usageLimit:    coupon.usageLimit,
+        usagePerUser:  coupon.usagePerUser,
+        usageCount:    coupon.usageCount,
+        discountAmount,
+        finalTotal
       }
     });
   } catch (error) {

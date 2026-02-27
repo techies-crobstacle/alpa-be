@@ -27,7 +27,8 @@ exports.createOrder = async (request, reply) => {
       city,
       zipCode,
       state,
-      mobileNumber
+      mobileNumber,
+      couponCode
     } = request.body;
 
     if (!shippingAddress || !paymentMethod || !shippingMethodId) {
@@ -72,7 +73,47 @@ exports.createOrder = async (request, reply) => {
     }
 
     // Use grand total from cart calculations
-    const totalAmount = parseFloat(cartCalculations.grandTotal);
+    const originalTotal = parseFloat(cartCalculations.grandTotal);
+    let discountAmount = 0;
+    let appliedCoupon = null;
+
+    // Validate and apply coupon if provided
+    if (couponCode) {
+      const coupon = await prisma.coupon.findUnique({ where: { code: couponCode.toUpperCase() } });
+
+      if (!coupon) {
+        return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
+      }
+      if (!coupon.isActive) {
+        return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
+      }
+      if (new Date() > coupon.expiresAt) {
+        return reply.status(400).send({ success: false, message: 'Coupon has expired' });
+      }
+      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
+        return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+      }
+      if (coupon.minCartValue !== null && originalTotal < parseFloat(coupon.minCartValue)) {
+        return reply.status(400).send({
+          success: false,
+          message: `Minimum cart value of $${parseFloat(coupon.minCartValue).toFixed(2)} is required to use this coupon`
+        });
+      }
+
+      if (coupon.discountType === 'percentage') {
+        discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
+        if (coupon.maxDiscount !== null && discountAmount > parseFloat(coupon.maxDiscount)) {
+          discountAmount = parseFloat(coupon.maxDiscount);
+        }
+      } else {
+        // flat
+        discountAmount = Math.min(parseFloat(coupon.discountValue), originalTotal);
+      }
+
+      appliedCoupon = coupon;
+    }
+
+    const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
     let sellerNotifications = new Map();
     const orderItems = [];
 
@@ -133,6 +174,9 @@ exports.createOrder = async (request, reply) => {
         data: {
           userId,
           totalAmount,
+          couponCode:     appliedCoupon ? appliedCoupon.code : null,
+          discountAmount: appliedCoupon ? discountAmount      : null,
+          originalTotal:  appliedCoupon ? originalTotal       : null,
           shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
             ...shippingAddress,
             // Include order breakdown for invoice purposes
@@ -179,6 +223,14 @@ exports.createOrder = async (request, reply) => {
       await tx.cartItem.deleteMany({
         where: { cartId: cart.id }
       });
+
+      // Increment coupon usageCount if applied
+      if (appliedCoupon) {
+        await tx.coupon.update({
+          where: { id: appliedCoupon.id },
+          data: { usageCount: { increment: 1 } }
+        });
+      }
 
       return newOrder;
     });
@@ -316,7 +368,16 @@ exports.createOrder = async (request, reply) => {
         shippingCost: cartCalculations.shippingCost,
         gstPercentage: cartCalculations.gstPercentage,
         gstAmount: cartCalculations.gstAmount,
-        totalAmount: cartCalculations.grandTotal,
+        originalTotal,
+        discountAmount: appliedCoupon ? discountAmount : null,
+        coupon: appliedCoupon ? {
+          code:          appliedCoupon.code,
+          discountType:  appliedCoupon.discountType,
+          discountValue: appliedCoupon.discountValue,
+          maxDiscount:   appliedCoupon.maxDiscount,
+          discountAmount
+        } : null,
+        totalAmount,
         gstInclusive: true,
         shippingMethod: {
           name: shippingMethod.name,

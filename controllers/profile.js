@@ -1,4 +1,9 @@
 const prisma = require('../config/prisma');
+const { uploadToCloudinary } = require('../config/cloudinary');
+const fs = require('fs');
+const path = require('path');
+const { pipeline } = require('stream/promises');
+const bcrypt = require('bcryptjs');
 
 // Get profile for authenticated user (id from token)
 exports.getProfile = async (request, reply) => {
@@ -46,10 +51,6 @@ exports.updateProfile = async (request, reply) => {
     console.log('User ID:', userId);
 
     let name, phone, profileImageUrl;
-    const { uploadToCloudinary } = require('../config/cloudinary');
-    const fs = require('fs');
-    const path = require('path');
-    const { pipeline } = require('stream/promises');
 
     // Check if request is multipart
     const isMultipart = request.isMultipart();
@@ -228,7 +229,6 @@ exports.changePassword = async (request, reply) => {
     }
 
     // Verify current password
-    const bcrypt = require('bcryptjs');
     const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
 
     if (!isCurrentPasswordValid) {
@@ -260,4 +260,117 @@ exports.changePassword = async (request, reply) => {
   }
 };
 
+// ==================== SELLER PROFILE ====================
 
+// Get full seller profile (seller token required)
+exports.getSellerProfile = async (request, reply) => {
+  try {
+    const userId = request.user?.userId || request.user?.id;
+    if (!userId) return reply.status(401).send({ success: false, message: 'Unauthorized' });
+
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            profileImage: true,
+            role: true,
+            emailVerified: true,
+            createdAt: true
+          }
+        }
+      }
+    });
+
+    if (!seller) {
+      return reply.status(404).send({ success: false, message: 'Seller profile not found' });
+    }
+
+    return reply.send({ success: true, data: seller });
+  } catch (error) {
+    console.error('getSellerProfile error:', error);
+    reply.status(500).send({ success: false, message: 'Server error', error: error.message });
+  }
+};
+
+// Edit seller profile (seller token required)
+// Editable fields: contactPerson, artistName, artistDescription,
+//                  storeName, storeDescription, storeLogo (file or URL),
+//                  storeBanner (file or URL), storeLocation, website
+exports.updateSellerProfile = async (request, reply) => {
+  try {
+    const userId = request.user?.userId || request.user?.id;
+    if (!userId) return reply.status(401).send({ success: false, message: 'Unauthorized' });
+
+    const seller = await prisma.sellerProfile.findUnique({ where: { userId } });
+    if (!seller) return reply.status(404).send({ success: false, message: 'Seller profile not found' });
+
+    // Collect fields — support both multipart (with optional file) and JSON
+    const fields = {};
+    let storeLogoUrl, storeBannerUrl;
+
+    if (request.isMultipart()) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const uploadsDir = path.join(__dirname, '../uploads/');
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const tmpPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+          await pipeline(part.file, fs.createWriteStream(tmpPath));
+
+          if (part.fieldname === 'storeLogo') {
+            const result = await uploadToCloudinary(tmpPath, 'store-logos');
+            storeLogoUrl = result.url;
+          } else if (part.fieldname === 'storeBanner') {
+            const result = await uploadToCloudinary(tmpPath, 'store-banners');
+            storeBannerUrl = result.url;
+          }
+          await fs.promises.unlink(tmpPath).catch(() => {});
+        } else {
+          fields[part.fieldname] = part.value;
+        }
+      }
+    } else {
+      Object.assign(fields, request.body || {});
+    }
+
+    const updateData = {};
+    const textFields = [
+      'contactPerson', 'artistName', 'artistDescription',
+      'storeName', 'storeDescription', 'storeLocation', 'website'
+    ];
+
+    for (const f of textFields) {
+      if (fields[f] !== undefined && fields[f] !== '') updateData[f] = fields[f];
+    }
+
+    // storeLogo / storeBanner can also come as plain URL strings in JSON
+    if (storeLogoUrl) updateData.storeLogo = storeLogoUrl;
+    else if (fields.storeLogo) updateData.storeLogo = fields.storeLogo;
+
+    if (storeBannerUrl) updateData.storeBanner = storeBannerUrl;
+    else if (fields.storeBanner) updateData.storeBanner = fields.storeBanner;
+
+    if (Object.keys(updateData).length === 0) {
+      return reply.status(400).send({ success: false, message: 'No valid fields provided to update' });
+    }
+
+    const updated = await prisma.sellerProfile.update({
+      where: { userId },
+      data: updateData
+    });
+
+    return reply.send({
+      success: true,
+      message: 'Seller profile updated successfully',
+      data: updated
+    });
+  } catch (error) {
+    console.error('updateSellerProfile error:', error);
+    reply.status(500).send({ success: false, message: 'Server error', error: error.message });
+  }
+};

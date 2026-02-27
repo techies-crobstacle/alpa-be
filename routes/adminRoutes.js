@@ -64,12 +64,12 @@ async function adminRoutes(fastify, options) {
   fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
 
   // ---------------- COUPON MANAGEMENT ----------------
-  // Admin coupon management
+  // Public: active coupons visible to all users (no auth required)
+  fastify.get("/coupons/active", adminController.getActiveCoupons);
+
+  // Admin only: full coupon list + management
+  fastify.get("/coupons", { preHandler: adminAuth }, adminController.getAllCoupons);
   fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);
-  
-  // Get coupons - Public access
-  fastify.get("/coupons", adminController.getAllCoupons);
-  
   fastify.put("/coupons/:id", { preHandler: adminAuth }, adminController.updateCoupon);
   fastify.delete("/coupons/:id", { preHandler: adminAuth }, adminController.deleteCoupon);
   // ---------------- SALES ANALYTICS & EXPORT ----------------
