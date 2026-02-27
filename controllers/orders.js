@@ -74,12 +74,15 @@ exports.createOrder = async (request, reply) => {
 
     // Use grand total from cart calculations
     const originalTotal = parseFloat(cartCalculations.grandTotal);
-    let discountAmount = 0;
-    let appliedCoupon = null;
 
-    // Validate and apply coupon if provided
+    // ── Coupon validation (server-side) ──────────────────────────────────────
+    let appliedCoupon = null;
+    let discountAmount = 0;
+
     if (couponCode) {
-      const coupon = await prisma.coupon.findUnique({ where: { code: couponCode.toUpperCase() } });
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: couponCode.toUpperCase() }
+      });
 
       if (!coupon) {
         return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
@@ -90,30 +93,33 @@ exports.createOrder = async (request, reply) => {
       if (new Date() > coupon.expiresAt) {
         return reply.status(400).send({ success: false, message: 'Coupon has expired' });
       }
-      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
+      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
         return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
       }
-      if (coupon.minCartValue !== null && originalTotal < parseFloat(coupon.minCartValue)) {
+      if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue) {
         return reply.status(400).send({
           success: false,
-          message: `Minimum cart value of $${parseFloat(coupon.minCartValue).toFixed(2)} is required to use this coupon`
+          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required for this coupon`
         });
       }
 
+      // Calculate discount
       if (coupon.discountType === 'percentage') {
         discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
-        if (coupon.maxDiscount !== null && discountAmount > parseFloat(coupon.maxDiscount)) {
-          discountAmount = parseFloat(coupon.maxDiscount);
+        if (coupon.maxDiscount !== null) {
+          discountAmount = Math.min(discountAmount, coupon.maxDiscount);
         }
       } else {
-        // flat
-        discountAmount = Math.min(parseFloat(coupon.discountValue), originalTotal);
+        // fixed
+        discountAmount = Math.min(coupon.discountValue, originalTotal);
       }
 
       appliedCoupon = coupon;
     }
 
     const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
+    // ─────────────────────────────────────────────────────────────────────────
+
     let sellerNotifications = new Map();
     const orderItems = [];
 
@@ -169,14 +175,22 @@ exports.createOrder = async (request, reply) => {
         });
       }
 
+      // Increment coupon usedCount inside the transaction (atomic)
+      if (appliedCoupon) {
+        await tx.coupon.update({
+          where: { id: appliedCoupon.id },
+          data: { usedCount: { increment: 1 } }
+        });
+      }
+
       // Create order with items and shipping/GST details
       const newOrder = await tx.order.create({
         data: {
           userId,
           totalAmount,
-          couponCode:     appliedCoupon ? appliedCoupon.code : null,
-          discountAmount: appliedCoupon ? discountAmount      : null,
-          originalTotal:  appliedCoupon ? originalTotal       : null,
+          originalTotal,
+          couponCode: appliedCoupon ? appliedCoupon.code : null,
+          discountAmount: discountAmount > 0 ? discountAmount : null,
           shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
             ...shippingAddress,
             // Include order breakdown for invoice purposes
@@ -186,6 +200,9 @@ exports.createOrder = async (request, reply) => {
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
+              couponCode: appliedCoupon ? appliedCoupon.code : null,
+              discountAmount,
+              finalTotal: totalAmount,
               shippingMethod: {
                 id: shippingMethod.id,
                 name: shippingMethod.name,

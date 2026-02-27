@@ -654,25 +654,33 @@ exports.createCoupon = async (request, reply) => {
 
     const {
       code,
-      discountType = 'percentage',  // 'percentage' | 'flat'
+      discountType = 'percentage',
       discountValue,
-      maxDiscount,                   // optional cap for percentage type
-      minCartValue,                  // optional minimum cart total
       expiresAt,
-      usageLimit,                    // optional total usage cap
-      usagePerUser = 1,
+      usageLimit,
+      usagePerUser,
+      minCartValue,
+      maxDiscount,
       isActive = true
     } = request.body;
 
     if (!code || discountValue === undefined || !expiresAt) {
       return reply.status(400).send({
         success: false,
-        message: 'code, discountValue, and expiresAt are required'
+        message: 'Coupon code, discountValue, and expiry date are required'
       });
     }
 
-    if (!['percentage', 'flat'].includes(discountType)) {
-      return reply.status(400).send({ success: false, message: "discountType must be 'percentage' or 'flat'" });
+    if (!['percentage', 'fixed'].includes(discountType)) {
+      return reply.status(400).send({ success: false, message: 'discountType must be "percentage" or "fixed"' });
+    }
+
+    if (discountType === 'percentage' && (discountValue <= 0 || discountValue > 100)) {
+      return reply.status(400).send({ success: false, message: 'Percentage discount must be between 1 and 100' });
+    }
+
+    if (discountType === 'fixed' && discountValue <= 0) {
+      return reply.status(400).send({ success: false, message: 'Fixed discount must be greater than 0' });
     }
 
     if (discountType === 'percentage' && (discountValue <= 0 || discountValue > 100)) {
@@ -693,13 +701,13 @@ exports.createCoupon = async (request, reply) => {
         code: code.toUpperCase(),
         discountType,
         discountValue: parseFloat(discountValue),
-        maxDiscount:   maxDiscount   ? parseFloat(maxDiscount)   : null,
-        minCartValue:  minCartValue  ? parseFloat(minCartValue)  : null,
-        expiresAt:     new Date(expiresAt),
-        usageLimit:    usageLimit    ? parseInt(usageLimit)      : null,
-        usagePerUser:  parseInt(usagePerUser) || 1,
-        isActive:      Boolean(isActive),
-        createdBy:     request.user.userId || request.user.uid
+        expiresAt: new Date(expiresAt),
+        usageLimit: usageLimit ? parseInt(usageLimit) : null,
+        usagePerUser: usagePerUser ? parseInt(usagePerUser) : null,
+        minCartValue: minCartValue ? parseFloat(minCartValue) : null,
+        maxDiscount: maxDiscount ? parseFloat(maxDiscount) : null,
+        isActive,
+        createdBy: request.user.userId || request.user.uid
       }
     });
 
@@ -773,18 +781,38 @@ exports.updateCoupon = async (request, reply) => {
     }
 
     const { id } = request.params;
-    const {
-      code, discountType, discountValue,
-      maxDiscount, minCartValue,
-      expiresAt, usageLimit, usagePerUser, isActive
-    } = request.body;
+    const { code, discountType, discountValue, expiresAt, usageLimit, usagePerUser, minCartValue, maxDiscount, isActive } = request.body;
 
+    // Check if coupon exists
     const existingCoupon = await prisma.coupon.findUnique({ where: { id } });
     if (!existingCoupon) {
       return reply.status(404).send({ success: false, message: 'Coupon not found' });
     }
 
     const updateData = {};
+    if (code) updateData.code = code.toUpperCase();
+    if (discountType !== undefined) {
+      if (!['percentage', 'fixed'].includes(discountType)) {
+        return reply.status(400).send({ success: false, message: 'discountType must be "percentage" or "fixed"' });
+      }
+      updateData.discountType = discountType;
+    }
+    if (discountValue !== undefined) {
+      const type = discountType || existingCoupon.discountType;
+      if (type === 'percentage' && (discountValue <= 0 || discountValue > 100)) {
+        return reply.status(400).send({ success: false, message: 'Percentage discount must be between 1 and 100' });
+      }
+      if (type === 'fixed' && discountValue <= 0) {
+        return reply.status(400).send({ success: false, message: 'Fixed discount must be greater than 0' });
+      }
+      updateData.discountValue = parseFloat(discountValue);
+    }
+    if (expiresAt) updateData.expiresAt = new Date(expiresAt);
+    if (usageLimit !== undefined) updateData.usageLimit = usageLimit !== null ? parseInt(usageLimit) : null;
+    if (usagePerUser !== undefined) updateData.usagePerUser = usagePerUser !== null ? parseInt(usagePerUser) : null;
+    if (minCartValue !== undefined) updateData.minCartValue = minCartValue !== null ? parseFloat(minCartValue) : null;
+    if (maxDiscount !== undefined) updateData.maxDiscount = maxDiscount !== null ? parseFloat(maxDiscount) : null;
+    if (isActive !== undefined) updateData.isActive = isActive;
 
     if (code) {
       const upper = code.toUpperCase();
@@ -861,7 +889,7 @@ exports.deleteCoupon = async (request, reply) => {
   }
 };
 
-// VALIDATE COUPON (Customer use)
+// VALIDATE COUPON (Customer use — preview discount before checkout)
 exports.validateCoupon = async (request, reply) => {
   try {
     const { code, orderTotal } = request.body;
@@ -884,6 +912,10 @@ exports.validateCoupon = async (request, reply) => {
       return reply.status(400).send({ success: false, message: 'Coupon has expired' });
     }
 
+    if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
+      return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+    }
+
     if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
       return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
     }
@@ -901,39 +933,32 @@ exports.validateCoupon = async (request, reply) => {
       if (coupon.minCartValue !== null && total < coupon.minCartValue) {
         return reply.status(400).send({
           success: false,
-          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required to use this coupon`
+          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required for this coupon`
         });
       }
 
       if (coupon.discountType === 'percentage') {
         discountAmount = parseFloat(((total * coupon.discountValue) / 100).toFixed(2));
-        if (coupon.maxDiscount !== null && discountAmount > coupon.maxDiscount) {
-          discountAmount = coupon.maxDiscount;
-        }
+        if (coupon.maxDiscount !== null) discountAmount = Math.min(discountAmount, coupon.maxDiscount);
       } else {
-        // flat
         discountAmount = Math.min(coupon.discountValue, total);
       }
-
-      finalTotal = parseFloat((total - discountAmount).toFixed(2));
     }
 
     reply.send({
       success: true,
       message: 'Coupon is valid',
       coupon: {
-        id:            coupon.id,
-        code:          coupon.code,
-        discountType:  coupon.discountType,
+        id: coupon.id,
+        code: coupon.code,
+        discountType: coupon.discountType,
         discountValue: coupon.discountValue,
-        maxDiscount:   coupon.maxDiscount,
-        minCartValue:  coupon.minCartValue,
-        expiresAt:     coupon.expiresAt,
-        usageLimit:    coupon.usageLimit,
-        usagePerUser:  coupon.usagePerUser,
-        usageCount:    coupon.usageCount,
-        discountAmount,
-        finalTotal
+        expiresAt: coupon.expiresAt,
+        usageLimit: coupon.usageLimit,
+        usedCount: coupon.usedCount,
+        minCartValue: coupon.minCartValue,
+        maxDiscount: coupon.maxDiscount,
+        discountAmount
       }
     });
   } catch (error) {

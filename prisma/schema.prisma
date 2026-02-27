@@ -219,6 +219,9 @@ model Order {
   stripePaymentIntentId String?   // Stripe PaymentIntent ID
   paypalOrderId         String?   // PayPal Order ID
   paymentStatus     PaymentStatus @default(PENDING) // payment state
+  couponCode        String?     // Coupon code applied at checkout
+  discountAmount    Decimal?    @db.Decimal(10, 2) // Discount amount applied
+  originalTotal     Decimal?    @db.Decimal(10, 2) // Pre-discount total
   shippingAddress   Json?       // Keeping for backward compatibility or structured storage
   shippingAddressLine String?
   shippingCity        String?
@@ -429,6 +432,7 @@ enum CategoryStatus {
 }
 
 model Coupon {
+<<<<<<< HEAD
   id             String   @id @default(cuid())
   code           String   @unique
   discountType   String   @default("percentage") @map("discount_type") // "percentage" | "flat"
@@ -443,6 +447,22 @@ model Coupon {
   createdBy      String   @map("created_by")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
+=======
+  id            String   @id @default(cuid())
+  code          String   @unique
+  discountType  String   @map("discount_type")   // "percentage" | "fixed"
+  discountValue Float    @map("discount_value")
+  expiresAt     DateTime @map("expires_at")
+  isActive      Boolean  @default(true) @map("is_active")
+  usageLimit    Int?     @map("usage_limit")      // null = unlimited
+  usedCount     Int      @default(0) @map("usage_count")
+  usagePerUser  Int?     @map("usage_per_user")   // null = unlimited per user
+  minCartValue  Float?   @map("min_cart_value")
+  maxDiscount   Float?   @map("max_discount")     // cap for percentage discounts
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+>>>>>>> a75cae0d7ee7f0e4a0c9f149bcee34741e3d706a
 
   @@map("coupons")
 }
