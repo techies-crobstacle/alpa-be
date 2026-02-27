@@ -994,7 +994,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                           </tr>
                           <tr>
                             <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td>
-                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'COD'}</td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'Stripe'}</td>
                           </tr>
                         </table>
                       </td>
@@ -1064,6 +1064,12 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                             : '<span style="color:#2e7d32;font-weight:600;">FREE</span>'
                         }</td>
                       </tr>
+                      <!-- Coupon Discount row (only shown when a coupon was applied) -->
+                      ${orderDetails.orderSummary?.discountAmount && parseFloat(orderDetails.orderSummary.discountAmount) > 0 ? `
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
+                        <td style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
+                      </tr>` : ''}
                       <!-- GST extracted row -->
                       <tr style="background-color:#fdf5f3;border-top:1px dashed #ddd;">
                         <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">
