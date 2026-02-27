@@ -1004,10 +1004,13 @@ exports.createGuestOrder = async (request, reply) => {
       // Include order breakdown for invoice
       orderSummary: {
         subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
         gstPercentage: cartCalculations.gstPercentage,
         gstAmount: cartCalculations.gstAmount,
         grandTotal: cartCalculations.grandTotal,
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        discountAmount: discountAmount > 0 ? discountAmount : null,
         shippingMethod: {
           name: shippingMethod.name,
           cost: shippingMethod.cost,
