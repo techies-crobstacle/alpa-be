@@ -60,17 +60,6 @@ app.register(require("@fastify/cors"), {
   allowedHeaders: ['Content-Type', 'Authorization']
 });
 
-// ── Socket.io for real-time stock updates ──────────────────────────────────
-const io = new SocketIOServer(app.server, {
-  cors: {
-    origin: ALLOWED_ORIGINS,
-    credentials: true,
-    methods: ['GET', 'POST']
-  }
-});
-initStockSocket(io);
-console.log('🔌 Socket.io real-time stock bridge initialised');
-
 // Register cookie plugin for session management
 app.register(require("@fastify/cookie"));
 
@@ -158,7 +147,20 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
     process.exit(1);
   }
   console.log(`Server running on ${address}`);
-  
+
+  // ── Socket.io: attach AFTER server is bound to port ─────────────────────
+  // app.server is fully ready inside the listen callback
+  const io = new SocketIOServer(app.server, {
+    cors: {
+      origin: ALLOWED_ORIGINS,
+      credentials: true,
+      methods: ['GET', 'POST']
+    }
+  });
+  initStockSocket(io);
+  console.log('🔌 Socket.io real-time stock bridge initialised');
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Initialize SLA monitoring after server starts
   setTimeout(() => {
     initializeSLAMonitoring();

@@ -1,6 +1,5 @@
 const prisma = require("../config/prisma");
 const { checkInventory } = require("../utils/checkInventory");
-const { broadcastStockUpdate } = require("../utils/stockSocket");
 const { 
   sendOrderConfirmationEmail, 
   sendOrderStatusEmail,
@@ -263,29 +262,8 @@ exports.createOrder = async (request, reply) => {
     });
 
     console.log(`✅ Order created: ${order.id}`);
-
-    // ── Broadcast real-time stock updates to all watching clients ────────────
-    // Non-blocking: failures here must never affect the order response
-    setImmediate(async () => {
-      try {
-        for (const item of cart.items) {
-          const updated = await prisma.product.findUnique({
-            where: { id: item.productId },
-            select: { stock: true, isActive: true }
-          });
-          if (updated) {
-            broadcastStockUpdate(
-              item.productId,
-              updated.stock,
-              updated.isActive ?? true
-            );
-          }
-        }
-      } catch (broadcastErr) {
-        console.error('Stock broadcast error (non-blocking):', broadcastErr.message);
-      }
-    });
-    // ─────────────────────────────────────────────────────────────────────────
+    // Stock broadcasts are handled automatically by the Prisma middleware
+    // in config/prisma.js — no manual broadcast needed here.
 
     // Get seller information for notifications
     let sellerNames = [];
