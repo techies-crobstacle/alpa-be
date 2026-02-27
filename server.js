@@ -30,6 +30,8 @@ const paypalRoutes  = require("./routes/paypalRoutes");
 const blogsRoutes   = require("./routes/blogsRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
+const { Server: SocketIOServer } = require("socket.io");
+const { initStockSocket } = require("./utils/stockSocket");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -57,6 +59,17 @@ app.register(require("@fastify/cors"), {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 });
+
+// ── Socket.io for real-time stock updates ──────────────────────────────────
+const io = new SocketIOServer(app.server, {
+  cors: {
+    origin: ALLOWED_ORIGINS,
+    credentials: true,
+    methods: ['GET', 'POST']
+  }
+});
+initStockSocket(io);
+console.log('🔌 Socket.io real-time stock bridge initialised');
 
 // Register cookie plugin for session management
 app.register(require("@fastify/cookie"));
