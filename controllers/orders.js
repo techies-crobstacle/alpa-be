@@ -174,14 +174,24 @@ exports.createOrder = async (request, reply) => {
 
     // Use transaction to ensure atomicity
     const order = await prisma.$transaction(async (tx) => {
-      // Deduct stock
+      // Deduct stock — re-validate inside the transaction to prevent race conditions
       for (const item of cart.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: { decrement: item.quantity }
-          }
-        });
+        // Atomic decrement only if sufficient stock exists
+        const result = await tx.$executeRaw`
+          UPDATE "products"
+          SET stock = stock - ${item.quantity}
+          WHERE id = ${item.productId} AND stock >= ${item.quantity}
+        `;
+        if (result === 0) {
+          // Another concurrent request already consumed the stock
+          const current = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { title: true, stock: true }
+          });
+          throw new Error(
+            `Insufficient stock for "${current?.title ?? item.productId}". Available: ${current?.stock ?? 0}, Requested: ${item.quantity}`
+          );
+        }
       }
 
       // Increment coupon usedCount inside the transaction (atomic)
@@ -440,6 +450,10 @@ exports.createOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Create order error:", error);
+    // Insufficient stock is a client error (400), not a server error
+    if (error.message && error.message.startsWith("Insufficient stock")) {
+      return reply.status(400).send({ success: false, message: error.message });
+    }
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
@@ -951,14 +965,23 @@ exports.createGuestOrder = async (request, reply) => {
 
     // Create order using transaction
     const order = await prisma.$transaction(async (tx) => {
-      // Deduct stock
+      // Deduct stock — re-validate inside the transaction to prevent race conditions
       for (const item of orderItems) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: { decrement: item.quantity }
-          }
-        });
+        // Atomic decrement only if sufficient stock exists
+        const result = await tx.$executeRaw`
+          UPDATE "products"
+          SET stock = stock - ${item.quantity}
+          WHERE id = ${item.productId} AND stock >= ${item.quantity}
+        `;
+        if (result === 0) {
+          const current = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { title: true, stock: true }
+          });
+          throw new Error(
+            `Insufficient stock for "${current?.title ?? item.productId}". Available: ${current?.stock ?? 0}, Requested: ${item.quantity}`
+          );
+        }
       }
 
       // Increment coupon usedCount inside the transaction (atomic)
@@ -1172,6 +1195,9 @@ exports.createGuestOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Create guest order error:", error);
+    if (error.message && error.message.startsWith("Insufficient stock")) {
+      return reply.status(400).send({ success: false, message: error.message });
+    }
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
