@@ -2019,6 +2019,138 @@ const sendSellerApprovedEmail = async (email, name) => {
   }
 };
 
+// Send Seller Low Stock Alert Email
+const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentStock, productId) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Low Stock Alert");
+    console.log("=".repeat(50));
+    console.log(`To: ${email}`);
+    console.log(`Seller: ${sellerName}`);
+    console.log(`Product: ${productTitle}`);
+    console.log(`Current Stock: ${currentStock}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const stockColor = currentStock === 0 ? "#D32F2F" : "#E65100";
+  const stockLabel = currentStock === 0 ? "OUT OF STOCK" : `ONLY ${currentStock} LEFT`;
+  const urgencyText = currentStock === 0
+    ? "Your product has sold out and has been automatically hidden from the marketplace."
+    : `Your product is critically low on stock (${currentStock} remaining) and has been automatically hidden from the marketplace to avoid overselling.`;
+
+  const msg = {
+    to: email,
+    from: { email: senderEmail, name: senderName },
+    subject: `⚠️ Low Stock Alert: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">⚠️ Stock Alert</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required for one of your products</p>
+                </td>
+              </tr>
+              <!-- Alert banner -->
+              <tr>
+                <td style="background-color:${stockColor};padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:700;letter-spacing:1px;">${stockLabel}</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">${urgencyText}</p>
+
+                  <!-- Product Box -->
+                  <div style="background:#FFF3E0;border-radius:8px;padding:22px;border-top:3px solid ${stockColor};margin-bottom:24px;">
+                    <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;width:140px;">Product Name</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;">${productTitle}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;">Current Stock</td>
+                        <td style="padding:6px 0;font-size:14px;font-weight:700;color:${stockColor};">${currentStock} unit${currentStock === 1 ? '' : 's'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;">Status</td>
+                        <td style="padding:6px 0;font-size:14px;font-weight:700;color:#D32F2F;">Inactive (hidden from marketplace)</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <!-- What to do -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What to do next</p>
+                    <table cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">1</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Log in to your seller dashboard and go to <strong>My Products</strong>.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">2</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Edit the product <strong>"${productTitle}"</strong> and update the stock quantity.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">3</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Your product will be submitted for <strong>admin review</strong> and re-listed once approved.</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">💡 Tip</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">We recommend keeping a stock level of <strong>10 or more units</strong> to avoid interruptions to your sales.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Update Stock Now</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace — Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Low stock alert email sent to ${email} for product: ${productTitle}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Low stock email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
@@ -2041,7 +2173,8 @@ module.exports = {
   sendSLAWarningEmail,
   sendSellerApplicationSubmittedEmail,
   sendSellerApprovedEmail,
-  sendSellerRegistrationEmail
+  sendSellerRegistrationEmail,
+  sendSellerLowStockEmail
 };
 
 

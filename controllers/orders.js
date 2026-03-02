@@ -3,16 +3,68 @@ const { checkInventory } = require("../utils/checkInventory");
 const { 
   sendOrderConfirmationEmail, 
   sendOrderStatusEmail,
-  sendSellerOrderNotificationEmail 
+  sendSellerOrderNotificationEmail,
+  sendSellerLowStockEmail
 } = require("../utils/emailService");
 const {
   notifyCustomerOrderStatusChange,
   notifySellerNewOrder,
-  notifyAdminNewOrder
+  notifyAdminNewOrder,
+  notifySellerLowStock
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
 const { calculateCartTotals } = require("./cart");
 const PDFDocument = require('pdfkit');
+
+// ─── Low Stock Alert Helper ───────────────────────────────────────────────────
+// Checks each ordered product's stock after decrement.
+// If stock <= 2: deactivates the product and fires notification + email (non-blocking).
+const handleLowStockAlerts = async (productIds) => {
+  const LOW_STOCK_THRESHOLD = 2;
+  try {
+    const products = await prisma.$queryRaw`
+      SELECT p.id, p.title, p.stock, p."sellerId",
+             u.email AS "sellerEmail", u.name AS "sellerName"
+      FROM "products" p
+      JOIN "users" u ON u.id = p."sellerId"
+      WHERE p.id = ANY(${productIds})
+    `;
+
+    for (const product of products) {
+      if (product.stock <= LOW_STOCK_THRESHOLD) {
+        // Deactivate product so it no longer shows in listings
+        await prisma.$executeRaw`
+          UPDATE "products"
+          SET "isActive" = false, status = 'INACTIVE'
+          WHERE id = ${product.id}
+        `;
+        console.log(`⚠️  Product "${product.title}" deactivated — stock: ${product.stock}`);
+
+        // In-app notification (non-blocking)
+        notifySellerLowStock(
+          product.sellerId,
+          product.id,
+          product.title,
+          product.stock
+        ).catch(err => console.error("Low stock notification error:", err.message));
+
+        // Email alert (non-blocking)
+        if (product.sellerEmail) {
+          sendSellerLowStockEmail(
+            product.sellerEmail,
+            product.sellerName || "Seller",
+            product.title,
+            product.stock,
+            product.id
+          ).catch(err => console.error("Low stock email error:", err.message));
+        }
+      }
+    }
+  } catch (err) {
+    console.error("handleLowStockAlerts error (non-fatal):", err.message);
+  }
+};
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Stock Management and Inventory Alert with SMS Notification
 exports.createOrder = async (request, reply) => {
@@ -274,6 +326,9 @@ exports.createOrder = async (request, reply) => {
     console.log(`✅ Order created: ${order.id}`);
     // Stock broadcasts are handled automatically by the Prisma middleware
     // in config/prisma.js — no manual broadcast needed here.
+
+    // Check for low stock on all ordered products and deactivate + alert if <= 2
+    handleLowStockAlerts(cart.items.map(i => i.productId));
 
     // Get seller information for notifications
     let sellerNames = [];
@@ -1050,6 +1105,9 @@ exports.createGuestOrder = async (request, reply) => {
     });
 
     console.log(`✅ Guest order created: ${order.id}`);
+
+    // Check for low stock on all ordered products and deactivate + alert if <= 2
+    handleLowStockAlerts(orderItems.map(i => i.productId));
 
     // Get seller information for notifications
     let sellerNames = [];
