@@ -645,7 +645,19 @@ exports.confirmGuestPayment = async (request, reply) => {
     }
 
     // Verify payment with Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    let paymentIntent;
+    try {
+      paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    } catch (stripeErr) {
+      console.error("❌ Stripe retrieve error:", stripeErr.message);
+      return reply.status(400).send({
+        success: false,
+        message: "Failed to verify payment with Stripe",
+      });
+    }
+
+    // If Stripe says it already succeeded, honour that and proceed to confirmation
+    // (handles redirect-based methods like Klarna/Zip that can trigger double-confirm)
     if (paymentIntent.status !== "succeeded") {
       return reply.status(400).send({
         success: false,
@@ -695,6 +707,14 @@ exports.confirmGuestPayment = async (request, reply) => {
     });
   } catch (error) {
     console.error("❌ confirmGuestPayment error:", error);
+    // Stripe API errors (e.g. payment_intent_unexpected_state) are user-facing
+    if (error.type === "StripeInvalidRequestError") {
+      return reply.status(400).send({
+        success: false,
+        message: error.message,
+        stripeCode: error.code,
+      });
+    }
     return reply.status(500).send({
       success: false,
       message: "Failed to confirm guest payment",
