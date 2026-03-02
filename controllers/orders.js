@@ -102,7 +102,7 @@ exports.createOrder = async (request, reply) => {
       if (new Date() > coupon.expiresAt) {
         return reply.status(400).send({ success: false, message: 'Coupon has expired' });
       }
-      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
+      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
         return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
       }
       if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue) {
@@ -184,11 +184,11 @@ exports.createOrder = async (request, reply) => {
         });
       }
 
-      // Increment coupon usedCount inside the transaction (atomic)
+      // Increment coupon usageCount inside the transaction (atomic)
       if (appliedCoupon) {
         await tx.coupon.update({
           where: { id: appliedCoupon.id },
-          data: { usedCount: { increment: 1 } }
+          data: { usageCount: { increment: 1 } }
         });
       }
 
@@ -926,7 +926,7 @@ exports.createGuestOrder = async (request, reply) => {
       if (new Date() > coupon.expiresAt) {
         return reply.status(400).send({ success: false, message: 'Coupon has expired' });
       }
-      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
+      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
         return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
       }
       if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue) {
@@ -963,11 +963,11 @@ exports.createGuestOrder = async (request, reply) => {
         });
       }
 
-      // Increment coupon usedCount inside the transaction (atomic)
+      // Increment coupon usageCount inside the transaction (atomic)
       if (appliedCoupon) {
         await tx.coupon.update({
           where: { id: appliedCoupon.id },
-          data: { usedCount: { increment: 1 } }
+          data: { usageCount: { increment: 1 } }
         });
       }
 

@@ -1004,7 +1004,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                           </tr>
                           <tr>
                             <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td>
-                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'Stripe'}</td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod === 'STRIPE' || orderDetails.paymentMethod === 'Stripe' || !orderDetails.paymentMethod ? 'Debit/Credit Card' : orderDetails.paymentMethod}</td>
                           </tr>
                         </table>
                       </td>
@@ -1476,7 +1476,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Dashboard</a>
+                  <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Dashboard</a>
                 </td>
               </tr>
               <!-- Footer -->
@@ -1884,7 +1884,7 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
                 </td>
               </tr>
               <!-- Footer -->

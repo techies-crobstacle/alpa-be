@@ -336,15 +336,34 @@ exports.getPaymentStatus = async (request, reply) => {
 // Internal helper — shared between /confirm endpoint and webhook
 // ─────────────────────────────────────────────────────────────────────────────
 async function handlePaymentSucceeded(paymentIntentId) {
-  const order = await prisma.order.findFirst({
+  // ── Atomic claim ──────────────────────────────────────────────────────────
+  // Both the Stripe webhook and the frontend /confirm endpoint call this
+  // function. Without a lock, both can read paymentStatus=PENDING, both
+  // process the order, and both send a confirmation email.
+  //
+  // The updateMany below is a single atomic SQL UPDATE … WHERE paymentStatus !=
+  // 'PAID'. Only ONE concurrent caller will get count=1 and proceed; every
+  // other caller gets count=0 and exits immediately — no duplicate emails.
+  const claimed = await prisma.order.updateMany({
     where: {
       stripePaymentIntentId: paymentIntentId,
-      paymentStatus: { not: "PAID" }, // skip if already processed
+      paymentStatus: { not: "PAID" },
     },
+    data: { paymentStatus: "PAID" },
+  });
+
+  if (claimed.count === 0) {
+    console.log(`ℹ️  handlePaymentSucceeded: ${paymentIntentId} already processed — skipping`);
+    return false;
+  }
+
+  // Fetch the now-PAID order for stock deduction, email, and notifications.
+  const order = await prisma.order.findFirst({
+    where: { stripePaymentIntentId: paymentIntentId },
     include: { items: { include: { product: true } } },
   });
 
-  if (!order) return false; // already handled or not found
+  if (!order) return false;
 
   const cart = order.userId
     ? await prisma.cart.findUnique({ where: { userId: order.userId } })
@@ -370,9 +389,11 @@ async function handlePaymentSucceeded(paymentIntentId) {
       });
     }
 
+    // paymentStatus already set to PAID atomically above — only update
+    // the fulfilment status here.
     await tx.order.update({
       where: { id: order.id },
-      data: { status: "CONFIRMED", paymentStatus: "PAID" },
+      data: { status: "CONFIRMED" },
     });
   });
 
@@ -406,7 +427,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
         zipCode:     order.shippingZipCode,
         country:     order.shippingCountry,
       },
-      paymentMethod:   order.paymentMethod || 'Stripe',
+      paymentMethod:   order.paymentMethod || 'STRIPE',
       customerPhone:   order.customerPhone || '',
       orderSummary:    storedSummary || undefined,
       isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
