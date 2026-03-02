@@ -1271,8 +1271,8 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
                         <td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;">${(orderDetails.status || '').toUpperCase()}</span></td>
                       </tr>
-                      ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
-                      ${orderDetails.estimatedDelivery ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
+                      ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
+                      ${orderDetails.estimatedDelivery ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
                     </table>
                   </div>
                 </td>
