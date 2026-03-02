@@ -1799,6 +1799,113 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   }
 };
 
+// Send Seller Registration / Account Created Email (sent right after OTP is verified)
+const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Registration Confirmation");
+    console.log("=".repeat(50));
+    console.log(`To: ${email}`);
+    console.log(`Name: ${name}`);
+    console.log(`Application Number: ${applicationNumber}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const msg = {
+    to: email,
+    from: { email: senderEmail, name: senderName },
+    subject: "Your Seller Account Has Been Created — MIA Marketplace",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127881; Account Created!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready — let's get started</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to MIA Marketplace! Your email has been verified and your seller account has been successfully created. Please keep your application number safe — you'll need it when contacting our support team.</p>
+
+                  <!-- Application Number Box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;text-align:center;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Your Application Number</p>
+                    <p style="margin:0;font-size:22px;font-weight:800;color:#5A1E12;font-family:monospace;letter-spacing:2px;">${applicationNumber}</p>
+                    <p style="margin:8px 0 0;color:#7D2E1E;font-size:12px;">Please save this number. Quote it when contacting support about your application.</p>
+                  </div>
+
+                  <!-- Next steps -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C4603A;margin-bottom:24px;">
+                    <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Complete Your Application</p>
+                    <table cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">1</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Fill in your <strong>Business Details</strong> (ABN, address, business type).</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">2</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Set up your <strong>Store Profile</strong> with a store name, description and logo.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <span style="display:inline-block;background:#5A1E12;color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-size:12px;font-weight:700;margin-right:12px;">3</span>
+                        </td>
+                        <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Upload your <strong>KYC documents</strong> and submit for review.</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; Tip</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2–3 business days</strong> after submission. Make sure all your details are complete before submitting.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/onboarding" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Continue Your Application</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Registration confirmation email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Send Seller Approved Email
 const sendSellerApprovedEmail = async (email, name) => {
   if (isDevelopmentMode) {
@@ -1933,7 +2040,8 @@ module.exports = {
   sendContactFormEmail,
   sendSLAWarningEmail,
   sendSellerApplicationSubmittedEmail,
-  sendSellerApprovedEmail
+  sendSellerApprovedEmail,
+  sendSellerRegistrationEmail
 };
 
 

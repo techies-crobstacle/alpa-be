@@ -1,5 +1,5 @@
 ﻿const prisma = require("../config/prisma");
-const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail } = require("../utils/emailService");
+const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail, sendSellerRegistrationEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
@@ -296,6 +296,13 @@ exports.verifyOTP = async (request, reply) => {
     // Generate JWT token
     const token = generateSellerToken(result.user.id);
 
+    // Send registration confirmation email with application number (non-blocking)
+    sendSellerRegistrationEmail(
+      result.user.email,
+      result.user.name || "Seller",
+      result.sellerProfile.id
+    ).catch(err => console.error("Registration email error (non-fatal):", err.message));
+
     // Remove password from response
     const { password: _, ...userWithoutPassword } = result.user;
 
@@ -303,7 +310,11 @@ exports.verifyOTP = async (request, reply) => {
       success: true,
       message: "Email verified and password set successfully. You can now continue with your application.",
       user: userWithoutPassword,
-      sellerProfile: result.sellerProfile,
+      sellerProfile: {
+        ...result.sellerProfile,
+        applicationNumber: result.sellerProfile.id
+      },
+      applicationNumber: result.sellerProfile.id,
       token
     });
   } catch (error) {
@@ -815,7 +826,11 @@ exports.submitForReview = async (request, reply) => {
     reply.status(200).send({
       success: true,
       message: "Application submitted for review successfully",
-      sellerProfile: updatedProfile
+      applicationNumber: updatedProfile.id,
+      sellerProfile: {
+        ...updatedProfile,
+        applicationNumber: updatedProfile.id
+      }
     });
   } catch (error) {
     console.error("Submit for review error:", error);
@@ -845,8 +860,17 @@ exports.getProfile = async (request, reply) => {
     // Remove password
     const { password: _, ...userWithoutPassword } = user;
 
+    // Attach applicationNumber to sellerProfile in response
+    if (userWithoutPassword.sellerProfile) {
+      userWithoutPassword.sellerProfile = {
+        ...userWithoutPassword.sellerProfile,
+        applicationNumber: userWithoutPassword.sellerProfile.id
+      };
+    }
+
     reply.status(200).send({
       success: true,
+      applicationNumber: user.sellerProfile.id,
       user: userWithoutPassword,
       onboardingStatus: getCurrentStep(user.sellerProfile)
     });
@@ -983,6 +1007,7 @@ exports.getOnboardingStatus = async (request, reply) => {
       onboardingStatus,
       profile: {
         id: user.sellerProfile.id,
+        applicationNumber: user.sellerProfile.id,
         status: user.sellerProfile.status,
         onboardingStep: user.sellerProfile.onboardingStep,
         businessName: user.sellerProfile.businessName,

@@ -99,6 +99,7 @@ exports.getAllSellers = async (request, reply) => {
 
     const formattedSellers = sellers.map(seller => ({
       id: seller.id,
+      applicationNumber: seller.id,
       sellerId: seller.userId,
       email: seller.user.email,
       businessName: seller.businessName,
@@ -321,15 +322,26 @@ exports.getPendingSellers = async (request, reply) => {
     
     const formattedSellers = pendingSellers.map(seller => ({
       id: seller.id,
+      applicationNumber: seller.id,
       sellerId: seller.userId,
       email: seller.user.email,
       businessName: seller.businessName,
       storeName: seller.storeName,
       contactPerson: seller.user.name,
       phone: seller.user.phone,
+      abn: seller.abn,
+      businessAddress: seller.businessAddress,
+      businessType: seller.businessType,
+      artistName: seller.artistName,
+      storeDescription: seller.storeDescription,
+      storeLogo: seller.storeLogo,
+      kycSubmitted: seller.kycSubmitted,
+      onboardingStep: seller.onboardingStep,
+      submittedForReviewAt: seller.submittedForReviewAt,
+      productCount: seller.productCount,
       status: seller.status,
       createdAt: seller.createdAt,
-      ...seller
+      updatedAt: seller.updatedAt
     }));
 
     return reply.status(200).send({ 
@@ -563,7 +575,7 @@ exports.activateSeller = async (request, reply) => {
         }
       });
 
-      // Activate all seller's pending products
+      // Activate all seller's pending products (status + isActive)
       const activatedProducts = await tx.product.updateMany({
         where: {
           sellerId: id,
@@ -573,6 +585,13 @@ exports.activateSeller = async (request, reply) => {
           status: "ACTIVE"
         }
       });
+
+      // Also flip isActive = true via raw SQL (field managed outside Prisma schema)
+      await tx.$executeRaw`
+        UPDATE "products"
+        SET "isActive" = true
+        WHERE "sellerId" = ${id} AND status = 'ACTIVE'
+      `;
 
       return { updatedSeller, activatedCount: activatedProducts.count };
     });
