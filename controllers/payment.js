@@ -362,11 +362,11 @@ async function handlePaymentSucceeded(paymentIntentId) {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
 
-    // Increment coupon usedCount if a coupon was applied
+    // Increment coupon usageCount if a coupon was applied
     if (order.couponCode) {
       await tx.coupon.updateMany({
         where: { code: order.couponCode },
-        data: { usedCount: { increment: 1 } },
+        data: { usageCount: { increment: 1 } },
       });
     }
 
@@ -513,7 +513,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       if (!coupon) return reply.status(400).send({ success: false, message: "Invalid coupon code" });
       if (!coupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
       if (new Date() > coupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
-      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit)
+      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit)
         return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
       if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue)
         return reply.status(400).send({

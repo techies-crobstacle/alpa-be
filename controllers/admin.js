@@ -908,10 +908,6 @@ exports.validateCoupon = async (request, reply) => {
       return reply.status(400).send({ success: false, message: 'Coupon has expired' });
     }
 
-    if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
-      return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
-    }
-
     if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
       return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
     }
@@ -951,7 +947,7 @@ exports.validateCoupon = async (request, reply) => {
         discountValue: coupon.discountValue,
         expiresAt: coupon.expiresAt,
         usageLimit: coupon.usageLimit,
-        usedCount: coupon.usedCount,
+        usageCount: coupon.usageCount,
         minCartValue: coupon.minCartValue,
         maxDiscount: coupon.maxDiscount,
         discountAmount
