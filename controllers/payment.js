@@ -409,6 +409,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
       paymentMethod:   order.paymentMethod || 'Stripe',
       customerPhone:   order.customerPhone || '',
       orderSummary:    storedSummary || undefined,
+      isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
     }).catch((e) => console.error('Email error (non-blocking):', e.message));
   } else {
     console.warn(`⚠️  No customerEmail on order ${order.id} — confirmation email skipped`);
