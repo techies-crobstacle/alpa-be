@@ -1,4 +1,4 @@
-// const nodemailer = require("nodemailer");
+﻿// const nodemailer = require("nodemailer");
 
 // /**
 //  * FREE EMAIL SERVICE SETUP (No Paid Service Required!)
@@ -35,12 +35,12 @@
 //         rejectUnauthorized: false // Allow self-signed certificates (dev only)
 //       }
 //     });
-//     console.log("✅ Email service initialized");
+//     console.log("âœ… Email service initialized");
 //   } else {
-//     console.log("⚠️  Email credentials not configured. Email notifications will be logged to console.");
+//     console.log("âš ï¸  Email credentials not configured. Email notifications will be logged to console.");
 //   }
 // } catch (error) {
-//   console.error("❌ Email initialization error:", error.message);
+//   console.error("âŒ Email initialization error:", error.message);
 // }
 
 // // Development mode - logs to console if email not configured
@@ -56,7 +56,7 @@
 //   // Development mode - just log OTP to console
 //   if (isDevelopmentMode) {
 //     console.log("\n" + "=".repeat(50));
-//     console.log("📧 DEVELOPMENT MODE - OTP Email");
+//     console.log("ðŸ“§ DEVELOPMENT MODE - OTP Email");
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Name: ${name}`);
@@ -95,15 +95,15 @@
 //     ]);
     
 //     await sendMailWithTimeout;
-//     console.log("✅ Email sent successfully to:", email);
+//     console.log("âœ… Email sent successfully to:", email);
 //     return { success: true };
 //   } catch (error) {
-//     console.error("❌ Email sending error:", error.message);
+//     console.error("âŒ Email sending error:", error.message);
     
 //     // Return success in development/testing to not block user registration
 //     if (process.env.NODE_ENV === 'development') {
-//       console.log("⚠️ Development mode: Returning success despite email error");
-//       console.log("📝 OTP for testing:", otp);
+//       console.log("âš ï¸ Development mode: Returning success despite email error");
+//       console.log("ðŸ“ OTP for testing:", otp);
 //       return { success: true };
 //     }
     
@@ -116,7 +116,7 @@
 //   // Development mode - just log to console
 //   if (isDevelopmentMode || !transporter) {
 //     console.log("\n" + "=".repeat(50));
-//     console.log("📧 DEVELOPMENT MODE - Order Confirmation Email");
+//     console.log("ðŸ“§ DEVELOPMENT MODE - Order Confirmation Email");
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Customer: ${customerName}`);
@@ -146,14 +146,14 @@
 //   ].filter(Boolean).join(', ');
 
 //   const mailOptions = {
-//     from: `"Aboriginal Art Marketplace" <${process.env.EMAIL_USER}>`,
+//     from: `"MIA Marketplace" <${process.env.EMAIL_USER}>`,
 //     to: email,
 //     subject: `Order Confirmation - Invoice #${orderDetails.orderId}`,
 //     html: `
 //       <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; background-color: #fff;">
 //         <!-- Header -->
 //         <div style="background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0;">
-//           <h1 style="margin: 0; font-size: 28px;">🎨 ORDER CONFIRMED</h1>
+//           <h1 style="margin: 0; font-size: 28px;">ðŸŽ¨ ORDER CONFIRMED</h1>
 //           <p style="margin: 10px 0 0 0; font-size: 14px;">Thank you for your purchase!</p>
 //         </div>
 
@@ -227,10 +227,10 @@
 
 //         <!-- Next Steps -->
 //         <div style="background-color: #E3F2FD; padding: 15px; border-radius: 5px; margin: 20px 0;">
-//           <h3 style="margin: 0 0 10px 0; color: #1976D2;">📦 What's Next?</h3>
-//           <p style="margin: 5px 0; color: #555;">✓ Your order is being processed</p>
-//           <p style="margin: 5px 0; color: #555;">✓ We'll email you when it ships with tracking details</p>
-//           <p style="margin: 5px 0; color: #555;">✓ Track your order anytime using the button below</p>
+//           <h3 style="margin: 0 0 10px 0; color: #1976D2;">ðŸ“¦ What's Next?</h3>
+//           <p style="margin: 5px 0; color: #555;">âœ“ Your order is being processed</p>
+//           <p style="margin: 5px 0; color: #555;">âœ“ We'll email you when it ships with tracking details</p>
+//           <p style="margin: 5px 0; color: #555;">âœ“ Track your order anytime using the button below</p>
 //         </div>
 
 //         <!-- CTA Button -->
@@ -243,7 +243,7 @@
 
 //         <!-- Footer -->
 //         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-//           <p style="color: #666; font-size: 14px; margin: 5px 0;">Thank you for supporting Aboriginal artists! 🌟</p>
+//           <p style="color: #666; font-size: 14px; margin: 5px 0;">Thank you for supporting Aboriginal artists! ðŸŒŸ</p>
 //           <p style="color: #999; font-size: 12px; margin: 5px 0;">This is an automated email, please do not reply.</p>
 //         </div>
 //       </div>
@@ -252,10 +252,10 @@
 
 //   try {
 //     await transporter.sendMail(mailOptions);
-//     console.log(`✅ Order confirmation email sent to ${email}`);
+//     console.log(`âœ… Order confirmation email sent to ${email}`);
 //     return { success: true, message: "Email sent successfully" };
 //   } catch (error) {
-//     console.error("❌ Email sending error:", error.message);
+//     console.error("âŒ Email sending error:", error.message);
 //     return { success: false, error: error.message };
 //   }
 // };
@@ -265,7 +265,7 @@
 //   // Development mode - just log to console
 //   if (isDevelopmentMode || !transporter) {
 //     console.log("\n" + "=".repeat(50));
-//     console.log("📧 DEVELOPMENT MODE - Order Status Update Email");
+//     console.log("ðŸ“§ DEVELOPMENT MODE - Order Status Update Email");
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Customer: ${customerName}`);
@@ -283,15 +283,15 @@
   
 //   switch (orderDetails.status) {
 //     case "packed":
-//       statusMessage = "Your order has been packed and is ready for shipping! 📦";
+//       statusMessage = "Your order has been packed and is ready for shipping! ðŸ“¦";
 //       statusColor = "#FF9800";
 //       break;
 //     case "shipped":
-//       statusMessage = "Great news! Your order has been shipped! 🚚";
+//       statusMessage = "Great news! Your order has been shipped! ðŸšš";
 //       statusColor = "#2196F3";
 //       break;
 //     case "delivered":
-//       statusMessage = "Your order has been delivered! 🎉";
+//       statusMessage = "Your order has been delivered! ðŸŽ‰";
 //       statusColor = "#4CAF50";
 //       break;
 //     case "cancelled":
@@ -303,12 +303,12 @@
 //   }
 
 //   const mailOptions = {
-//     from: `"Aboriginal Art Marketplace" <${process.env.EMAIL_USER}>`,
+//     from: `"MIA Marketplace" <${process.env.EMAIL_USER}>`,
 //     to: email,
 //     subject: `Order Update - #${orderDetails.orderId}`,
 //     html: `
 //       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-//         <h2 style="color: #333; border-bottom: 2px solid ${statusColor}; padding-bottom: 10px;">🎨 Order Update</h2>
+//         <h2 style="color: #333; border-bottom: 2px solid ${statusColor}; padding-bottom: 10px;">ðŸŽ¨ Order Update</h2>
 //         <p>Hi ${customerName},</p>
         
 //         <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin: 20px 0;">
@@ -324,7 +324,7 @@
 //           </a>
 //         </div>
 
-//         <p style="color: #666; font-size: 14px;">Thank you for shopping with us! 🌟</p>
+//         <p style="color: #666; font-size: 14px;">Thank you for shopping with us! ðŸŒŸ</p>
         
 //         <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
 //         <p style="color: #999; font-size: 12px;">This is an automated email, please do not reply.</p>
@@ -334,10 +334,10 @@
 
 //   try {
 //     await transporter.sendMail(mailOptions);
-//     console.log(`✅ Order status email sent to ${email}`);
+//     console.log(`âœ… Order status email sent to ${email}`);
 //     return { success: true, message: "Email sent successfully" };
 //   } catch (error) {
-//     console.error("❌ Email sending error:", error.message);
+//     console.error("âŒ Email sending error:", error.message);
 //     return { success: false, error: error.message };
 //   }
 // };
@@ -347,7 +347,7 @@
 //   // Development mode - just log to console
 //   if (isDevelopmentMode || !transporter) {
 //     console.log("\n" + "=".repeat(50));
-//     console.log("📧 DEVELOPMENT MODE - Seller Order Notification Email");
+//     console.log("ðŸ“§ DEVELOPMENT MODE - Seller Order Notification Email");
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Seller: ${sellerName}`);
@@ -377,14 +377,14 @@
 //   ].filter(Boolean).join(', ');
 
 //   const mailOptions = {
-//     from: `"Aboriginal Art Marketplace" <${process.env.EMAIL_USER}>`,
+//     from: `"MIA Marketplace" <${process.env.EMAIL_USER}>`,
 //     to: email,
-//     subject: `🎉 New Order #${orderDetails.orderId} - Action Required`,
+//     subject: `ðŸŽ‰ New Order #${orderDetails.orderId} - Action Required`,
 //     html: `
 //       <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; background-color: #fff;">
 //         <!-- Header -->
 //         <div style="background-color: #FF9800; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0;">
-//           <h1 style="margin: 0; font-size: 28px;">🎉 NEW ORDER RECEIVED</h1>
+//           <h1 style="margin: 0; font-size: 28px;">ðŸŽ‰ NEW ORDER RECEIVED</h1>
 //           <p style="margin: 10px 0 0 0; font-size: 14px;">You have a new order to process!</p>
 //         </div>
 
@@ -465,11 +465,11 @@
 
 //         <!-- Action Required Box -->
 //         <div style="background-color: #FFEBEE; padding: 15px; border-radius: 5px; border-left: 4px solid #F44336; margin: 20px 0;">
-//           <h3 style="margin: 0 0 10px 0; color: #D32F2F;">⚠️ Action Required</h3>
-//           <p style="margin: 5px 0; color: #555;">✓ Log in to your seller dashboard</p>
-//           <p style="margin: 5px 0; color: #555;">✓ Confirm the order and update stock</p>
-//           <p style="margin: 5px 0; color: #555;">✓ Pack and ship the items within 2-3 business days</p>
-//           <p style="margin: 5px 0; color: #555;">✓ Update tracking information for customer</p>
+//           <h3 style="margin: 0 0 10px 0; color: #D32F2F;">âš ï¸ Action Required</h3>
+//           <p style="margin: 5px 0; color: #555;">âœ“ Log in to your seller dashboard</p>
+//           <p style="margin: 5px 0; color: #555;">âœ“ Confirm the order and update stock</p>
+//           <p style="margin: 5px 0; color: #555;">âœ“ Pack and ship the items within 2-3 business days</p>
+//           <p style="margin: 5px 0; color: #555;">âœ“ Update tracking information for customer</p>
 //         </div>
 
 //         <!-- CTA Button -->
@@ -482,7 +482,7 @@
 
 //         <!-- Footer -->
 //         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-//           <p style="color: #666; font-size: 14px; margin: 5px 0;">Thank you for being a valued seller! 💼</p>
+//           <p style="color: #666; font-size: 14px; margin: 5px 0;">Thank you for being a valued seller! ðŸ’¼</p>
 //           <p style="color: #999; font-size: 12px; margin: 5px 0;">This is an automated email, please do not reply.</p>
 //         </div>
 //       </div>
@@ -491,10 +491,10 @@
 
 //   try {
 //     await transporter.sendMail(mailOptions);
-//     console.log(`✅ Seller notification email sent to ${email}`);
+//     console.log(`âœ… Seller notification email sent to ${email}`);
 //     return { success: true, message: "Email sent successfully" };
 //   } catch (error) {
-//     console.error("❌ Email sending error:", error.message);
+//     console.error("âŒ Email sending error:", error.message);
 //     return { success: false, error: error.message };
 //   }
 // };
@@ -502,16 +502,16 @@
 // // Test email configuration
 // const testEmailConfig = async () => {
 //   if (!transporter) {
-//     console.log("⚠️  Email not configured - notifications will be logged to console");
+//     console.log("âš ï¸  Email not configured - notifications will be logged to console");
 //     return false;
 //   }
   
 //   try {
 //     await transporter.verify();
-//     console.log("✓ Email service is ready to send emails");
+//     console.log("âœ“ Email service is ready to send emails");
 //     return true;
 //   } catch (error) {
-//     console.error("✗ Email configuration error:", error.message);
+//     console.error("âœ— Email configuration error:", error.message);
 //     console.error("Please check your EMAIL_USER and EMAIL_PASSWORD in .env file");
 //     return false;
 //   }
@@ -522,7 +522,7 @@
 //   // Development mode - just log to console
 //   if (isDevelopmentMode || !transporter) {
 //     console.log("\n" + "=".repeat(50));
-//     console.log("📧 DEVELOPMENT MODE - Contact Form Email");
+//     console.log("ðŸ“§ DEVELOPMENT MODE - Contact Form Email");
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Name: ${name}`);
@@ -568,7 +568,7 @@
 //                     </div>
 
 //                     <div style="background-color: #e8f4f8; padding: 20px; border-left: 4px solid #3498db; border-radius: 4px; margin: 30px 0;">
-//                       <p style="margin: 0; color: #2c3e50; font-weight: bold;">📧 What's Next?</p>
+//                       <p style="margin: 0; color: #2c3e50; font-weight: bold;">ðŸ“§ What's Next?</p>
 //                       <p style="margin: 10px 0 0 0; color: #555; line-height: 1.6;">
 //                         Our support team typically responds within 24-48 hours. You'll receive a reply at this email address.
 //                       </p>
@@ -647,7 +647,7 @@
 //     // Development mode - just log to console
 //     if (isDevelopmentMode || !transporter) {
 //       console.log("\n" + "=".repeat(50));
-//       console.log("⚠️  SLA WARNING EMAIL - DEVELOPMENT MODE");
+//       console.log("âš ï¸  SLA WARNING EMAIL - DEVELOPMENT MODE");
 //       console.log("=".repeat(50));
 //       console.log(`To: ${seller.email} (${seller.name})`);
 //       console.log(`Order: ${orderId}`);
@@ -663,9 +663,9 @@
 //     const urgencyText = slaStatus.status === 'BREACHED' ? 'OVERDUE' : 'WARNING';
 
 //     const mailOptions = {
-//       from: `"Aboriginal Art Marketplace" <${process.env.EMAIL_USER}>`,
+//       from: `"MIA Marketplace" <${process.env.EMAIL_USER}>`,
 //       to: seller.email,
-//       subject: `🚨 ${urgencyText}: ${notificationType.replace('_', ' ')} Required - Order #${orderId?.slice(-8)}`,
+//       subject: `ðŸš¨ ${urgencyText}: ${notificationType.replace('_', ' ')} Required - Order #${orderId?.slice(-8)}`,
 //       html: `
 //         <!DOCTYPE html>
 //         <html>
@@ -679,7 +679,7 @@
 //             <tr>
 //               <td style="padding: 30px 40px; background: linear-gradient(135deg, ${urgencyColor} 0%, ${urgencyColor}dd 100%); text-align: center;">
 //                 <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold;">
-//                   ⚠️ SLA ${urgencyText}
+//                   âš ï¸ SLA ${urgencyText}
 //                 </h1>
 //                 <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px; opacity: 0.9;">
 //                   Immediate attention required
@@ -702,7 +702,7 @@
 
 //                 <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 30px;">
 //                   <h3 style="margin: 0 0 20px 0; color: #2c3e50; font-size: 18px; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">
-//                     📋 Order Details
+//                     ðŸ“‹ Order Details
 //                   </h3>
 //                   <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
 //                     <div style="flex: 1;">
@@ -724,7 +724,7 @@
 
 //                 <div style="background-color: #fff3cd; padding: 25px; border-radius: 8px; border: 1px solid #ffeaa7; margin-bottom: 30px;">
 //                   <h3 style="margin: 0 0 15px 0; color: #856404; font-size: 18px;">
-//                     ⏰ SLA Status
+//                     â° SLA Status
 //                   </h3>
 //                   <div style="margin-bottom: 10px;">
 //                     <strong style="color: #856404;">Status:</strong>
@@ -748,12 +748,12 @@
 //                 <div style="text-align: center; margin: 30px 0;">
 //                   <a href="${process.env.FRONTEND_URL || 'https://yourapp.com'}/seller/orders/${orderId}" 
 //                      style="display: inline-block; padding: 15px 30px; background-color: ${urgencyColor}; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; transition: background-color 0.3s ease;">
-//                     🚀 Take Action Now
+//                     ðŸš€ Take Action Now
 //                   </a>
 //                 </div>
 
 //                 <div style="background-color: #e8f4fd; padding: 20px; border-radius: 8px; border-left: 4px solid #3498db;">
-//                   <h4 style="margin: 0 0 10px 0; color: #2980b9; font-size: 16px;">💡 Next Steps:</h4>
+//                   <h4 style="margin: 0 0 10px 0; color: #2980b9; font-size: 16px;">ðŸ’¡ Next Steps:</h4>
 //                   <ul style="margin: 0; padding-left: 20px; color: #34495e; line-height: 1.6;">
 //                     <li>Log in to your seller dashboard</li>
 //                     <li>Update the order status</li>
@@ -770,7 +770,7 @@
 //             <tr>
 //               <td style="padding: 20px; text-align: center; background-color: #2c3e50;">
 //                 <p style="margin: 0; color: #ffffff; font-size: 14px;">
-//                   Aboriginal Art Marketplace - Seller Support System
+//                   MIA Marketplace - Seller Support System
 //                 </p>
 //               </td>
 //             </tr>
@@ -821,16 +821,16 @@ let emailConfigured = false;
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   emailConfigured = true;
-  console.log("✅ SendGrid email service initialized");
+  console.log("âœ… SendGrid email service initialized");
   console.log("SendGrid senderEmail:", process.env.SENDER_EMAIL);
   console.log("SendGrid API Key present:", !!process.env.SENDGRID_API_KEY);
 } else {
-  console.log("⚠️  SendGrid API key not configured. Emails will be logged to console.");
+  console.log("âš ï¸  SendGrid API key not configured. Emails will be logged to console.");
 }
 
 const isDevelopmentMode = !emailConfigured;
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
-const senderName = process.env.SENDER_NAME || 'Aboriginal Art Marketplace';
+const senderName = process.env.SENDER_NAME || 'MIA Marketplace';
 
 // Generate 6-digit OTP
 const generateOTP = () => {
@@ -841,7 +841,7 @@ const generateOTP = () => {
 const sendOTPEmail = async (email, otp, name) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - OTP Email");
+    console.log("ðŸ“§ DEVELOPMENT MODE - OTP Email");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
@@ -867,7 +867,7 @@ const sendOTPEmail = async (email, otp, name) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:1px;">Email Verification</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Verify your identity to continue</p>
                 </td>
@@ -882,7 +882,7 @@ const sendOTPEmail = async (email, otp, name) => {
                   <div style="background:linear-gradient(135deg,#F9EDE9 0%,#FDF5F3 100%);border:2px dashed #C4603A;border-radius:10px;padding:28px;text-align:center;margin:0 0 30px;">
                     <p style="margin:0 0 6px;color:#7D2E1E;font-size:13px;letter-spacing:2px;text-transform:uppercase;">Your OTP Code</p>
                     <div style="font-size:40px;font-weight:800;letter-spacing:12px;color:#5A1E12;">${otp}</div>
-                    <p style="margin:10px 0 0;color:#C4603A;font-size:13px;">⏱ Expires in 10 minutes</p>
+                    <p style="margin:10px 0 0;color:#C4603A;font-size:13px;">â± Expires in 10 minutes</p>
                   </div>
 
                   <div style="background-color:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 6px 6px 0;padding:14px 18px;">
@@ -893,8 +893,8 @@ const sendOTPEmail = async (email, otp, name) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email — please do not reply.</p>
-                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">© 2026 Aboriginal Art Marketplace. All rights reserved.</p>
+                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email â€” please do not reply.</p>
+                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">Â© 2026 MIA Marketplace. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -907,15 +907,15 @@ const sendOTPEmail = async (email, otp, name) => {
 
   try {
     await sgMail.send(msg);
-    console.log("✅ Email sent successfully to:", email);
+    console.log("âœ… Email sent successfully to:", email);
     return { success: true };
   } catch (error) {
-    console.error("❌ SendGrid error:", error.response?.body || error.message);
+    console.error("âŒ SendGrid error:", error.response?.body || error.message);
     
     // Fallback for development
     if (process.env.NODE_ENV === 'development') {
-      console.log("⚠️ Development mode: Returning success despite email error");
-      console.log("📝 OTP for testing:", otp);
+      console.log("âš ï¸ Development mode: Returning success despite email error");
+      console.log("ðŸ“ OTP for testing:", otp);
       return { success: true };
     }
     
@@ -927,7 +927,7 @@ const sendOTPEmail = async (email, otp, name) => {
 const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Order Confirmation Email");
+    console.log("ðŸ“§ DEVELOPMENT MODE - Order Confirmation Email");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Customer: ${customerName}`);
@@ -946,13 +946,23 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     </tr>
   `).join('');
 
-  const shippingAddress = orderDetails.shippingAddress || {};
-  const addressParts = [
-    shippingAddress.address || shippingAddress.street,
-    shippingAddress.city,
-    shippingAddress.state,
-    shippingAddress.pincode || shippingAddress.zipCode || shippingAddress.postalCode
-  ].filter(Boolean).join(', ');
+  // Normalise: shippingAddress may be a plain string (legacy) or an object
+  const shippingAddrObj = typeof orderDetails.shippingAddress === 'string'
+    ? { addressLine: orderDetails.shippingAddress }
+    : (orderDetails.shippingAddress || {});
+
+  const shippingLine  = shippingAddrObj.addressLine || shippingAddrObj.address || shippingAddrObj.street || '';
+  const shippingCity  = shippingAddrObj.city  || '';
+  const shippingState = shippingAddrObj.state || '';
+  const shippingZip   = shippingAddrObj.pincode || shippingAddrObj.zipCode || shippingAddrObj.postalCode || '';
+  const shippingName  = shippingAddrObj.name || customerName;
+  const addressParts  = [shippingLine, shippingCity, shippingState, shippingZip].filter(Boolean).join(', ');
+
+  // Build guest-aware tracking URL
+  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const trackingUrl = orderDetails.isGuest
+    ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
+    : `${baseUrl}/orders/${orderDetails.orderId}`;
 
   // Build message with optional PDF attachment
   const msg = {
@@ -972,7 +982,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127912; Order Confirmed!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">Thank you for your purchase, ${customerName}!</p>
                 </td>
@@ -994,7 +1004,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                           </tr>
                           <tr>
                             <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td>
-                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'Stripe'}</td>
+                            <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod === 'STRIPE' || orderDetails.paymentMethod === 'Stripe' || !orderDetails.paymentMethod ? 'Debit/Credit Card' : orderDetails.paymentMethod}</td>
                           </tr>
                         </table>
                       </td>
@@ -1019,8 +1029,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       <td width="48%" valign="top" style="padding-left:10px;">
                         <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #C4603A;">
                           <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Shipping Address</p>
-                          <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${(orderDetails.shippingAddress || {}).name || customerName}</strong></p>
-                          <p style="margin:4px 0;color:#555;font-size:13px;line-height:1.6;">${[((orderDetails.shippingAddress||{}).address||(orderDetails.shippingAddress||{}).street),(orderDetails.shippingAddress||{}).city,(orderDetails.shippingAddress||{}).state,((orderDetails.shippingAddress||{}).pincode||(orderDetails.shippingAddress||{}).postalCode)].filter(Boolean).join(', ') || 'Address not provided'}</p>
+                          <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${shippingName}</strong></p>
+                          <p style="margin:4px 0;color:#555;font-size:13px;line-height:1.6;">${addressParts || 'Address not provided'}</p>
                         </div>
                       </td>
                     </tr>
@@ -1056,7 +1066,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                       <!-- Shipping row -->
                       <tr style="background-color:#fdf5f3;">
                         <td colspan="3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
-                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` — ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays} days)` : ''}
+                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` â€” ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
                         </td>
                         <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
                           orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0
@@ -1113,14 +1123,14 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;letter-spacing:0.5px;">Track Your Order</a>
+                  <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;letter-spacing:0.5px;">Track Your Order</a>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists! &#127775;</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
             </table>
@@ -1142,10 +1152,10 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       }];
     }
     await sgMail.send(msg);
-    console.log(`✅ Order confirmation email sent to ${email}`);
+    console.log(`âœ… Order confirmation email sent to ${email}`);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
-    console.error("❌ Email sending error:", error.response?.body || error.message);
+    console.error("âŒ Email sending error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1154,7 +1164,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
 const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Order Status Update");
+    console.log("ðŸ“§ DEVELOPMENT MODE - Order Status Update");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Status: ${orderDetails.status}`);
@@ -1181,7 +1191,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       break;
     case "delivered":
       statusMessage = "Your order has been delivered! &#127881;";
-      statusColor = "#C4963A";      // warm amber/cream-gold — replaces green
+      statusColor = "#C4963A";      // warm amber/cream-gold â€” replaces green
       break;
     case "cancelled":
       statusMessage = "Your order has been cancelled. If you paid online, a refund will be processed within 3&#8211;5 business days.";
@@ -1210,13 +1220,19 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
     orderDetails.shippingCountry
   ].filter(Boolean).join(', ');
 
+  // Build guest-aware tracking URL
+  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const trackingUrl = orderDetails.isGuest
+    ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
+    : `${baseUrl}/orders/${orderDetails.orderId}`;
+
   const msg = {
     to: email,
     from: {
       name: senderName,
       email: senderEmail
     },
-    subject: `Order Update — #${orderDetails.orderId?.slice(-8)}`,
+    subject: `Order Update â€” #${orderDetails.orderId?.slice(-8)}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1228,7 +1244,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- Brand Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
-                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127912; Order Update</h1>
                 </td>
               </tr>
@@ -1267,8 +1283,8 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
                         <td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;">${(orderDetails.status || '').toUpperCase()}</span></td>
                       </tr>
-                      ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
-                      ${orderDetails.estimatedDelivery ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
+                      ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
+                      ${orderDetails.estimatedDelivery ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
                     </table>
                   </div>
                 </td>
@@ -1318,7 +1334,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:10px 40px 36px;text-align:center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Track Your Order</a>
+                  <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Track Your Order</a>
                 </td>
               </tr>
 
@@ -1326,7 +1342,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us! &#127775;</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &#8212; please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &#8212; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
 
@@ -1351,7 +1367,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
     await sgMail.send(msg);
     return { success: true };
   } catch (error) {
-    console.error("❌ Email error:", error.response?.body || error.message);
+    console.error("âŒ Email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1360,7 +1376,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Seller Notification");
+    console.log("ðŸ“§ DEVELOPMENT MODE - Seller Notification");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Seller: ${sellerName}`);
@@ -1383,7 +1399,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `🎉 New Order #${orderDetails.orderId}`,
+    subject: `ðŸŽ‰ New Order #${orderDetails.orderId}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1402,7 +1418,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Alert banner -->
               <tr>
                 <td style="background-color:#C4603A;padding:12px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">&#9888;&#65039; Action required — please process this order promptly</p>
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">&#9888;&#65039; Action required â€” please process this order promptly</p>
                 </td>
               </tr>
               <!-- Seller greeting -->
@@ -1452,7 +1468,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                     <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Checklist</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Log into your seller dashboard</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Confirm the order and verify stock</p>
-                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Pack and ship within 2–3 business days</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Pack and ship within 2â€“3 business days</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">&#10003; Add tracking information once dispatched</p>
                   </div>
                 </td>
@@ -1460,14 +1476,14 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Dashboard</a>
+                  <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Dashboard</a>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Aboriginal Art Marketplace seller! &#128188;</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued MIA Marketplace seller! &#128188;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
             </table>
@@ -1482,7 +1498,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
     await sgMail.send(msg);
     return { success: true };
   } catch (error) {
-    console.error("❌ Email error:", error.response?.body || error.message);
+    console.error("âŒ Email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1491,7 +1507,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
 const sendContactFormEmail = async (email, name, subject, message) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Contact Form");
+    console.log("ðŸ“§ DEVELOPMENT MODE - Contact Form");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Subject: ${subject}`);
@@ -1516,7 +1532,7 @@ const sendContactFormEmail = async (email, name, subject, message) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">&#128140; Message Received</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We'll be in touch soon!</p>
                 </td>
@@ -1536,15 +1552,15 @@ const sendContactFormEmail = async (email, name, subject, message) => {
 
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128338; Response Time</p>
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24–48 business hours. You'll receive a reply at this email address.</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24â€“48 business hours. You'll receive a reply at this email address.</p>
                   </div>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Aboriginal Art Marketplace — Customer Support</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace â€” Customer Support</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
             </table>
@@ -1559,7 +1575,7 @@ const sendContactFormEmail = async (email, name, subject, message) => {
     await sgMail.send(msg);
     return { success: true };
   } catch (error) {
-    console.error("❌ Email error:", error.response?.body || error.message);
+    console.error("âŒ Email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1579,7 +1595,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
     }
 
     if (isDevelopmentMode) {
-      console.log("\n⚠️  SLA WARNING:", seller.email, orderId, notificationType);
+      console.log("\nâš ï¸  SLA WARNING:", seller.email, orderId, notificationType);
       return { success: true };
     }
 
@@ -1591,7 +1607,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `🚨 ${notificationType} Required - Order #${orderId?.slice(-8)}`,
+      subject: `ðŸš¨ ${notificationType} Required - Order #${orderId?.slice(-8)}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -1602,7 +1618,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 <!-- Brand Header -->
                 <tr>
                   <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:20px 40px;text-align:center;">
-                    <p style="margin:0;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                    <p style="margin:0;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   </td>
                 </tr>
                 <!-- Urgency Banner -->
@@ -1660,8 +1676,8 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 <!-- Footer -->
                 <tr>
                   <td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Aboriginal Art Marketplace — Automated SLA Monitor</p>
-                    <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Aboriginal Art Marketplace.</p>
+                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace â€” Automated SLA Monitor</p>
+                    <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 MIA Marketplace.</p>
                   </td>
                 </tr>
               </table>
@@ -1675,19 +1691,20 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
     await sgMail.send(msg);
     return { success: true };
   } catch (error) {
-    console.error("❌ SLA email error:", error);
+    console.error("âŒ SLA email error:", error);
     return { success: false, error: error.message };
   }
 };
 
 // Send Seller Application Submitted Email
-const sendSellerApplicationSubmittedEmail = async (email, name) => {
+const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Seller Application Submitted");
+    console.log("ðŸ“§ DEVELOPMENT MODE - Seller Application Submitted");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
+    console.log(`Application ID: ${applicationId}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
@@ -1695,7 +1712,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Application Has Been Submitted — Alpa Art Marketplace",
+    subject: "Your Seller Application Has Been Submitted â€” Alpa Art Marketplace",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1706,7 +1723,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#128203; Application Submitted!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We've received your seller application</p>
                 </td>
@@ -1715,7 +1732,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name) => {
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for completing your seller application on Aboriginal Art Marketplace! Your application has been received and is now under review by our team.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for completing your seller application on MIA Marketplace! Your application has been received and is now under review by our team.</p>
 
                   <!-- Status box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
@@ -1742,18 +1759,26 @@ const sendSellerApplicationSubmittedEmail = async (email, name) => {
                     </table>
                   </div>
 
+                  <!-- Application Reference Number -->
+                  ${applicationId ? `
+                  <div style="background:#F9EDE9;border-radius:8px;padding:18px 22px;border-top:3px solid #C4603A;margin-bottom:24px;text-align:center;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Your Application Reference Number</p>
+                    <p style="margin:0;font-size:22px;font-weight:800;color:#5A1E12;font-family:monospace;letter-spacing:2px;">${applicationId}</p>
+                    <p style="margin:8px 0 0;color:#7D2E1E;font-size:12px;">Please quote this number when contacting our support team about your application.</p>
+                  </div>` : ''}
+
                   <!-- Review time note -->
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#9200; Review Timeline</p>
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2–3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2â€“3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
                   </div>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Aboriginal Art Marketplace! &#127775;</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
             </table>
@@ -1766,10 +1791,10 @@ const sendSellerApplicationSubmittedEmail = async (email, name) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`✅ Application submitted email sent to ${email}`);
+    console.log(`âœ… Application submitted email sent to ${email}`);
     return { success: true };
   } catch (error) {
-    console.error("❌ Email error:", error.response?.body || error.message);
+    console.error("âŒ Email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1778,10 +1803,11 @@ const sendSellerApplicationSubmittedEmail = async (email, name) => {
 const sendSellerApprovedEmail = async (email, name) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Seller Approved");
+    console.log("ðŸ“§ DEVELOPMENT MODE - Seller Approved");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
+    console.log(`Application ID: ${applicationId}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
@@ -1800,9 +1826,9 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Aboriginal Art Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; You're Approved!</h1>
-                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Welcome to the Aboriginal Art Marketplace seller community</p>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Welcome to the MIA Marketplace seller community</p>
                 </td>
               </tr>
               <!-- Approved banner -->
@@ -1858,14 +1884,14 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://yourwebsite.com'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Aboriginal Art Marketplace family! &#127775;</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Aboriginal Art Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the MIA Marketplace family! &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
             </table>
@@ -1878,10 +1904,10 @@ const sendSellerApprovedEmail = async (email, name) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`✅ Seller approved email sent to ${email}`);
+    console.log(`âœ… Seller approved email sent to ${email}`);
     return { success: true };
   } catch (error) {
-    console.error("❌ Email error:", error.response?.body || error.message);
+    console.error("âŒ Email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1889,11 +1915,11 @@ const sendSellerApprovedEmail = async (email, name) => {
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
-    console.log("⚠️  Email not configured");
+    console.log("âš ï¸  Email not configured");
     return false;
   }
   
-  console.log("✓ SendGrid email service is ready");
+  console.log("âœ“ SendGrid email service is ready");
   return true;
 };
 
@@ -1909,4 +1935,7 @@ module.exports = {
   sendSellerApplicationSubmittedEmail,
   sendSellerApprovedEmail
 };
+
+
+
 

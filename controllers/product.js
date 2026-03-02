@@ -439,6 +439,79 @@ exports.deleteProduct = async (request, reply) => {
   }
 };
 
+// GET PRODUCT STOCK BY ID  (Public — lightweight, used for polling / page-load checks)
+exports.getProductStock = async (request, reply) => {
+  try {
+    const { id } = request.params;
+
+    const rows = await prisma.$queryRaw`
+      SELECT id, stock, "isActive", status
+      FROM "products"
+      WHERE id = ${id}
+    `;
+
+    if (!rows.length) {
+      return reply.status(404).send({ success: false, message: 'Product not found' });
+    }
+
+    const p = rows[0];
+    return reply.status(200).send({
+      success: true,
+      productId: p.id,
+      stock: p.stock,
+      isAvailable: p.isActive && p.stock > 0,
+      isActive: p.isActive
+    });
+  } catch (err) {
+    console.error('Get product stock error:', err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// BULK STOCK CHECK (Public — used by cart page on load to validate all items at once)
+exports.getBulkStock = async (request, reply) => {
+  try {
+    const { productIds } = request.body;
+
+    if (!Array.isArray(productIds) || productIds.length === 0) {
+      return reply.status(400).send({ success: false, message: 'productIds array is required' });
+    }
+
+    // Limit to 100 products per request to prevent abuse
+    const ids = productIds.slice(0, 100);
+
+    const products = await prisma.product.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, stock: true, isActive: true }
+    });
+
+    const stockMap = {};
+    products.forEach((p) => {
+      stockMap[p.id] = {
+        productId: p.id,
+        stock: p.stock,
+        isAvailable: p.isActive && p.stock > 0,
+        isActive: p.isActive
+      };
+    });
+
+    // Include entries for any IDs not found in DB (treat as unavailable)
+    ids.forEach((id) => {
+      if (!stockMap[id]) {
+        stockMap[id] = { productId: id, stock: 0, isAvailable: false, isActive: false };
+      }
+    });
+
+    return reply.status(200).send({
+      success: true,
+      stock: stockMap
+    });
+  } catch (err) {
+    console.error('Bulk stock check error:', err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
 // GET ALL PRODUCTS (Public - only active sellers' products)
 exports.getAllProducts = async (request, reply) => {
   try {

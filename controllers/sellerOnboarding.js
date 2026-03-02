@@ -1,4 +1,4 @@
-const prisma = require("../config/prisma");
+﻿const prisma = require("../config/prisma");
 const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
@@ -806,7 +806,7 @@ exports.submitForReview = async (request, reply) => {
         select: { email: true, name: true }
       });
       if (sellerUser) {
-        await sendSellerApplicationSubmittedEmail(sellerUser.email, sellerUser.name || "Seller");
+        await sendSellerApplicationSubmittedEmail(sellerUser.email, sellerUser.name || "Seller", updatedProfile.id);
       }
     } catch (emailErr) {
       console.error("Application submission email error (non-fatal):", emailErr.message);
@@ -1516,7 +1516,7 @@ exports.verifyAndSubmit = async (request, reply) => {
 
     // Notify admin of new seller application
     try {
-      await sendSellerApplicationSubmittedEmail(normalizedEmail, fd.contactPerson, fd.businessName);
+      await sendSellerApplicationSubmittedEmail(normalizedEmail, fd.contactPerson, result.sellerProfile.id);
     } catch (e) {
       console.error('Admin notification email failed:', e.message);
     }
@@ -1570,6 +1570,7 @@ exports.validateABNPublic = async (request, reply) => {
     });
   }
 };
+
 
 
 

@@ -230,70 +230,10 @@ exports.confirmPayment = async (request, reply) => {
       });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const cart = await prisma.cart.findUnique({ where: { userId } });
-
-    // Transactionally: deduct stock + clear cart + update order
-    await prisma.$transaction(async (tx) => {
-      // Deduct stock
-      for (const item of order.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
-        });
-      }
-
-      // Clear cart
-      if (cart) {
-        await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
-      }
-
-      // Update order to CONFIRMED + PAID
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: "CONFIRMED",
-          paymentStatus: "PAID",
-        },
-      });
-    });
-
-    console.log(`✅ Stripe payment confirmed for order: ${order.id}`);
-
-    // Send confirmation email (non-blocking)
-    if (user?.email) {
-      // orderSummary is embedded in the shippingAddress JSON field
-      const storedSummary = typeof order.shippingAddress === 'object'
-        ? order.shippingAddress?.orderSummary
-        : null;
-
-      sendOrderConfirmationEmail(user.email, user.name, {
-        orderId: order.id,
-        totalAmount: Number(order.totalAmount),
-        itemCount: order.items.length,
-        products: order.items.map((item) => ({
-          title: item.product.title,
-          quantity: item.quantity,
-          price: Number(item.price),
-        })),
-        shippingAddress: order.shippingAddressLine,
-        paymentMethod: "Stripe",
-        customerPhone: user.phone || "",
-        orderSummary: storedSummary || undefined,
-      }).catch((e) =>
-        console.error("Email error (non-blocking):", e.message)
-      );
-    }
-
-    // Notify admins (non-blocking)
-    notifyAdminNewOrder(order.id, {
-      customerName: user?.name,
-      totalAmount: Number(order.totalAmount).toFixed(2),
-      itemCount: order.items.length,
-      orderId: order.id,
-    }).catch((e) =>
-      console.error("Admin notification error (non-blocking):", e.message)
-    );
+    // Deduct stock, clear cart, mark PAID, send confirmation email, notify admins.
+    // handlePaymentSucceeded is the single source of truth — works for webhook,
+    // logged-in confirm, and guest confirm paths without duplication.
+    await handlePaymentSucceeded(paymentIntentId);
 
     return reply.status(200).send({
       success: true,
@@ -396,15 +336,34 @@ exports.getPaymentStatus = async (request, reply) => {
 // Internal helper — shared between /confirm endpoint and webhook
 // ─────────────────────────────────────────────────────────────────────────────
 async function handlePaymentSucceeded(paymentIntentId) {
-  const order = await prisma.order.findFirst({
+  // ── Atomic claim ──────────────────────────────────────────────────────────
+  // Both the Stripe webhook and the frontend /confirm endpoint call this
+  // function. Without a lock, both can read paymentStatus=PENDING, both
+  // process the order, and both send a confirmation email.
+  //
+  // The updateMany below is a single atomic SQL UPDATE … WHERE paymentStatus !=
+  // 'PAID'. Only ONE concurrent caller will get count=1 and proceed; every
+  // other caller gets count=0 and exits immediately — no duplicate emails.
+  const claimed = await prisma.order.updateMany({
     where: {
       stripePaymentIntentId: paymentIntentId,
-      paymentStatus: { not: "PAID" }, // skip if already processed
+      paymentStatus: { not: "PAID" },
     },
+    data: { paymentStatus: "PAID" },
+  });
+
+  if (claimed.count === 0) {
+    console.log(`ℹ️  handlePaymentSucceeded: ${paymentIntentId} already processed — skipping`);
+    return false;
+  }
+
+  // Fetch the now-PAID order for stock deduction, email, and notifications.
+  const order = await prisma.order.findFirst({
+    where: { stripePaymentIntentId: paymentIntentId },
     include: { items: { include: { product: true } } },
   });
 
-  if (!order) return; // already handled or not found
+  if (!order) return false;
 
   const cart = order.userId
     ? await prisma.cart.findUnique({ where: { userId: order.userId } })
@@ -422,21 +381,70 @@ async function handlePaymentSucceeded(paymentIntentId) {
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
 
-    // Increment coupon usedCount if a coupon was applied
+    // Increment coupon usageCount if a coupon was applied
     if (order.couponCode) {
       await tx.coupon.updateMany({
         where: { code: order.couponCode },
-        data: { usedCount: { increment: 1 } },
+        data: { usageCount: { increment: 1 } },
       });
     }
 
+    // paymentStatus already set to PAID atomically above — only update
+    // the fulfilment status here.
     await tx.order.update({
       where: { id: order.id },
-      data: { status: "CONFIRMED", paymentStatus: "PAID" },
+      data: { status: "CONFIRMED" },
     });
   });
 
-  console.log(`✅ [Webhook] Order ${order.id} confirmed via payment_intent.succeeded`);
+  console.log(`✅ Order ${order.id} confirmed (paymentIntentId: ${paymentIntentId})`);
+
+  // ── Send confirmation email ─────────────────────────────────────────────
+  // Uses order.customerEmail which is always stored at order-creation time for
+  // both guest and logged-in orders, so this works for every payment path
+  // (webhook, /confirm, /guest/confirm) without any extra lookup.
+  const toEmail = order.customerEmail;
+  const toName  = order.customerName || 'Customer';
+
+  if (toEmail) {
+    const storedSummary =
+      typeof order.shippingAddress === 'object' ? order.shippingAddress?.orderSummary : null;
+
+    sendOrderConfirmationEmail(toEmail, toName, {
+      orderId:       order.id,
+      totalAmount:   Number(order.totalAmount),
+      itemCount:     order.items.length,
+      products:      order.items.map((item) => ({
+        title:    item.product.title,
+        quantity: item.quantity,
+        price:    Number(item.price),
+      })),
+      // Pass structured address so the email template can render city/state/zip
+      shippingAddress: {
+        addressLine: order.shippingAddressLine,
+        city:        order.shippingCity,
+        state:       order.shippingState,
+        zipCode:     order.shippingZipCode,
+        country:     order.shippingCountry,
+      },
+      paymentMethod:   order.paymentMethod || 'STRIPE',
+      customerPhone:   order.customerPhone || '',
+      orderSummary:    storedSummary || undefined,
+      isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
+    }).catch((e) => console.error('Email error (non-blocking):', e.message));
+  } else {
+    console.warn(`⚠️  No customerEmail on order ${order.id} — confirmation email skipped`);
+  }
+
+  // ── Notify admins ───────────────────────────────────────────────────────
+  notifyAdminNewOrder(order.id, {
+    customerName: toName,
+    totalAmount:  Number(order.totalAmount).toFixed(2),
+    itemCount:    order.items.length,
+    orderId:      order.id,
+  }).catch((e) => console.error('Admin notification error (non-blocking):', e.message));
+
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -526,7 +534,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       if (!coupon) return reply.status(400).send({ success: false, message: "Invalid coupon code" });
       if (!coupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
       if (new Date() > coupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
-      if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit)
+      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit)
         return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
       if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue)
         return reply.status(400).send({
@@ -659,7 +667,19 @@ exports.confirmGuestPayment = async (request, reply) => {
     }
 
     // Verify payment with Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    let paymentIntent;
+    try {
+      paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    } catch (stripeErr) {
+      console.error("❌ Stripe retrieve error:", stripeErr.message);
+      return reply.status(400).send({
+        success: false,
+        message: "Failed to verify payment with Stripe",
+      });
+    }
+
+    // If Stripe says it already succeeded, honour that and proceed to confirmation
+    // (handles redirect-based methods like Klarna/Zip that can trigger double-confirm)
     if (paymentIntent.status !== "succeeded") {
       return reply.status(400).send({
         success: false,
@@ -693,40 +713,12 @@ exports.confirmGuestPayment = async (request, reply) => {
       });
     }
 
-    // Deduct stock + mark order PAID (transactional)
-    // Note: coupon usedCount is incremented inside handlePaymentSucceeded (webhook path).
-    // For the direct confirm path we call the same helper to keep logic in one place.
+    // Deduct stock, clear cart, mark PAID, send confirmation email, notify admins.
+    // handlePaymentSucceeded is the single source of truth — works for webhook,
+    // logged-in confirm, and guest confirm paths without duplication.
     await handlePaymentSucceeded(paymentIntentId);
 
     console.log(`✅ Guest Stripe payment confirmed for order: ${order.id}`);
-
-    // Send confirmation email (non-blocking)
-    const storedSummary =
-      typeof order.shippingAddress === "object" ? order.shippingAddress?.orderSummary : null;
-
-    sendOrderConfirmationEmail(customerEmail, order.customerName, {
-      orderId: order.id,
-      totalAmount: Number(order.totalAmount),
-      itemCount: order.items.length,
-      products: order.items.map((item) => ({
-        title: item.product.title,
-        quantity: item.quantity,
-        price: Number(item.price),
-      })),
-      shippingAddress: order.shippingAddressLine,
-      paymentMethod: "Stripe",
-      customerPhone: order.customerPhone || "",
-      isGuest: true,
-      orderSummary: storedSummary || undefined,
-    }).catch((e) => console.error("Guest email error (non-blocking):", e.message));
-
-    // Notify admins (non-blocking)
-    notifyAdminNewOrder(order.id, {
-      customerName: order.customerName,
-      totalAmount: Number(order.totalAmount).toFixed(2),
-      itemCount: order.items.length,
-      orderId: order.id,
-    }).catch((e) => console.error("Admin notification error (non-blocking):", e.message));
 
     return reply.status(200).send({
       success: true,
@@ -737,6 +729,14 @@ exports.confirmGuestPayment = async (request, reply) => {
     });
   } catch (error) {
     console.error("❌ confirmGuestPayment error:", error);
+    // Stripe API errors (e.g. payment_intent_unexpected_state) are user-facing
+    if (error.type === "StripeInvalidRequestError") {
+      return reply.status(400).send({
+        success: false,
+        message: error.message,
+        stripeCode: error.code,
+      });
+    }
     return reply.status(500).send({
       success: false,
       message: "Failed to confirm guest payment",

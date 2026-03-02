@@ -116,11 +116,13 @@ exports.updateOrderStatus = async (request, reply) => {
       data: { status: normalizedStatus }
     });
 
-    // Send email to customer about status update
-    if (order.user && order.user.email) {
-      console.log(`📧 Sending status update email to customer: ${order.user.email}`);
+    // Send email to customer about status update (supports both logged-in and guest orders)
+    const customerEmail = order.user?.email || order.customerEmail;
+    const customerName  = order.user?.name  || order.customerName || 'Customer';
+    if (customerEmail) {
+      console.log(`📧 Sending status update email to customer: ${customerEmail}`);
       
-      sendOrderStatusEmail(order.user.email, order.user.name, {
+      sendOrderStatusEmail(customerEmail, customerName, {
         orderId,
         status,
         totalAmount: order.totalAmount,
@@ -142,14 +144,16 @@ exports.updateOrderStatus = async (request, reply) => {
         console.error("Email error (non-blocking):", error.message);
       });
 
-      // Create notification for customer
-      console.log(`🔔 Creating status change notification for customer ${order.user.id}: ${status}`);
-      notifyCustomerOrderStatusChange(order.user.id, orderId, status, {
-        totalAmount: order.totalAmount.toString(),
-        itemCount: order.items.length
-      }).catch(error => {
-        console.error("Customer notification error (non-blocking):", error.message);
-      });
+      // Create notification for customer (only for logged-in users)
+      if (order.user?.id) {
+        console.log(`🔔 Creating status change notification for customer ${order.user.id}: ${status}`);
+        notifyCustomerOrderStatusChange(order.user.id, orderId, status, {
+          totalAmount: order.totalAmount.toString(),
+          itemCount: order.items.length
+        }).catch(error => {
+          console.error("Customer notification error (non-blocking):", error.message);
+        });
+      }
 
       // Notify admins about status change (only if user is seller, not admin)
       if (userRole === "SELLER") {
@@ -159,7 +163,7 @@ exports.updateOrderStatus = async (request, reply) => {
         });
         
         notifyAdminOrderStatusChange(orderId, status, {
-          customerName: order.user.name,
+          customerName: customerName,
           sellerName: seller?.name || 'Unknown',
           totalAmount: order.totalAmount.toString(),
           itemCount: order.items.length
@@ -219,11 +223,13 @@ exports.updateTrackingInfo = async (request, reply) => {
       }
     });
 
-    // Send email with tracking info
-    if (order.user && order.user.email) {
-      console.log(`📧 Sending tracking info email to customer: ${order.user.email}`);
+    // Send email with tracking info (supports both logged-in and guest orders)
+    const customerEmail = order.user?.email || order.customerEmail;
+    const customerName  = order.user?.name  || order.customerName || 'Customer';
+    if (customerEmail) {
+      console.log(`📧 Sending tracking info email to customer: ${customerEmail}`);
       
-      sendOrderStatusEmail(order.user.email, order.user.name, {
+      sendOrderStatusEmail(customerEmail, customerName, {
         orderId,
         status: "shipped",
         trackingNumber,
@@ -247,15 +253,17 @@ exports.updateTrackingInfo = async (request, reply) => {
         console.error("Email error (non-blocking):", error.message);
       });
 
-      // Create notification for customer about shipped status
-      console.log(`🔔 Creating shipped notification for customer ${order.user.id}`);
-      notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
-        totalAmount: order.totalAmount.toString(),
-        itemCount: order.items.length,
-        trackingNumber
-      }).catch(error => {
-        console.error("Customer notification error (non-blocking):", error.message);
-      });
+      // Create notification for customer about shipped status (only for logged-in users)
+      if (order.user?.id) {
+        console.log(`🔔 Creating shipped notification for customer ${order.user.id}`);
+        notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
+          totalAmount: order.totalAmount.toString(),
+          itemCount: order.items.length,
+          trackingNumber
+        }).catch(error => {
+          console.error("Customer notification error (non-blocking):", error.message);
+        });
+      }
 
       // Notify admins about shipped status (only if user is seller, not admin)
       if (userRole === "SELLER") {
@@ -265,7 +273,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         });
         
         notifyAdminOrderStatusChange(orderId, "shipped", {
-          customerName: order.user.name,
+          customerName: customerName,
           sellerName: seller?.name || 'Unknown',
           totalAmount: order.totalAmount.toString(),
           itemCount: order.items.length,

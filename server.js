@@ -30,6 +30,8 @@ const paypalRoutes  = require("./routes/paypalRoutes");
 const blogsRoutes   = require("./routes/blogsRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
+const { Server: SocketIOServer } = require("socket.io");
+const { initStockSocket } = require("./utils/stockSocket");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -145,7 +147,20 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
     process.exit(1);
   }
   console.log(`Server running on ${address}`);
-  
+
+  // ── Socket.io: attach AFTER server is bound to port ─────────────────────
+  // app.server is fully ready inside the listen callback
+  const io = new SocketIOServer(app.server, {
+    cors: {
+      origin: ALLOWED_ORIGINS,
+      credentials: true,
+      methods: ['GET', 'POST']
+    }
+  });
+  initStockSocket(io);
+  console.log('🔌 Socket.io real-time stock bridge initialised');
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Initialize SLA monitoring after server starts
   setTimeout(() => {
     initializeSLAMonitoring();
