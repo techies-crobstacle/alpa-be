@@ -185,10 +185,14 @@ const notifySellerProductRecommendation = async (sellerId, sellerName = 'Seller'
 
 // ADMIN NOTIFICATIONS
 const notifyAdminNewOrder = async (orderId, orderDetails = {}) => {
-  const { customerName, sellerName, totalAmount, itemCount } = orderDetails;
+  const { customerName, sellerName, totalAmount, itemCount, productNames } = orderDetails;
   
+  const productLine = productNames && productNames.length > 0
+    ? ` — Products: ${productNames.join(', ')}`
+    : '';
+
   const title = 'New Order Placed';
-  const message = `New order from ${customerName || 'Customer'} to seller ${sellerName || 'Unknown'} for $${totalAmount || '0.00'} (${itemCount || 1} items)`;
+  const message = `New order from ${customerName || 'Customer'} to seller ${sellerName || 'Unknown'} for $${totalAmount || '0.00'} (${itemCount || 1} items)${productLine}`;
 
   // Get all admin users
   const admins = await prisma.user.findMany({

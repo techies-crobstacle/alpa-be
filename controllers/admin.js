@@ -1,12 +1,89 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
-const { sendSellerApprovedEmail } = require("../utils/emailService");
+const { sendSellerApprovedEmail, sendSellerLowStockEmail } = require("../utils/emailService");
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
   notifySellerProductRecommendation,
-  notifySellerProductStatusChange
+  notifySellerProductStatusChange,
+  notifySellerLowStock
 } = require("./notification");
+const { backfillOrderNotifications } = require("./orderNotification");
+const LOW_STOCK_THRESHOLD = 2;
+
+// SCAN & DEACTIVATE ALL LOW-STOCK PRODUCTS (Admin only)
+// Sweeps all products where stock <= threshold AND isActive = true,
+// deactivates them and sends the seller a notification + email for each one.
+exports.scanLowStockProducts = async (request, reply) => {
+  try {
+    // Use raw SQL — isActive was added via migration and may not be in the
+    // regenerated Prisma client, so prisma.product.findMany({ where: { isActive } })
+    // can silently skip the filter.
+    const products = await prisma.$queryRaw`
+      SELECT p.id, p.title, p.stock, p."sellerId",
+             u.email AS "sellerEmail", u.name AS "sellerName"
+      FROM "products" p
+      JOIN "users" u ON u.id = p."sellerId"
+      WHERE p."isActive" = true
+        AND p.stock <= ${LOW_STOCK_THRESHOLD}
+    `;
+
+    if (products.length === 0) {
+      return reply.status(200).send({
+        success: true,
+        message: "No low-stock active products found.",
+        deactivated: 0
+      });
+    }
+
+    const results = [];
+    for (const product of products) {
+      // Deactivate
+      await prisma.$executeRaw`
+        UPDATE "products"
+        SET "isActive" = false, status = 'INACTIVE'
+        WHERE id = ${product.id}
+      `;
+
+      // In-app notification (non-blocking)
+      notifySellerLowStock(
+        product.sellerId,
+        product.id,
+        product.title,
+        Number(product.stock)
+      ).catch(err => console.error("Low stock notification error:", err.message));
+
+      // Email (non-blocking)
+      if (product.sellerEmail) {
+        sendSellerLowStockEmail(
+          product.sellerEmail,
+          product.sellerName || "Seller",
+          product.title,
+          Number(product.stock),
+          product.id
+        ).then(result => {
+          if (!result.success) console.warn(`⚠️  [Admin scan] Email not sent to ${product.sellerEmail}: ${result.error}`);
+          else console.log(`✅ [Admin scan] Email sent to ${product.sellerEmail} for "${product.title}"`);
+        }).catch(err => console.error("Low stock email error:", err.message));
+      } else {
+        console.warn(`⚠️  [Admin scan] No email for seller ${product.sellerId} — email skipped`);
+      }
+
+      results.push({ productId: product.id, title: product.title, stock: Number(product.stock) });
+      console.log(`⚠️  [Admin scan] Deactivated "${product.title}" — stock: ${product.stock}`);
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: `Scan complete. ${results.length} low-stock product(s) deactivated and sellers notified.`,
+      deactivated: results.length,
+      products: results
+    });
+  } catch (error) {
+    console.error("scanLowStockProducts error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
 
 // GET ORDERS BY SELLER ID (ADMIN ONLY  )
 exports.getOrdersBySellerId = async (request, reply) => {
@@ -281,7 +358,8 @@ exports.getProductsBySeller = async (request, reply) => {
     const products = await prisma.$queryRaw`
       SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
              "artistName", status, "isActive", featured, tags,
-             "featuredImage", images AS "galleryImages", "createdAt", "updatedAt"
+             "featuredImage", images AS "galleryImages",
+             "rejectionReason", "createdAt", "updatedAt"
       FROM "products"
       WHERE "sellerId" = ${sellerId}
       ORDER BY "createdAt" DESC
@@ -299,6 +377,139 @@ exports.getProductsBySeller = async (request, reply) => {
     });
   } catch (err) {
     console.error("Get products by seller error:", err);
+    reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// GET ALL PRODUCTS (Admin) — filterable by status + optional sellerId
+// GET /admin/products?status=pending|approved|rejected|inactive|all&sellerId=xxx&page=1&limit=20
+exports.getAllAdminProducts = async (request, reply) => {
+  try {
+    const { status = 'all', sellerId, page = 1, limit = 50 } = request.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Map friendly status names to DB enum values
+    const statusMap = {
+      pending:  'PENDING',
+      approved: 'ACTIVE',
+      active:   'ACTIVE',
+      rejected: 'REJECTED',
+      inactive: 'INACTIVE',
+      all:      null
+    };
+
+    const dbStatus = statusMap[status.toLowerCase()] ?? null;
+
+    // Build dynamic WHERE clause
+    let products;
+    if (dbStatus && sellerId) {
+      products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+               p."rejectionReason", p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email",
+               sp."storeName", sp."businessName"
+        FROM "products" p
+        JOIN "users" u ON p."sellerId" = u.id
+        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
+        WHERE p.status = ${dbStatus}::"ProductStatus"
+          AND p."sellerId" = ${sellerId}
+        ORDER BY p."createdAt" DESC
+        LIMIT ${parseInt(limit)} OFFSET ${offset}
+      `;
+    } else if (dbStatus) {
+      products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+               p."rejectionReason", p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email",
+               sp."storeName", sp."businessName"
+        FROM "products" p
+        JOIN "users" u ON p."sellerId" = u.id
+        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
+        WHERE p.status = ${dbStatus}::"ProductStatus"
+        ORDER BY p."createdAt" DESC
+        LIMIT ${parseInt(limit)} OFFSET ${offset}
+      `;
+    } else if (sellerId) {
+      products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+               p."rejectionReason", p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email",
+               sp."storeName", sp."businessName"
+        FROM "products" p
+        JOIN "users" u ON p."sellerId" = u.id
+        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
+        WHERE p."sellerId" = ${sellerId}
+        ORDER BY p."createdAt" DESC
+        LIMIT ${parseInt(limit)} OFFSET ${offset}
+      `;
+    } else {
+      products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+               p."rejectionReason", p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email",
+               sp."storeName", sp."businessName"
+        FROM "products" p
+        JOIN "users" u ON p."sellerId" = u.id
+        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
+        ORDER BY p."createdAt" DESC
+        LIMIT ${parseInt(limit)} OFFSET ${offset}
+      `;
+    }
+
+    // Counts per status tab (always all sellers or filtered by sellerId)
+    let counts;
+    if (sellerId) {
+      counts = await prisma.$queryRaw`
+        SELECT status::text, COUNT(*)::int AS count
+        FROM "products"
+        WHERE "sellerId" = ${sellerId}
+        GROUP BY status
+      `;
+    } else {
+      counts = await prisma.$queryRaw`
+        SELECT status::text, COUNT(*)::int AS count
+        FROM "products"
+        GROUP BY status
+      `;
+    }
+
+    const countMap = { PENDING: 0, ACTIVE: 0, REJECTED: 0, INACTIVE: 0 };
+    for (const row of counts) countMap[row.status] = row.count;
+
+    // Shape each product
+    const mapped = products.map(({ seller_name, seller_email, storeName, businessName, ...p }) => ({
+      ...p,
+      seller: {
+        id: p.sellerId,
+        name: seller_name,
+        email: seller_email,
+        storeName: storeName || null,
+        businessName: businessName || null
+      }
+    }));
+
+    return reply.send({
+      success: true,
+      products: mapped,
+      count: mapped.length,
+      counts: {
+        all:      Object.values(countMap).reduce((a, b) => a + b, 0),
+        pending:  countMap.PENDING,
+        approved: countMap.ACTIVE,
+        rejected: countMap.REJECTED,
+        inactive: countMap.INACTIVE
+      }
+    });
+  } catch (err) {
+    console.error("Get all admin products error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -1119,7 +1330,7 @@ exports.getPendingProducts = async (request, reply) => {
       SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
              p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
              p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
-             p."createdAt", p."updatedAt",
+             p."rejectionReason", p."createdAt", p."updatedAt",
              u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email"
       FROM "products" p
       JOIN "users" u ON p."sellerId" = u.id
@@ -1174,12 +1385,12 @@ exports.approveProduct = async (request, reply) => {
       });
     }
 
-    // Update product to active - temporarily use both fields
+    // Update product to ACTIVE and clear any previous rejection reason
     const approvedProduct = await prisma.product.update({
       where: { id: productId },
       data: {
-        status: "ACTIVE" // Update status field
-        // Note: isActive will be updated via raw SQL until Prisma client is regenerated
+        status: "ACTIVE",
+        rejectionReason: null  // clear any previous rejection reason
       }
     });
 
@@ -1193,7 +1404,8 @@ exports.approveProduct = async (request, reply) => {
     const rows = await prisma.$queryRaw`
       SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
              "artistName", status, "isActive", featured, tags,
-             "featuredImage", images AS "galleryImages", "createdAt", "updatedAt"
+             "featuredImage", images AS "galleryImages",
+             "rejectionReason", "createdAt", "updatedAt"
       FROM "products"
       WHERE id = ${productId}
     `;
@@ -1244,31 +1456,16 @@ exports.rejectProduct = async (request, reply) => {
       });
     }
 
-    // Option 1: Keep product but mark as rejected
+    // Mark product as REJECTED (distinct from INACTIVE so admin can track it)
     await prisma.product.update({
       where: { id: productId },
       data: {
-        isActive: false,
-        status: "INACTIVE",
+        status: "REJECTED",
         rejectionReason: reason || "No reason provided"
       }
     });
-
-    // Update seller product count
-    const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: product.sellerId }
-    });
-
-    if (seller) {
-      const newCount = Math.max(0, (seller.productCount || 1) - 1);
-      await prisma.sellerProfile.update({
-        where: { userId: product.sellerId },
-        data: {
-          productCount: newCount,
-          minimumProductsUploaded: newCount >= 1
-        }
-      });
-    }
+    // isActive managed outside Prisma schema regeneration — keep via raw SQL
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
 
     // Send notification to seller about product rejection
     await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
@@ -1486,6 +1683,23 @@ exports.getRevenueOrdersChart = async (request, reply) => {
     });
   } catch (error) {
     console.error('Revenue orders chart error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// BACKFILL ORDER NOTIFICATIONS (Admin only)
+// Creates OrderNotification records for all orders that don't have one yet.
+// Run once after deployment to populate historical data.
+exports.backfillOrderNotifications = async (request, reply) => {
+  try {
+    const result = await backfillOrderNotifications();
+    return reply.status(200).send({
+      success: true,
+      message: `Backfill complete. Created ${result.created} notification(s), skipped ${result.skipped} (already existed).`,
+      ...result
+    });
+  } catch (error) {
+    console.error('Backfill notifications error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

@@ -14,9 +14,11 @@ const createOrderNotification = async (orderId, sellerId, type, priority = 'MEDI
   try {
     // Check if OrderNotification model exists
     if (!prisma || !prisma.orderNotification) {
-      console.log('OrderNotification model not available, skipping notification creation');
+      console.error('❌ [OrderNotification] Prisma model not available — skipping creation.');
       return { success: false, message: 'Model not available' };
     }
+
+    console.log(`📋 [OrderNotification] Creating: type=${type} | orderId=${orderId} | sellerId=${sellerId}`);
 
     const notification = await prisma.orderNotification.create({
       data: {
@@ -32,16 +34,10 @@ const createOrderNotification = async (orderId, sellerId, type, priority = 'MEDI
       }
     });
 
-    // Send initial notification email to seller
-    try {
-      await sendSellerOrderNotificationEmail(sellerId, orderId, type);
-    } catch (emailError) {
-      console.error('Email notification error (non-blocking):', emailError.message);
-    }
-    
+    console.log(`✅ [OrderNotification] Created id=${notification.id} type=${type}`);
     return notification;
   } catch (error) {
-    console.error("Create notification error:", error);
+    console.error(`❌ [OrderNotification] Create failed — type=${type} orderId=${orderId} sellerId=${sellerId}:`, error.message);
     // Don't throw error to avoid breaking order creation
     return { success: false, error: error.message };
   }
@@ -64,16 +60,14 @@ exports.getSellerNotifications = async (request, reply) => {
 
     // Determine which seller's notifications to fetch
     let sellerId = authenticatedUserId;
+    let adminViewAll = false;
     
-    // If admin, allow them to query notifications for a specific seller
+    // If admin, allow them to query notifications for a specific seller or see all
     if (userRole === 'ADMIN' && querySellerId) {
       sellerId = querySellerId;
     } else if (userRole === 'ADMIN' && !querySellerId) {
-      // Admin without sellerId parameter - return error or all sellers
-      return reply.status(400).send({
-        success: false,
-        message: "Admin must provide ?sellerId parameter to view notifications"
-      });
+      // Admin with no sellerId — return all notifications across all sellers
+      adminViewAll = true;
     } else if (userRole !== 'SELLER' && userRole !== 'ADMIN') {
       // Only sellers and admins can view notifications
       return reply.status(403).send({
@@ -124,7 +118,8 @@ exports.getSellerNotifications = async (request, reply) => {
       throw modelError; // Re-throw if it's a different error
     }
 
-    const where = { sellerId };
+    // Admin with no sellerId filter sees everything; otherwise filter by seller
+    const where = adminViewAll ? {} : { sellerId };
     if (status) where.status = status;
     if (priority) where.priority = priority;
     if (type) where.type = type;
@@ -347,107 +342,109 @@ exports.acknowledgeNotification = async (request, reply) => {
 // GET SLA DASHBOARD METRICS
 exports.getSLADashboard = async (request, reply) => {
   try {
-    const sellerId = request.user.userId;
-    const { timeframe = '7' } = request.query; // days
+    const userId = request.user.userId;
+    const userRole = request.user.role;
+    const { timeframe = '30', sellerId: querySellerId } = request.query; // days
 
+    // Admin: show all unless a specific sellerId is requested
+    let notificationWhere;
+    if (userRole === 'ADMIN') {
+      notificationWhere = querySellerId ? { sellerId: querySellerId } : {};
+    } else {
+      notificationWhere = { sellerId: userId };
+    }
+
+    // ── All-time counts (not time-filtered) ────────────────────────────────
+    const allNotifications = await prisma.orderNotification.findMany({
+      where: notificationWhere,
+      select: { id: true, status: true, slaDeadline: true, createdAt: true, type: true, completedAt: true }
+    });
+
+    const totalNotifications   = allNotifications.length;
+    const pendingNotifications = allNotifications.filter(n => n.status === 'PENDING').length;
+    const overdueNotifications = allNotifications.filter(n => {
+      const slaStatus = calculateSLAStatus(n);
+      return slaStatus.isOverdue && n.status === 'PENDING';
+    }).length;
+
+    // ── Time-windowed SLA performance breakdown ─────────────────────────────
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(timeframe));
 
-    // Get notifications within timeframe
-    const notifications = await prisma.orderNotification.findMany({
+    const windowNotifications = await prisma.orderNotification.findMany({
       where: {
-        sellerId,
-        createdAt: {
-          gte: startDate
-        }
+        ...notificationWhere,
+        createdAt: { gte: startDate }
       },
       include: {
         order: {
-          select: {
-            id: true,
-            totalAmount: true,
-            customerName: true
-          }
+          select: { id: true, totalAmount: true, customerName: true }
         }
       }
     });
 
-    // Calculate SLA performance by type
     const slaPerformance = {};
     const notificationsByType = {};
-    
-    notifications.forEach(notification => {
+    windowNotifications.forEach(notification => {
       const type = notification.type;
-      if (!notificationsByType[type]) {
-        notificationsByType[type] = [];
-      }
+      if (!notificationsByType[type]) notificationsByType[type] = [];
       notificationsByType[type].push(notification);
     });
 
     for (const [type, typeNotifications] of Object.entries(notificationsByType)) {
       const completed = typeNotifications.filter(n => n.status === 'COMPLETED');
-      const onTime = completed.filter(n => 
+      const onTime = completed.filter(n =>
         n.completedAt && new Date(n.completedAt) <= new Date(n.slaDeadline)
       );
-
       slaPerformance[type] = {
         total: typeNotifications.length,
         completed: completed.length,
         onTime: onTime.length,
         breached: completed.length - onTime.length,
         pending: typeNotifications.filter(n => n.status === 'PENDING').length,
-        percentage: completed.length > 0 ? 
+        percentage: completed.length > 0 ?
           Math.round((onTime.length / completed.length) * 100) : 0
       };
     }
 
-    // Get urgent notifications (next 2 hours)
+    // ── Overall SLA % (all-time) ────────────────────────────────────────────
+    const totalCompleted = allNotifications.filter(n => n.status === 'COMPLETED').length;
+    const totalOnTime    = allNotifications.filter(n =>
+      n.status === 'COMPLETED' && n.completedAt &&
+      new Date(n.completedAt) <= new Date(n.slaDeadline)
+    ).length;
+    const overallSLA = totalCompleted > 0 ? Math.round((totalOnTime / totalCompleted) * 100) : 0;
+
+    // ── Urgent: pending notifications whose deadline is within 2 hours ─────
     const urgentNotifications = await prisma.orderNotification.findMany({
       where: {
-        sellerId,
+        ...notificationWhere,
         status: 'PENDING',
-        slaDeadline: {
-          lte: new Date(Date.now() + 2 * 60 * 60 * 1000)
-        }
+        slaDeadline: { lte: new Date(Date.now() + 2 * 60 * 60 * 1000) }
       },
       include: {
-        order: {
-          select: {
-            id: true,
-            customerName: true,
-            totalAmount: true
-          }
-        }
+        order: { select: { id: true, customerName: true, totalAmount: true } }
       },
       orderBy: { slaDeadline: 'asc' }
     });
-
-    // Overall SLA metrics
-    const totalCompleted = notifications.filter(n => n.status === 'COMPLETED').length;
-    const totalOnTime = notifications.filter(n => 
-      n.status === 'COMPLETED' && 
-      n.completedAt && 
-      new Date(n.completedAt) <= new Date(n.slaDeadline)
-    ).length;
-
-    const overallSLA = totalCompleted > 0 ? 
-      Math.round((totalOnTime / totalCompleted) * 100) : 0;
 
     return reply.status(200).send({
       success: true,
       dashboard: {
         overallSLA,
-        totalNotifications: notifications.length,
-        pendingNotifications: notifications.filter(n => n.status === 'PENDING').length,
-        overdueNotifications: notifications.filter(n => {
-          const slaStatus = calculateSLAStatus(n);
-          return slaStatus.isOverdue && n.status === 'PENDING';
+        totalNotifications,
+        pendingNotifications,
+        overdueNotifications,
+        criticalNotifications: allNotifications.filter(n => {
+          const s = calculateSLAStatus(n);
+          return n.status === 'PENDING' && (s.status === 'CRITICAL' || s.status === 'BREACHED');
         }).length,
         slaPerformance,
         urgentNotifications: urgentNotifications.map(n => ({
           ...n,
           slaStatus: calculateSLAStatus(n)
-        }))
+        })),
+        timeframeDays: parseInt(timeframe)
       }
     });
 
@@ -541,11 +538,86 @@ const checkSLAStatus = async () => {
   }
 };
 
+// BACKFILL: Create notifications for all orders that do not have one yet
+const backfillOrderNotifications = async () => {
+  try {
+    console.log('🔄 [Backfill] Starting order notification backfill...');
+
+    // Fetch all orders
+    const orders = await prisma.order.findMany({
+      select: {
+        id: true,
+        status: true,
+        items: {
+          select: {
+            product: {
+              select: { sellerId: true }
+            }
+          }
+        }
+      }
+    });
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const order of orders) {
+      // Collect unique seller IDs for this order
+      const sellerIds = [...new Set(order.items.map(i => i.product?.sellerId).filter(Boolean))];
+
+      for (const sellerId of sellerIds) {
+        // Check if a notification already exists for this order+seller
+        const existing = await prisma.orderNotification.findFirst({
+          where: { orderId: order.id, sellerId }
+        });
+
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        // Map order status to notification type
+        const typeMap = {
+          PENDING:    'ORDER_PROCESSING',
+          CONFIRMED:  'ORDER_CONFIRMATION',
+          PROCESSING: 'SHIPPING_PREPARATION',
+          SHIPPED:    'ORDER_SHIPPED',
+          DELIVERED:  'ORDER_DELIVERED',
+          CANCELLED:  'ORDER_CANCELLED'
+        };
+        const type = typeMap[order.status] || 'ORDER_PROCESSING';
+        const isComplete = ['DELIVERED', 'CANCELLED'].includes(order.status);
+
+        await prisma.orderNotification.create({
+          data: {
+            orderId: order.id,
+            sellerId,
+            type,
+            priority: 'MEDIUM',
+            status: isComplete ? 'COMPLETED' : 'PENDING',
+            message: `Order #${order.id.slice(-8).toUpperCase()} — Status: ${order.status}`,
+            slaDeadline: calculateSLADeadline(type),
+            completedAt: isComplete ? new Date() : null
+          }
+        });
+        created++;
+      }
+    }
+
+    console.log(`✅ [Backfill] Done — Created: ${created}, Skipped (already existed): ${skipped}`);
+    return { created, skipped };
+  } catch (error) {
+    console.error('❌ [Backfill] Error:', error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   createOrderNotification,
   getSellerNotifications: exports.getSellerNotifications,
   updateOrderStatus: exports.updateOrderStatus,
   acknowledgeNotification: exports.acknowledgeNotification,
   getSLADashboard: exports.getSLADashboard,
-  checkSLAStatus
+  checkSLAStatus,
+  backfillOrderNotifications
 };

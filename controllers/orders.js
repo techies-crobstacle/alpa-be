@@ -19,51 +19,65 @@ const PDFDocument = require('pdfkit');
 // ─── Low Stock Alert Helper ───────────────────────────────────────────────────
 // Checks each ordered product's stock after decrement.
 // If stock <= 2: deactivates the product and fires notification + email (non-blocking).
+const LOW_STOCK_THRESHOLD = 2;
+
 const handleLowStockAlerts = async (productIds) => {
-  const LOW_STOCK_THRESHOLD = 2;
   try {
-    const products = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.stock, p."sellerId",
-             u.email AS "sellerEmail", u.name AS "sellerName"
-      FROM "products" p
-      JOIN "users" u ON u.id = p."sellerId"
-      WHERE p.id = ANY(${productIds})
-    `;
+    // Raw SQL — avoids Prisma client isActive field awareness issues
+    // and safely handles the id list via a loop (no ANY() serialisation bug)
+    for (const productId of productIds) {
+      const rows = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.stock, p."sellerId",
+               u.email AS "sellerEmail", u.name AS "sellerName"
+        FROM "products" p
+        JOIN "users" u ON u.id = p."sellerId"
+        WHERE p.id = ${productId}
+          AND p."isActive" = true
+          AND p.stock <= ${LOW_STOCK_THRESHOLD}
+      `;
 
-    for (const product of products) {
-      if (product.stock <= LOW_STOCK_THRESHOLD) {
-        // Deactivate product so it no longer shows in listings
-        await prisma.$executeRaw`
-          UPDATE "products"
-          SET "isActive" = false, status = 'INACTIVE'
-          WHERE id = ${product.id}
-        `;
-        console.log(`⚠️  Product "${product.title}" deactivated — stock: ${product.stock}`);
+      if (!rows || rows.length === 0) continue;
+      const product = rows[0];
 
-        // In-app notification (non-blocking)
-        notifySellerLowStock(
-          product.sellerId,
-          product.id,
+      // Deactivate
+      await prisma.$executeRaw`
+        UPDATE "products"
+        SET "isActive" = false, status = 'INACTIVE'
+        WHERE id = ${product.id}
+      `;
+      console.log(`⚠️  Product "${product.title}" deactivated — stock: ${product.stock}`);
+
+      // In-app notification (non-blocking)
+      notifySellerLowStock(
+        product.sellerId,
+        product.id,
+        product.title,
+        Number(product.stock)
+      ).catch(err => console.error("Low stock notification error:", err.message));
+
+      // Email alert (non-blocking)
+      if (product.sellerEmail) {
+        sendSellerLowStockEmail(
+          product.sellerEmail,
+          product.sellerName || "Seller",
           product.title,
-          product.stock
-        ).catch(err => console.error("Low stock notification error:", err.message));
-
-        // Email alert (non-blocking)
-        if (product.sellerEmail) {
-          sendSellerLowStockEmail(
-            product.sellerEmail,
-            product.sellerName || "Seller",
-            product.title,
-            product.stock,
-            product.id
-          ).catch(err => console.error("Low stock email error:", err.message));
-        }
+          Number(product.stock),
+          product.id
+        ).then(result => {
+          if (!result.success) console.warn(`⚠️  [Low Stock] Email not sent to ${product.sellerEmail}: ${result.error}`);
+          else console.log(`✅ [Low Stock] Email sent to ${product.sellerEmail} for "${product.title}"`);
+        }).catch(err => console.error("Low stock email error:", err.message));
+      } else {
+        console.warn(`⚠️  [Low Stock] No email address for seller ${product.sellerId} — email skipped`);
       }
     }
   } catch (err) {
     console.error("handleLowStockAlerts error (non-fatal):", err.message);
   }
 };
+
+// Export so the admin controller can reuse the same logic
+module.exports.handleLowStockAlerts = handleLowStockAlerts;
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Stock Management and Inventory Alert with SMS Notification
@@ -210,10 +224,13 @@ exports.createOrder = async (request, reply) => {
         sellerNotifications.set(product.sellerId, {
           productCount: 0,
           totalAmount: 0,
-          products: []
+          products: [],
+          sellerName: product.sellerName || null  // stored at product creation time
         });
       }
       const sellerData = sellerNotifications.get(product.sellerId);
+      // Keep the most recent non-null sellerName we see
+      if (product.sellerName && !sellerData.sellerName) sellerData.sellerName = product.sellerName;
       sellerData.productCount += item.quantity;
       sellerData.totalAmount += itemTotal;
       sellerData.products.push({
@@ -330,28 +347,24 @@ exports.createOrder = async (request, reply) => {
     // Check for low stock on all ordered products and deactivate + alert if <= 2
     handleLowStockAlerts(cart.items.map(i => i.productId));
 
-    // Get seller information for notifications
-    let sellerNames = [];
-    for (const [sellerId, _] of sellerNotifications) {
-      try {
-        const seller = await prisma.user.findUnique({
-          where: { id: sellerId },
-          select: { name: true }
-        });
-        if (seller) {
-          sellerNames.push(seller.name);
-        }
-      } catch (error) {
-        console.error(`Error fetching seller ${sellerId}:`, error);
+    // Get seller names + product titles directly from the sellerNotifications map
+    // (product.sellerName is stored at product-creation time — no extra DB call needed)
+    const sellerNameList = [];
+    const allProductTitles = [];
+    for (const [sellerId, sellerData] of sellerNotifications) {
+      if (sellerData.sellerName) sellerNameList.push(sellerData.sellerName);
+      if (sellerData.products) {
+        allProductTitles.push(...sellerData.products.map(p => p.title).filter(Boolean));
       }
     }
 
     // Create notifications
     const orderNotificationData = {
       customerName: user.name,
-      sellerName: sellerNames.length > 0 ? sellerNames.join(', ') : 'Unknown',
+      sellerName: sellerNameList.length > 0 ? sellerNameList.join(', ') : 'Unknown',
       totalAmount: totalAmount.toFixed(2),
       itemCount: order.items.length,
+      productNames: allProductTitles,
       orderId: order.id
     };
 
@@ -949,10 +962,13 @@ exports.createGuestOrder = async (request, reply) => {
         sellerNotifications.set(product.sellerId, {
           productCount: 0,
           totalAmount: 0,
-          products: []
+          products: [],
+          sellerName: product.sellerName || null  // stored at product creation time
         });
       }
       const sellerData = sellerNotifications.get(product.sellerId);
+      // Keep the most recent non-null sellerName we see
+      if (product.sellerName && !sellerData.sellerName) sellerData.sellerName = product.sellerName;
       sellerData.productCount += quantity;
       sellerData.totalAmount += itemPrice * quantity;
       sellerData.products.push({
@@ -1109,28 +1125,24 @@ exports.createGuestOrder = async (request, reply) => {
     // Check for low stock on all ordered products and deactivate + alert if <= 2
     handleLowStockAlerts(orderItems.map(i => i.productId));
 
-    // Get seller information for notifications
-    let sellerNames = [];
-    for (const [sellerId, _] of sellerNotifications) {
-      try {
-        const seller = await prisma.user.findUnique({
-          where: { id: sellerId },
-          select: { name: true }
-        });
-        if (seller) {
-          sellerNames.push(seller.name);
-        }
-      } catch (error) {
-        console.error(`Error fetching seller ${sellerId}:`, error);
+    // Get seller names + product titles directly from the sellerNotifications map
+    // (product.sellerName is stored at product-creation time — no extra DB call needed)
+    const guestSellerNameList = [];
+    const guestAllProductTitles = [];
+    for (const [sellerId, sellerData] of sellerNotifications) {
+      if (sellerData.sellerName) guestSellerNameList.push(sellerData.sellerName);
+      if (sellerData.products) {
+        guestAllProductTitles.push(...sellerData.products.map(p => p.title).filter(Boolean));
       }
     }
 
     // Create notifications
     const orderNotificationData = {
       customerName,
-      sellerName: sellerNames.length > 0 ? sellerNames.join(', ') : 'Unknown',
+      sellerName: guestSellerNameList.length > 0 ? guestSellerNameList.join(', ') : 'Unknown',
       totalAmount: totalAmount.toFixed(2),
       itemCount: order.items.length,
+      productNames: guestAllProductTitles,
       orderId: order.id
     };
 

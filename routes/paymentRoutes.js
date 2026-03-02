@@ -7,6 +7,7 @@ async function paymentRoutes(fastify, options) {
   //     standard JSON routes so it gets its own content-type parser.
   fastify.register(async function webhookScope(fastify) {
     // Override JSON parsing for this scope only → receive raw Buffer
+    fastify.removeContentTypeParser('application/json');
     fastify.addContentTypeParser(
       "application/json",
       { parseAs: "buffer" },

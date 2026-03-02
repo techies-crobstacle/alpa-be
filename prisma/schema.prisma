@@ -420,6 +420,7 @@ enum ProductStatus {
   PENDING
   ACTIVE
   INACTIVE
+  REJECTED
 }
 
 enum CategoryStatus {

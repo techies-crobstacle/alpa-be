@@ -30,12 +30,25 @@ const paypalRoutes  = require("./routes/paypalRoutes");
 const blogsRoutes   = require("./routes/blogsRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
+const { initializeLowStockScheduler } = require("./utils/lowStockScheduler");
+const { backfillOrderNotifications } = require("./controllers/orderNotification");
 const { Server: SocketIOServer } = require("socket.io");
 const { initStockSocket } = require("./utils/stockSocket");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
   requestTimeout: 30000 // 30 second timeout
+});
+
+// Allow requests with Content-Type: application/json but an empty body (e.g. POST with no payload)
+app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+  if (!body || body.trim() === '') return done(null, {});
+  try {
+    done(null, JSON.parse(body));
+  } catch (err) {
+    err.statusCode = 400;
+    done(err);
+  }
 });
 
 // Register CORS
@@ -165,6 +178,21 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   setTimeout(() => {
     initializeSLAMonitoring();
   }, 5000); // Wait 5 seconds for server to be fully ready
+
+  // Auto-deactivate low-stock products on startup and every 30 minutes
+  setTimeout(() => {
+    initializeLowStockScheduler();
+  }, 7000); // Slight delay after SLA scheduler
+
+  // Backfill order_notifications for any existing orders that don't have one
+  setTimeout(async () => {
+    try {
+      const result = await backfillOrderNotifications();
+      console.log(`✅ Order notification backfill: created ${result.created}, skipped ${result.skipped}`);
+    } catch (e) {
+      console.error('⚠️  Order notification backfill error (non-fatal):', e.message);
+    }
+  }, 12000); // After low-stock scheduler
   
   // Initialize email verification reminder scheduler (can be disabled via env var)
   const enableEmailScheduler = process.env.ENABLE_EMAIL_SCHEDULER !== 'false';

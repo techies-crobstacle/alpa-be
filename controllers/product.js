@@ -4,6 +4,9 @@ const {
   notifySellerLowStock,
   notifyAdminNewProduct
 } = require("./notification");
+const { sendSellerLowStockEmail } = require("../utils/emailService");
+
+const LOW_STOCK_THRESHOLD = 2;
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {
@@ -136,6 +139,33 @@ exports.addProduct = async (request, reply) => {
       }
     });
 
+    // ── Low stock auto-deactivation (admin-added products only; sellers start as PENDING) ──
+    if (isActive && stock <= LOW_STOCK_THRESHOLD) {
+      await prisma.$executeRaw`UPDATE "products" SET "isActive" = false, status = 'INACTIVE' WHERE id = ${product.id}`;
+      isActive = false;
+      console.log(`⚠️  New product "${product.title}" auto-deactivated on add — stock: ${stock}`);
+
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { email: true, name: true }
+      });
+
+      notifySellerLowStock(sellerId, product.id, product.title, stock)
+        .catch(err => console.error("Low stock notification error (addProduct):", err.message));
+
+      if (sellerUser?.email) {
+        sendSellerLowStockEmail(sellerUser.email, sellerUser.name || "Seller",
+          product.title, stock, product.id)
+          .then(result => {
+            if (!result.success) console.warn(`⚠️  [Low Stock] Email not sent to ${sellerUser.email}: ${result.error}`);
+            else console.log(`✅ [Low Stock] Email sent to ${sellerUser.email} for "${product.title}"`);
+          })
+          .catch(err => console.error("Low stock email error (addProduct):", err.message));
+      } else {
+        console.warn(`⚠️  [Low Stock] No email for seller ${sellerId} — email skipped`);
+      }
+    }
+
     return reply.status(200).send({ 
       success: true, 
       message: "Product added successfully",
@@ -172,7 +202,8 @@ exports.getMyProducts = async (request, reply) => {
     const products = await prisma.$queryRaw`
       SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
              "artistName", status, "isActive", featured, tags,
-             "featuredImage", images AS "galleryImages", "createdAt", "updatedAt"
+             "featuredImage", images AS "galleryImages",
+             "rejectionReason", "createdAt", "updatedAt"
       FROM "products"
       WHERE "sellerId" = ${sellerId}
       ORDER BY "createdAt" DESC
@@ -339,7 +370,12 @@ exports.updateProduct = async (request, reply) => {
       newStatus = "PENDING";
       newIsActive = false;
     }
-    // Admin edits don't change status
+    // Admin edits don't change approval status
+
+    // Clear rejection reason when seller resubmits
+    if (userRole === "SELLER" && product.status === "REJECTED") {
+      updateData.rejectionReason = null;
+    }
 
     // Only update fields that are not undefined and not empty string
     const updateData = {};
@@ -366,6 +402,49 @@ exports.updateProduct = async (request, reply) => {
     if (featuredImageUrl !== undefined) {
       await prisma.$executeRaw`UPDATE "products" SET "featuredImage" = ${featuredImageUrl} WHERE "id" = ${request.params.id}`;
     }
+
+    // ── Low stock auto-deactivation ──────────────────────────────────────────
+    // Work out the effective stock after this update
+    const finalStock = (stock !== undefined && stock !== '') ? stock : product.stock;
+    if (finalStock <= LOW_STOCK_THRESHOLD) {
+      // Force inactive regardless of role or status
+      await prisma.$executeRaw`
+        UPDATE "products"
+        SET "isActive" = false, status = 'INACTIVE'
+        WHERE id = ${request.params.id}
+      `;
+      newIsActive = false;
+      console.log(`⚠️  Product "${updatedProduct.title}" auto-deactivated — stock: ${finalStock}`);
+
+      // Fetch seller email for notification
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: product.sellerId },
+        select: { email: true, name: true }
+      });
+
+      notifySellerLowStock(
+        product.sellerId,
+        request.params.id,
+        updatedProduct.title,
+        finalStock
+      ).catch(err => console.error("Low stock notification error:", err.message));
+
+      if (sellerUser?.email) {
+        sendSellerLowStockEmail(
+          sellerUser.email,
+          sellerUser.name || "Seller",
+          updatedProduct.title,
+          finalStock,
+          request.params.id
+        ).then(result => {
+          if (!result.success) console.warn(`⚠️  [Low Stock] Email not sent to ${sellerUser.email}: ${result.error}`);
+          else console.log(`✅ [Low Stock] Email sent to ${sellerUser.email} for "${updatedProduct.title}"`);
+        }).catch(err => console.error("Low stock email error:", err.message));
+      } else {
+        console.warn(`⚠️  [Low Stock] No email for seller ${product.sellerId} — email skipped`);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const resolvedFeaturedImage = featuredImageUrl !== undefined ? featuredImageUrl : product.featuredImage;
     const { images: _imgs, ...productFields } = updatedProduct;

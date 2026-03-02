@@ -2021,16 +2021,19 @@ const sendSellerApprovedEmail = async (email, name) => {
 
 // Send Seller Low Stock Alert Email
 const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentStock, productId) => {
+  console.log(`\n📧 [Low Stock Email] Preparing to send to: ${email} | Product: "${productTitle}" | Stock: ${currentStock} | isDevelopmentMode: ${isDevelopmentMode}`);
+
+  if (!email) {
+    console.warn('⚠️  [Low Stock Email] No email address provided — skipping send.');
+    return { success: false, error: 'No email address' };
+  }
+
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Low Stock Alert");
     console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Seller: ${sellerName}`);
-    console.log(`Product: ${productTitle}`);
-    console.log(`Current Stock: ${currentStock}`);
+    console.log("📧 [Low Stock Email] DEVELOPMENT MODE — Email not sent (SENDGRID_API_KEY missing).");
+    console.log(`   To: ${email} | Seller: ${sellerName} | Product: ${productTitle} | Stock: ${currentStock}`);
     console.log("=".repeat(50) + "\n");
-    return { success: true };
+    return { success: false, error: 'Development mode — SendGrid not configured' };
   }
 
   const stockColor = currentStock === 0 ? "#D32F2F" : "#E65100";

@@ -402,10 +402,20 @@ exports.captureOrder = async (request, reply) => {
     }
 
     // Notify admins (non-blocking)
+    // Resolve seller display names and product titles from order items
+    const sellerIdSet = [...new Set(order.items.map(i => i.product?.sellerId).filter(Boolean))];
+    const sellerDisplayNames = await Promise.all(sellerIdSet.map(async sid => {
+      const s = await prisma.user.findUnique({ where: { id: sid }, select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } } });
+      return s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || s?.name || 'Unknown';
+    }));
+    const productTitles = order.items.map(i => i.product?.title).filter(Boolean);
+
     notifyAdminNewOrder(order.id, {
       customerName: user?.name,
+      sellerName:   sellerDisplayNames.join(', ') || 'Unknown',
       totalAmount: Number(order.totalAmount).toFixed(2),
       itemCount: order.items.length,
+      productNames: productTitles,
       orderId: order.id,
     }).catch((e) => console.error("Admin notification error (non-blocking):", e.message));
 

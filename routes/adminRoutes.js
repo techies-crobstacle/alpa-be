@@ -46,6 +46,10 @@ async function adminRoutes(fastify, options) {
   }, adminController.getAllCategories);
 
   // ---------------- PRODUCT APPROVAL MANAGEMENT ----------------
+  // Get ALL products with status filter: ?status=pending|approved|rejected|inactive|all
+  // Optional filters: &sellerId=xxx  &page=1 &limit=20
+  fastify.get("/products", { preHandler: adminAuth }, adminController.getAllAdminProducts);
+
   // Get all pending products for approval
   fastify.get("/products/pending", { preHandler: adminAuth }, adminController.getPendingProducts);
   
@@ -62,6 +66,12 @@ async function adminRoutes(fastify, options) {
   // Activate / Deactivate a product
   fastify.put("/products/activate/:productId", { preHandler: adminAuth }, adminController.activateProduct);
   fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
+
+  // Scan & deactivate all low-stock active products and notify sellers
+  fastify.post("/products/scan-low-stock", { preHandler: adminAuth }, adminController.scanLowStockProducts);
+
+  // Backfill order notifications for all existing orders that have no notification record
+  fastify.post("/orders/backfill-notifications", { preHandler: adminAuth }, adminController.backfillOrderNotifications);
 
   // ---------------- COUPON MANAGEMENT ----------------
   // Public: active coupons visible to all users (no auth required)

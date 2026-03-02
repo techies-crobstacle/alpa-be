@@ -5,6 +5,7 @@ async function paypalRoutes(fastify, options) {
   // ─── Webhook — must receive raw JSON body for signature verification.
   //     Register in its own scoped sub-plugin with a buffer content-type parser.
   fastify.register(async function webhookScope(fastify) {
+    fastify.removeContentTypeParser('application/json');
     fastify.addContentTypeParser(
       "application/json",
       { parseAs: "buffer" },
