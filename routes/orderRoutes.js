@@ -31,6 +31,7 @@
 const orderController = require("../controllers/orders");
 const { authenticateUser } = require("../middlewares/authMiddleware");
 const checkRole = require("../middlewares/checkRole");
+const guestRefundRateLimit = require("../middlewares/guestRefundRateLimit");
 
 async function orderRoutes(fastify, options) {
   // ---------------- USER ORDER ROUTES ----------------
@@ -43,6 +44,15 @@ async function orderRoutes(fastify, options) {
 
   // Cancel order
   fastify.put("/cancel/:id", { preHandler: authenticateUser }, orderController.cancelOrder);
+
+  // Request refund / partial refund (customer)
+  fastify.post("/refund-request/:id", { preHandler: authenticateUser }, orderController.requestRefund);
+
+  // Track all refund / partial refund requests for logged-in customer
+  fastify.get("/refund-requests", { preHandler: authenticateUser }, orderController.getMyRefundRequests);
+
+  // Track single refund request by request ID
+  fastify.get("/refund-requests/:requestId", { preHandler: authenticateUser }, orderController.getRefundRequestById);
 
   // Reorder - Add all items from previous order to cart
   fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
@@ -58,6 +68,15 @@ async function orderRoutes(fastify, options) {
 
   // Download guest invoice PDF (no authentication required)
   fastify.get("/guest/invoice", orderController.downloadGuestInvoice);
+
+  // Guest refund request create (no authentication; verified by orderId + customerEmail)
+  fastify.post("/guest/refund-request", { preHandler: guestRefundRateLimit }, orderController.requestGuestRefund);
+
+  // Guest refund request list tracking (no authentication; verified by orderId + customerEmail)
+  fastify.get("/guest/refund-requests", { preHandler: guestRefundRateLimit }, orderController.getGuestRefundRequests);
+
+  // Guest single refund request tracking (no authentication; verified by orderId + customerEmail)
+  fastify.get("/guest/refund-requests/:requestId", { preHandler: guestRefundRateLimit }, orderController.getGuestRefundRequestById);
 }
 
 module.exports = orderRoutes;

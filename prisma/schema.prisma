@@ -231,6 +231,7 @@ model Order {
   shippingPhone       String?
   trackingNumber    String?
   estimatedDelivery DateTime?
+  statusReason      String?
   customerName      String
   customerEmail     String
   customerPhone     String
@@ -291,8 +292,11 @@ model SiteFeedback {
 
 model SupportTicket {
   id          String        @id @default(cuid())
-  userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderId     String?
+  guestEmail  String?
+  requestType String?
   subject     String
   message     String
   status      TicketStatus  @default(OPEN)
@@ -304,6 +308,8 @@ model SupportTicket {
   updatedAt   DateTime      @updatedAt
 
   @@index([userId])
+  @@index([orderId])
+  @@index([guestEmail])
   @@index([status])
   @@map("support_tickets")
 }
@@ -384,6 +390,8 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
+  REFUND
+  PARTIAL_REFUND
 }
 
 enum PaymentStatus {

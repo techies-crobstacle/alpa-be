@@ -31,7 +31,9 @@ const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDet
     'processing': 'Your order is being prepared',
     'shipped': 'Your order has been shipped',
     'delivered': 'Your order has been delivered',
-    'cancelled': 'Your order has been cancelled'
+    'cancelled': 'Your order has been cancelled',
+    'refund': 'Your order has been refunded',
+    'partial_refund': 'Your order has been partially refunded'
   };
 
   const title = `Order ${status.charAt(0).toUpperCase() + status.slice(1)}`;

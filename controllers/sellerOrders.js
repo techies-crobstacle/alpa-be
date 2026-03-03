@@ -1,6 +1,11 @@
 const prisma = require("../config/prisma");
 const { sendOrderStatusEmail } = require("../utils/emailService");
 const { notifyCustomerOrderStatusChange, notifyAdminOrderStatusChange } = require("./notification");
+const {
+  normalizeOrderStatus,
+  validateStatusTransition,
+  VALID_TARGET_STATUSES
+} = require("../utils/orderStatusRules");
 
 const { 
   generateSalesReportCSV,
@@ -15,7 +20,9 @@ const mapStatusForDisplay = (dbStatus) => {
     'PROCESSING': 'processing',  // New status
     'SHIPPED': 'shipped',
     'DELIVERED': 'delivered',
-    'CANCELLED': 'cancelled'
+    'CANCELLED': 'cancelled',
+    'REFUND': 'refund',
+    'PARTIAL_REFUND': 'partial_refund'
   };
   return displayMap[dbStatus] || dbStatus.toLowerCase();
 };
@@ -73,20 +80,21 @@ exports.updateOrderStatus = async (request, reply) => {
     const userId = request.user.userId; // From auth middleware
     const userRole = request.user.role; // From auth middleware
     const { orderId } = request.params;
-    const { status } = request.body;
+    const {
+      status,
+      trackingNumber,
+      estimatedDelivery,
+      reason,
+      statusReason
+    } = request.body;
 
-    const statusMap = {
-      'confirmed': 'CONFIRMED',
-      'processing': 'PROCESSING',  // Now store as PROCESSING
-      'shipped': 'SHIPPED',
-      'delivered': 'DELIVERED',
-      'cancelled': 'CANCELLED'
-    };
-
-    const normalizedStatus = statusMap[status.toLowerCase()];
+    const normalizedStatus = normalizeOrderStatus(status);
     
     if (!normalizedStatus) {
-      return reply.status(400).send({ success: false, message: "Invalid status. Use: confirmed, processing, shipped, delivered, cancelled" });
+      return reply.status(400).send({
+        success: false,
+        message: `Invalid status. Allowed values: ${VALID_TARGET_STATUSES.join(', ')}`
+      });
     }
 
     const order = await prisma.order.findUnique({
@@ -111,9 +119,37 @@ exports.updateOrderStatus = async (request, reply) => {
       }
     }
 
+    const finalReason = (statusReason || reason || '').trim();
+    const transitionValidation = validateStatusTransition({
+      currentStatus: order.status,
+      nextStatus: normalizedStatus,
+      trackingNumber,
+      estimatedDelivery,
+      reason: finalReason
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
+    }
+
+    const updateData = {
+      status: normalizedStatus,
+      statusReason: ['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(normalizedStatus)
+        ? finalReason
+        : null
+    };
+
+    if (normalizedStatus === 'SHIPPED') {
+      updateData.trackingNumber = trackingNumber.trim();
+      updateData.estimatedDelivery = new Date(estimatedDelivery);
+    }
+
     await prisma.order.update({
       where: { id: orderId },
-      data: { status: normalizedStatus }
+      data: updateData
     });
 
     // Send email to customer about status update (supports both logged-in and guest orders)
@@ -124,7 +160,10 @@ exports.updateOrderStatus = async (request, reply) => {
       
       sendOrderStatusEmail(customerEmail, customerName, {
         orderId,
-        status,
+        status: normalizedStatus.toLowerCase(),
+        reason: finalReason || undefined,
+        trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined,
+        estimatedDelivery: normalizedStatus === 'SHIPPED' ? estimatedDelivery : undefined,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         orderDate: order.createdAt,
@@ -147,9 +186,12 @@ exports.updateOrderStatus = async (request, reply) => {
       // Create notification for customer (only for logged-in users)
       if (order.user?.id) {
         console.log(`🔔 Creating status change notification for customer ${order.user.id}: ${status}`);
-        notifyCustomerOrderStatusChange(order.user.id, orderId, status, {
+        notifyCustomerOrderStatusChange(order.user.id, orderId, normalizedStatus.toLowerCase(), {
           totalAmount: order.totalAmount.toString(),
-          itemCount: order.items.length
+          itemCount: order.items.length,
+          reason: finalReason || undefined,
+          trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined,
+          estimatedDelivery: normalizedStatus === 'SHIPPED' ? estimatedDelivery : undefined
         }).catch(error => {
           console.error("Customer notification error (non-blocking):", error.message);
         });
@@ -162,11 +204,14 @@ exports.updateOrderStatus = async (request, reply) => {
           select: { name: true }
         });
         
-        notifyAdminOrderStatusChange(orderId, status, {
+        notifyAdminOrderStatusChange(orderId, normalizedStatus.toLowerCase(), {
           customerName: customerName,
           sellerName: seller?.name || 'Unknown',
           totalAmount: order.totalAmount.toString(),
-          itemCount: order.items.length
+          itemCount: order.items.length,
+          reason: finalReason || undefined,
+          trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined,
+          estimatedDelivery: normalizedStatus === 'SHIPPED' ? estimatedDelivery : undefined
         }).catch(error => {
           console.error("Admin notification error (non-blocking):", error.message);
         });
@@ -176,7 +221,7 @@ exports.updateOrderStatus = async (request, reply) => {
     return reply.status(200).send({ 
       success: true, 
       message: "Order status updated successfully. Customer notified via email.",
-      updatedStatus: status  // Return the original status that was sent
+      updatedStatus: normalizedStatus
     });
   } catch (error) {
     console.error("Update order status error:", error);
@@ -212,6 +257,21 @@ exports.updateTrackingInfo = async (request, reply) => {
       if (!containsSellerItem) {
         return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
       }
+    }
+
+    const transitionValidation = validateStatusTransition({
+      currentStatus: order.status,
+      nextStatus: 'SHIPPED',
+      trackingNumber,
+      estimatedDelivery,
+      reason: null
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
     }
 
     await prisma.order.update({
