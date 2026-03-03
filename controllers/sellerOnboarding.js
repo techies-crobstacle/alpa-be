@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
+const { getDefaultCommission, getCommissionForSeller } = require("./commission");
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
@@ -259,6 +260,9 @@ exports.verifyOTP = async (request, reply) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Fetch default commission before transaction (for post-creation assignment)
+    const defaultCommission = await getDefaultCommission().catch(() => null);
+
     // Create user and seller profile in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create user
@@ -293,8 +297,20 @@ exports.verifyOTP = async (request, reply) => {
       return { user, sellerProfile };
     });
 
+    // Auto-assign the current default commission via raw SQL
+    // (Prisma client regeneration may be pending; raw SQL always works)
+    if (defaultCommission) {
+      await prisma.$executeRaw`
+        UPDATE seller_profiles SET commission_id = ${defaultCommission.id}
+        WHERE "userId" = ${result.user.id}
+      `.catch(err => console.error("Commission auto-assign error (non-fatal):", err.message));
+    }
+
     // Generate JWT token
     const token = generateSellerToken(result.user.id);
+
+    // Fetch default commission that was assigned (if any)
+    const assignedCommission = await getCommissionForSeller(result.user.id).catch(() => null);
 
     // Send registration confirmation email with application number (non-blocking)
     sendSellerRegistrationEmail(
@@ -312,9 +328,11 @@ exports.verifyOTP = async (request, reply) => {
       user: userWithoutPassword,
       sellerProfile: {
         ...result.sellerProfile,
-        applicationNumber: result.sellerProfile.id
+        applicationNumber: result.sellerProfile.id,
+        commission: assignedCommission || null
       },
       applicationNumber: result.sellerProfile.id,
+      commission: assignedCommission || null,
       token
     });
   } catch (error) {
@@ -379,13 +397,22 @@ exports.sellerLogin = async (request, reply) => {
     // Generate JWT token
     const token = generateSellerToken(user.id);
 
+    // Fetch commission assigned to this seller
+    const commission = await getCommissionForSeller(user.id).catch(() => null);
+
     // Remove password from response
     const { password: _, ...userWithoutPassword } = user;
 
     reply.status(200).send({
       success: true,
       message: "Login successful",
-      user: userWithoutPassword,
+      user: {
+        ...userWithoutPassword,
+        sellerProfile: userWithoutPassword.sellerProfile
+          ? { ...userWithoutPassword.sellerProfile, commission: commission || null }
+          : userWithoutPassword.sellerProfile
+      },
+      commission: commission || null,
       token,
       onboardingStatus: getCurrentStep(user.sellerProfile)
     });
@@ -860,17 +887,22 @@ exports.getProfile = async (request, reply) => {
     // Remove password
     const { password: _, ...userWithoutPassword } = user;
 
+    // Fetch commission assigned to this seller
+    const commission = await getCommissionForSeller(userId).catch(() => null);
+
     // Attach applicationNumber to sellerProfile in response
     if (userWithoutPassword.sellerProfile) {
       userWithoutPassword.sellerProfile = {
         ...userWithoutPassword.sellerProfile,
-        applicationNumber: userWithoutPassword.sellerProfile.id
+        applicationNumber: userWithoutPassword.sellerProfile.id,
+        commission: commission || null
       };
     }
 
     reply.status(200).send({
       success: true,
       applicationNumber: user.sellerProfile.id,
+      commission: commission || null,
       user: userWithoutPassword,
       onboardingStatus: getCurrentStep(user.sellerProfile)
     });

@@ -9,6 +9,7 @@ const {
   notifySellerLowStock
 } = require("./notification");
 const { backfillOrderNotifications } = require("./orderNotification");
+const { getCommissionForSeller } = require("./commission");
 const LOW_STOCK_THRESHOLD = 2;
 
 // SCAN & DEACTIVATE ALL LOW-STOCK PRODUCTS (Admin only)
@@ -160,38 +161,79 @@ exports.getAllUsers = async (request, reply) => {
 // GET ALL SELLERS (from seller_profiles)
 exports.getAllSellers = async (request, reply) => {
   try {
-    const sellers = await prisma.sellerProfile.findMany({
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            phone: true,
-            createdAt: true
-          }
-        }
-      }
-    });
+    const { status } = request.query || {};
 
-    const formattedSellers = sellers.map(seller => ({
-      id: seller.id,
-      applicationNumber: seller.id,
-      sellerId: seller.userId,
-      email: seller.user.email,
-      businessName: seller.businessName,
-      storeName: seller.storeName,
-      contactPerson: seller.user.name,
-      phone: seller.user.phone,
-      businessType: seller.businessType,
-      address: seller.businessAddress,
-      productCount: seller.productCount,
-      status: seller.status,
-      minimumProductsUploaded: seller.minimumProductsUploaded,
-      createdAt: seller.createdAt,
-      updatedAt: seller.updatedAt,
-      bankDetails: seller.bankDetails,
-      documents: seller.verificationDocs
+    let rows;
+    if (status) {
+      const upperStatus = status.toUpperCase();
+      rows = await prisma.$queryRaw`
+        SELECT sp.id, sp."userId" AS "sellerId", sp."businessName", sp."storeName",
+               sp."businessType", sp."businessAddress" AS address,
+               sp."productCount", sp.status::text AS status,
+               sp."minimumProductsUploaded", sp."onboardingStep",
+               sp."bankDetails", sp."kycSubmitted",
+               sp."createdAt", sp."updatedAt",
+               u.email, u.name AS "contactPerson", u.phone,
+               c.id AS "commission_id", c.title AS "commission_title",
+               c.type::text AS "commission_type", c.value AS "commission_value",
+               c.description AS "commission_description",
+               c."isDefault" AS "commission_isDefault",
+               c."isActive" AS "commission_isActive"
+        FROM seller_profiles sp
+        JOIN users u ON u.id = sp."userId"
+        LEFT JOIN commissions c ON c.id = sp.commission_id
+        WHERE sp.status::text = ${upperStatus}
+        ORDER BY sp."createdAt" DESC
+      `;
+    } else {
+      rows = await prisma.$queryRaw`
+        SELECT sp.id, sp."userId" AS "sellerId", sp."businessName", sp."storeName",
+               sp."businessType", sp."businessAddress" AS address,
+               sp."productCount", sp.status::text AS status,
+               sp."minimumProductsUploaded", sp."onboardingStep",
+               sp."bankDetails", sp."kycSubmitted",
+               sp."createdAt", sp."updatedAt",
+               u.email, u.name AS "contactPerson", u.phone,
+               c.id AS "commission_id", c.title AS "commission_title",
+               c.type::text AS "commission_type", c.value AS "commission_value",
+               c.description AS "commission_description",
+               c."isDefault" AS "commission_isDefault",
+               c."isActive" AS "commission_isActive"
+        FROM seller_profiles sp
+        JOIN users u ON u.id = sp."userId"
+        LEFT JOIN commissions c ON c.id = sp.commission_id
+        ORDER BY sp."createdAt" DESC
+      `;
+    }
+
+    const formattedSellers = rows.map(row => ({
+      id: row.id,
+      applicationNumber: row.id,
+      sellerId: row.sellerId,
+      email: row.email,
+      businessName: row.businessName,
+      storeName: row.storeName,
+      contactPerson: row.contactPerson,
+      phone: row.phone,
+      businessType: row.businessType,
+      address: row.address,
+      productCount: row.productCount,
+      status: row.status,
+      minimumProductsUploaded: row.minimumProductsUploaded,
+      onboardingStep: row.onboardingStep,
+      kycSubmitted: row.kycSubmitted,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      bankDetails: row.bankDetails,
+      commission: row.commission_id ? {
+        id: row.commission_id,
+        title: row.commission_title,
+        type: row.commission_type,
+        value: row.commission_value,
+        description: row.commission_description,
+        isDefault: row.commission_isDefault,
+        isActive: row.commission_isActive
+      } : null
     }));
 
     return reply.status(200).send({ 
@@ -263,6 +305,9 @@ exports.getSellerDetails = async (request, reply) => {
       }
     });
 
+    // Fetch commission assigned to this seller
+    const commission = await getCommissionForSeller(sellerId).catch(() => null);
+
     return reply.status(200).send({ 
       success: true, 
       seller: {
@@ -295,6 +340,9 @@ exports.getSellerDetails = async (request, reply) => {
         
         // Bank Details
         bankDetails: seller.bankDetails,
+        
+        // Commission
+        commission: commission || null,
         
         // Status & Metrics
         status: seller.status,
@@ -517,42 +565,56 @@ exports.getAllAdminProducts = async (request, reply) => {
 // GET PENDING SELLER APPROVALS
 exports.getPendingSellers = async (request, reply) => {
   try {
-    const pendingSellers = await prisma.sellerProfile.findMany({
-      where: { status: "PENDING" },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            phone: true
-          }
-        }
-      }
-    });
-    
-    const formattedSellers = pendingSellers.map(seller => ({
-      id: seller.id,
-      applicationNumber: seller.id,
-      sellerId: seller.userId,
-      email: seller.user.email,
-      businessName: seller.businessName,
-      storeName: seller.storeName,
-      contactPerson: seller.user.name,
-      phone: seller.user.phone,
-      abn: seller.abn,
-      businessAddress: seller.businessAddress,
-      businessType: seller.businessType,
-      artistName: seller.artistName,
-      storeDescription: seller.storeDescription,
-      storeLogo: seller.storeLogo,
-      kycSubmitted: seller.kycSubmitted,
-      onboardingStep: seller.onboardingStep,
-      submittedForReviewAt: seller.submittedForReviewAt,
-      productCount: seller.productCount,
-      status: seller.status,
-      createdAt: seller.createdAt,
-      updatedAt: seller.updatedAt
+    const rows = await prisma.$queryRaw`
+      SELECT sp.id, sp."userId" AS "sellerId", sp."businessName", sp."storeName",
+             sp."businessType", sp."businessAddress", sp."artistName",
+             sp."storeDescription", sp."storeLogo", sp.abn, sp."kycSubmitted",
+             sp."onboardingStep", sp."productCount", sp.status::text AS status,
+             sp."submittedForReviewAt", sp."createdAt", sp."updatedAt",
+             u.email, u.name, u.phone,
+             c.id AS "commission_id", c.title AS "commission_title",
+             c.type::text AS "commission_type", c.value AS "commission_value",
+             c.description AS "commission_description",
+             c."isDefault" AS "commission_isDefault",
+             c."isActive" AS "commission_isActive"
+      FROM seller_profiles sp
+      JOIN users u ON u.id = sp."userId"
+      LEFT JOIN commissions c ON c.id = sp.commission_id
+      WHERE sp.status = 'PENDING'
+      ORDER BY sp."createdAt" DESC
+    `;
+
+    const formattedSellers = rows.map(row => ({
+      id: row.id,
+      applicationNumber: row.id,
+      sellerId: row.sellerId,
+      email: row.email,
+      businessName: row.businessName,
+      storeName: row.storeName,
+      contactPerson: row.name,
+      phone: row.phone,
+      abn: row.abn,
+      businessAddress: row.businessAddress,
+      businessType: row.businessType,
+      artistName: row.artistName,
+      storeDescription: row.storeDescription,
+      storeLogo: row.storeLogo,
+      kycSubmitted: row.kycSubmitted,
+      onboardingStep: row.onboardingStep,
+      submittedForReviewAt: row.submittedForReviewAt,
+      productCount: row.productCount,
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      commission: row.commission_id ? {
+        id: row.commission_id,
+        title: row.commission_title,
+        type: row.commission_type,
+        value: row.commission_value,
+        description: row.commission_description,
+        isDefault: row.commission_isDefault,
+        isActive: row.commission_isActive
+      } : null
     }));
 
     return reply.status(200).send({ 

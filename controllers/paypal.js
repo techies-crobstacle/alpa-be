@@ -24,6 +24,7 @@ const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
 const { sendOrderConfirmationEmail } = require("../utils/emailService");
 const { notifyAdminNewOrder } = require("./notification");
+const { createOrderNotification } = require("./orderNotification");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PayPal API helpers
@@ -406,7 +407,7 @@ exports.captureOrder = async (request, reply) => {
     const sellerIdSet = [...new Set(order.items.map(i => i.product?.sellerId).filter(Boolean))];
     const sellerDisplayNames = await Promise.all(sellerIdSet.map(async sid => {
       const s = await prisma.user.findUnique({ where: { id: sid }, select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } } });
-      return s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || s?.name || 'Unknown';
+      return s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown';
     }));
     const productTitles = order.items.map(i => i.product?.title).filter(Boolean);
 
@@ -418,6 +419,17 @@ exports.captureOrder = async (request, reply) => {
       productNames: productTitles,
       orderId: order.id,
     }).catch((e) => console.error("Admin notification error (non-blocking):", e.message));
+
+    // ── Create SLA notifications for each seller ──────────────────────────
+    for (const sid of sellerIdSet) {
+      const sellerItems = order.items.filter(i => i.product?.sellerId === sid);
+      const itemCount = sellerItems.reduce((s, i) => s + i.quantity, 0);
+      const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
+      createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
+        message: `New order received from ${user?.name || 'Customer'}`,
+        notes: `${itemCount} item(s), Total: $${itemTotal.toFixed(2)}`
+      }).catch((e) => console.error("SLA notification error (non-blocking):", e.message));
+    }
 
     return reply.status(200).send({
       success: true,

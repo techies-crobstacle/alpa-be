@@ -54,17 +54,21 @@ const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDet
 
 // SELLER NOTIFICATIONS
 const notifySellerNewOrder = async (sellerId, orderId, orderDetails = {}) => {
-  const { customerName, totalAmount, itemCount } = orderDetails;
-  
+  const { customerName, totalAmount, itemCount, productNames } = orderDetails;
+
+  const productLine = productNames && productNames.length > 0
+    ? ` — Products: ${productNames.join(', ')}`
+    : '';
+
   const title = 'New Order Received!';
-  const message = `You received a new order from ${customerName || 'Customer'} for ${itemCount || 1} item(s) worth $${totalAmount || '0.00'}`;
+  const message = `You received a new order from ${customerName || 'Customer'} for ${itemCount || 1} item(s) worth $${totalAmount || '0.00'}${productLine}`;
 
   return await createNotification(
     sellerId,
     title,
     message,
     'NEW_ORDER',
-    orderId,
+    orderId,  
     'order',
     orderDetails
   );

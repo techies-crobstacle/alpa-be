@@ -3,6 +3,7 @@ const authMiddleware = require("../middlewares/auth");
 const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
 const feedbackController = require("../controllers/feedback");
+const commissionController = require("../controllers/commission");
 
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
@@ -90,6 +91,16 @@ async function adminRoutes(fastify, options) {
   // ---------------- REVENUE & ORDERS CHART ----------------
   // GET /admin/analytics/revenue-chart?period=7D|30D|1Y
   fastify.get("/analytics/revenue-chart", { preHandler: adminAuth }, adminController.getRevenueOrdersChart);
+
+  // ---------------- COMMISSION MANAGEMENT ----------------
+  fastify.get("/commissions",                         { preHandler: adminAuth }, commissionController.getAllCommissions);
+  fastify.get("/commissions/:id",                     { preHandler: adminAuth }, commissionController.getCommissionById);
+  fastify.post("/commissions",                        { preHandler: adminAuth }, commissionController.createCommission);
+  fastify.put("/commissions/:id",                     { preHandler: adminAuth }, commissionController.updateCommission);
+  fastify.put("/commissions/:id/set-default",         { preHandler: adminAuth }, commissionController.setDefaultCommission);
+  fastify.delete("/commissions/:id",                  { preHandler: adminAuth }, commissionController.deleteCommission);
+  // Assign a specific commission to a specific seller
+  fastify.put("/sellers/:sellerId/commission",        { preHandler: adminAuth }, commissionController.assignCommissionToSeller);
 
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
