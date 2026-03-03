@@ -406,7 +406,7 @@ exports.captureOrder = async (request, reply) => {
     const sellerIdSet = [...new Set(order.items.map(i => i.product?.sellerId).filter(Boolean))];
     const sellerDisplayNames = await Promise.all(sellerIdSet.map(async sid => {
       const s = await prisma.user.findUnique({ where: { id: sid }, select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } } });
-      return s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || s?.name || 'Unknown';
+      return s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown';
     }));
     const productTitles = order.items.map(i => i.product?.title).filter(Boolean);
 

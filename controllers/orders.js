@@ -347,12 +347,19 @@ exports.createOrder = async (request, reply) => {
     // Check for low stock on all ordered products and deactivate + alert if <= 2
     handleLowStockAlerts(cart.items.map(i => i.productId));
 
-    // Get seller names + product titles directly from the sellerNotifications map
-    // (product.sellerName is stored at product-creation time — no extra DB call needed)
-    const sellerNameList = [];
+    // Get seller names (DB lookup for accurate name) + product titles
+    const sellerIdList = [...sellerNotifications.keys()];
+    const sellerNameMap = new Map();
+    await Promise.all(sellerIdList.map(async sid => {
+      const s = await prisma.user.findUnique({
+        where: { id: sid },
+        select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } }
+      });
+      sellerNameMap.set(sid, s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown');
+    }));
+    const sellerNameList = [...sellerNameMap.values()];
     const allProductTitles = [];
-    for (const [sellerId, sellerData] of sellerNotifications) {
-      if (sellerData.sellerName) sellerNameList.push(sellerData.sellerName);
+    for (const [, sellerData] of sellerNotifications) {
       if (sellerData.products) {
         allProductTitles.push(...sellerData.products.map(p => p.title).filter(Boolean));
       }
@@ -480,7 +487,8 @@ exports.createOrder = async (request, reply) => {
             customerName: user.name,
             totalAmount: sellerData.totalAmount.toFixed(2),
             itemCount: sellerData.productCount,
-            sellerName: sellerName
+            sellerName: sellerName,
+            productNames: sellerData.products.map(p => p.title).filter(Boolean)
           }).catch(error => {
             console.error("Seller notification error (non-blocking):", error.message);
           });
@@ -1125,12 +1133,19 @@ exports.createGuestOrder = async (request, reply) => {
     // Check for low stock on all ordered products and deactivate + alert if <= 2
     handleLowStockAlerts(orderItems.map(i => i.productId));
 
-    // Get seller names + product titles directly from the sellerNotifications map
-    // (product.sellerName is stored at product-creation time — no extra DB call needed)
-    const guestSellerNameList = [];
+    // Get seller names (DB lookup for accurate name) + product titles
+    const guestSellerIdList = [...sellerNotifications.keys()];
+    const guestSellerNameMap = new Map();
+    await Promise.all(guestSellerIdList.map(async sid => {
+      const s = await prisma.user.findUnique({
+        where: { id: sid },
+        select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } }
+      });
+      guestSellerNameMap.set(sid, s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown');
+    }));
+    const guestSellerNameList = [...guestSellerNameMap.values()];
     const guestAllProductTitles = [];
-    for (const [sellerId, sellerData] of sellerNotifications) {
-      if (sellerData.sellerName) guestSellerNameList.push(sellerData.sellerName);
+    for (const [, sellerData] of sellerNotifications) {
       if (sellerData.products) {
         guestAllProductTitles.push(...sellerData.products.map(p => p.title).filter(Boolean));
       }
@@ -1233,7 +1248,8 @@ exports.createGuestOrder = async (request, reply) => {
             customerName,
             totalAmount: sellerData.totalAmount.toFixed(2),
             itemCount: sellerData.productCount,
-            sellerName: sellerName
+            sellerName: sellerName,
+            productNames: sellerData.products.map(p => p.title).filter(Boolean)
           }).catch(error => {
             console.error("Seller notification error (non-blocking):", error.message);
           });

@@ -143,6 +143,8 @@ model SellerProfile {
   adminNotes              String?
   productCount            Int           @default(0)
   minimumProductsUploaded Boolean       @default(false)
+  commissionId            String?       @map("commission_id")
+  commission              Commission?   @relation(fields: [commissionId], references: [id])
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -427,6 +429,28 @@ enum CategoryStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// Commission: admin-defined fee rules applied to sellers
+model Commission {
+  id          String         @id @default(cuid())
+  title       String
+  type        CommissionType
+  value       Decimal        @db.Decimal(10, 2)
+  description String?
+  isDefault   Boolean        @default(false)
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  sellers     SellerProfile[]
+
+  @@map("commissions")
+}
+
+enum CommissionType {
+  FIXED
+  PERCENTAGE
 }
 
 model Coupon {
