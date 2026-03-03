@@ -380,123 +380,109 @@ exports.createOrder = async (request, reply) => {
       console.error("Admin notification error (non-blocking):", error.message);
     });
 
-    // Send email to customer (non-blocking)
-    if (user.email) {
-      console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
-
-      // Generate invoice PDF to attach
-      const invoiceOrderForPDF = {
-        id: order.id,
-        createdAt: order.createdAt,
-        status: order.status,
-        customerName: order.customerName,
-        customerEmail: order.customerEmail,
-        customerPhone: order.customerPhone,
-        shippingAddressLine: order.shippingAddressLine,
-        shippingCity: city,
-        shippingState: state,
-        shippingZipCode: zipCode,
-        shippingCountry: country,
-        shippingPhone: mobileNumber,
-        totalAmount: order.totalAmount,
-        discountAmount: order.discountAmount,
-        couponCode: order.couponCode,
-        paymentMethod,
-        items: order.items
-      };
-      let invoicePDFBuffer = null;
+    // ── Fire all emails & notifications in background (non-blocking) ────────
+    // Reply is sent immediately below; PDF generation + all outbound calls
+    // run in the background so they never delay the API response.
+    ;(async () => {
       try {
-        invoicePDFBuffer = await generateInvoiceBuffer(invoiceOrderForPDF);
-      } catch (pdfErr) {
-        console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
-      }
-
-      sendOrderConfirmationEmail(user.email, user.name, {
-        orderId: order.id,
-        totalAmount,
-        itemCount: order.items.length,
-        products: order.items.map(item => ({
-          title: item.product.title,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        shippingAddress: shippingAddress,
-        orderSummary: {
-          subtotal: cartCalculations.subtotal,
-          subtotalExGST: cartCalculations.subtotalExGST,
-          shippingCost: cartCalculations.shippingCost,
-          gstPercentage: cartCalculations.gstPercentage,
-          gstAmount: cartCalculations.gstAmount,
-          grandTotal: cartCalculations.grandTotal,
-          gstInclusive: true,
-          shippingMethod: {
-            name: shippingMethod.name,
-            cost: shippingMethod.cost,
-            estimatedDays: shippingMethod.estimatedDays
+        // 1. Customer confirmation email (with PDF attachment)
+        if (user.email) {
+          console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
+          let invoicePDFBuffer = null;
+          try {
+            invoicePDFBuffer = await generateInvoiceBuffer({
+              id: order.id,
+              createdAt: order.createdAt,
+              status: order.status,
+              customerName: order.customerName,
+              customerEmail: order.customerEmail,
+              customerPhone: order.customerPhone,
+              shippingAddressLine: order.shippingAddressLine,
+              shippingCity: city,
+              shippingState: state,
+              shippingZipCode: zipCode,
+              shippingCountry: country,
+              shippingPhone: mobileNumber,
+              totalAmount: order.totalAmount,
+              discountAmount: order.discountAmount,
+              couponCode: order.couponCode,
+              paymentMethod,
+              items: order.items
+            });
+          } catch (pdfErr) {
+            console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
           }
-        },
-        invoicePDFBuffer
-      }).catch(error => {
-        console.error("Email error (non-blocking):", error.message);
-      });
-    }
-
-    // Send email to each seller (non-blocking)
-    for (const [sellerId, sellerData] of sellerNotifications) {
-      try {
-        const seller = await prisma.user.findUnique({
-          where: { id: sellerId },
-          include: { sellerProfile: true }
-        });
-
-        if (seller && seller.email && seller.sellerProfile) {
-          const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
-          console.log(`📧 Sending order notification email to seller: ${seller.email}`);
-
-          // Create order notification with SLA tracking
-          createOrderNotification(
-            order.id,
-            sellerId,
-            'ORDER_PROCESSING',
-            'HIGH',
-            {
-              message: `New order received from ${user.name}`,
-              notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
-            }
-          ).catch(error => {
-            console.error("Order notification creation error (non-blocking):", error.message);
-          });
-          
-          // Send email notification
-          sendSellerOrderNotificationEmail(seller.email, sellerName, {
+          sendOrderConfirmationEmail(user.email, user.name, {
             orderId: order.id,
-            productCount: sellerData.productCount,
-            totalAmount: sellerData.totalAmount,
-            products: sellerData.products,
+            totalAmount,
+            itemCount: order.items.length,
+            products: order.items.map(item => ({
+              title: item.product.title,
+              quantity: item.quantity,
+              price: item.price
+            })),
             shippingAddress,
-            paymentMethod,
-            customerName: user.name,
-            customerEmail: user.email,
-            customerPhone: user.phone
-          }).catch(error => {
-            console.error("Seller email error (non-blocking):", error.message);
-          });
-
-          // Create notification for seller
-          notifySellerNewOrder(sellerId, order.id, {
-            customerName: user.name,
-            totalAmount: sellerData.totalAmount.toFixed(2),
-            itemCount: sellerData.productCount,
-            sellerName: sellerName,
-            productNames: sellerData.products.map(p => p.title).filter(Boolean)
-          }).catch(error => {
-            console.error("Seller notification error (non-blocking):", error.message);
-          });
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
+              shippingCost: cartCalculations.shippingCost,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              gstInclusive: true,
+              shippingMethod: {
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays
+              }
+            },
+            invoicePDFBuffer
+          }).catch(e => console.error("Customer email error:", e.message));
         }
-      } catch (error) {
-        console.error(`Error notifying seller ${sellerId}:`, error.message);
+
+        // 2. Seller emails + SLA notifications — all DB lookups in parallel
+        await Promise.all([...sellerNotifications.entries()].map(async ([sellerId, sellerData]) => {
+          try {
+            const seller = await prisma.user.findUnique({
+              where: { id: sellerId },
+              include: { sellerProfile: true }
+            });
+            if (seller) {
+              createOrderNotification(order.id, sellerId, 'ORDER_PROCESSING', 'HIGH', {
+                message: `New order received from ${user.name}`,
+                notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
+              }).catch(e => console.error("SLA notification error:", e.message));
+            }
+            if (seller && seller.email && seller.sellerProfile) {
+              const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+              console.log(`📧 Sending order notification email to seller: ${seller.email}`);
+              sendSellerOrderNotificationEmail(seller.email, sellerName, {
+                orderId: order.id,
+                productCount: sellerData.productCount,
+                totalAmount: sellerData.totalAmount,
+                products: sellerData.products,
+                shippingAddress,
+                paymentMethod,
+                customerName: user.name,
+                customerEmail: user.email,
+                customerPhone: user.phone
+              }).catch(e => console.error("Seller email error:", e.message));
+              notifySellerNewOrder(sellerId, order.id, {
+                customerName: user.name,
+                totalAmount: sellerData.totalAmount.toFixed(2),
+                itemCount: sellerData.productCount,
+                sellerName,
+                productNames: sellerData.products.map(p => p.title).filter(Boolean)
+              }).catch(e => console.error("Seller notification error:", e.message));
+            }
+          } catch (err) {
+            console.error(`Error notifying seller ${sellerId}:`, err.message);
+          }
+        }));
+      } catch (bgErr) {
+        console.error('Background notification error:', bgErr.message);
       }
-    }
+    })();
 
     return reply.status(200).send({
       success: true,
@@ -1166,98 +1152,85 @@ exports.createGuestOrder = async (request, reply) => {
       console.error("Admin notification error (non-blocking):", error.message);
     });
 
-    // Send email to guest customer (non-blocking)
-    console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
-    sendOrderConfirmationEmail(customerEmail, customerName, {
-      orderId: order.id,
-      totalAmount,
-      itemCount: order.items.length,
-      products: order.items.map(item => ({
-        title: item.product.title,
-        quantity: item.quantity,
-        price: item.price
-      })),
-      shippingAddress: shippingAddress, // Original shipping address without order summary
-      paymentMethod,
-      customerPhone,
-      isGuest: true,
-      // Include order breakdown for invoice
-      orderSummary: {
-        subtotal: cartCalculations.subtotal,
-        subtotalExGST: cartCalculations.subtotalExGST,
-        shippingCost: cartCalculations.shippingCost,
-        gstPercentage: cartCalculations.gstPercentage,
-        gstAmount: cartCalculations.gstAmount,
-        grandTotal: cartCalculations.grandTotal,
-        couponCode: appliedCoupon ? appliedCoupon.code : null,
-        discountAmount: discountAmount > 0 ? discountAmount : null,
-        shippingMethod: {
-          name: shippingMethod.name,
-          cost: shippingMethod.cost,
-          estimatedDays: shippingMethod.estimatedDays
-        }
-      }
-    }).catch(error => {
-      console.error("Email error (non-blocking):", error.message);
-    });
-
-    // Send email to each seller (non-blocking)
-    for (const [sellerId, sellerData] of sellerNotifications) {
+    // ── Fire all emails & notifications in background (non-blocking) ────────
+    ;(async () => {
       try {
-        const seller = await prisma.user.findUnique({
-          where: { id: sellerId },
-          include: { sellerProfile: true }
-        });
-
-        if (seller && seller.email && seller.sellerProfile) {
-          const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
-          console.log(`📧 Sending order notification email to seller: ${seller.email}`);
-
-          // Create order notification with SLA tracking
-          createOrderNotification(
-            order.id,
-            sellerId,
-            'ORDER_PROCESSING',
-            'HIGH',
-            {
-              message: `New guest order received from ${customerName}`,
-              notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
+        // 1. Guest customer confirmation email
+        console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
+        sendOrderConfirmationEmail(customerEmail, customerName, {
+          orderId: order.id,
+          totalAmount,
+          itemCount: order.items.length,
+          products: order.items.map(item => ({
+            title: item.product.title,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          shippingAddress,
+          paymentMethod,
+          customerPhone,
+          isGuest: true,
+          orderSummary: {
+            subtotal: cartCalculations.subtotal,
+            subtotalExGST: cartCalculations.subtotalExGST,
+            shippingCost: cartCalculations.shippingCost,
+            gstPercentage: cartCalculations.gstPercentage,
+            gstAmount: cartCalculations.gstAmount,
+            grandTotal: cartCalculations.grandTotal,
+            couponCode: appliedCoupon ? appliedCoupon.code : null,
+            discountAmount: discountAmount > 0 ? discountAmount : null,
+            shippingMethod: {
+              name: shippingMethod.name,
+              cost: shippingMethod.cost,
+              estimatedDays: shippingMethod.estimatedDays
             }
-          ).catch(error => {
-            console.error("Order notification creation error (non-blocking):", error.message);
-          });
-          
-          // Send email notification
-          sendSellerOrderNotificationEmail(seller.email, sellerName, {
-            orderId: order.id,
-            productCount: sellerData.productCount,
-            totalAmount: sellerData.totalAmount,
-            products: sellerData.products,
-            shippingAddress,
-            paymentMethod,
-            customerName,
-            customerEmail,
-            customerPhone,
-            isGuest: true
-          }).catch(error => {
-            console.error("Seller email error (non-blocking):", error.message);
-          });
+          }
+        }).catch(e => console.error("Guest customer email error:", e.message));
 
-          // Create notification for seller
-          notifySellerNewOrder(sellerId, order.id, {
-            customerName,
-            totalAmount: sellerData.totalAmount.toFixed(2),
-            itemCount: sellerData.productCount,
-            sellerName: sellerName,
-            productNames: sellerData.products.map(p => p.title).filter(Boolean)
-          }).catch(error => {
-            console.error("Seller notification error (non-blocking):", error.message);
-          });
-        }
-      } catch (error) {
-        console.error(`Error notifying seller ${sellerId}:`, error.message);
+        // 2. Seller emails + SLA notifications — all DB lookups in parallel
+        await Promise.all([...sellerNotifications.entries()].map(async ([sellerId, sellerData]) => {
+          try {
+            const seller = await prisma.user.findUnique({
+              where: { id: sellerId },
+              include: { sellerProfile: true }
+            });
+            if (seller) {
+              createOrderNotification(order.id, sellerId, 'ORDER_PROCESSING', 'HIGH', {
+                message: `New guest order received from ${customerName}`,
+                notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
+              }).catch(e => console.error("SLA notification error:", e.message));
+            }
+            if (seller && seller.email && seller.sellerProfile) {
+              const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+              console.log(`📧 Sending order notification email to seller: ${seller.email}`);
+              sendSellerOrderNotificationEmail(seller.email, sellerName, {
+                orderId: order.id,
+                productCount: sellerData.productCount,
+                totalAmount: sellerData.totalAmount,
+                products: sellerData.products,
+                shippingAddress,
+                paymentMethod,
+                customerName,
+                customerEmail,
+                customerPhone,
+                isGuest: true
+              }).catch(e => console.error("Seller email error:", e.message));
+              notifySellerNewOrder(sellerId, order.id, {
+                customerName,
+                totalAmount: sellerData.totalAmount.toFixed(2),
+                itemCount: sellerData.productCount,
+                sellerName,
+                productNames: sellerData.products.map(p => p.title).filter(Boolean)
+              }).catch(e => console.error("Seller notification error:", e.message));
+            }
+          } catch (err) {
+            console.error(`Error notifying seller ${sellerId}:`, err.message);
+          }
+        }));
+      } catch (bgErr) {
+        console.error('Background notification error (guest):', bgErr.message);
       }
-    }
+    })();
 
     return reply.status(200).send({
       success: true,
