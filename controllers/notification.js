@@ -251,6 +251,34 @@ const notifyAdminNewProduct = async (productId, productDetails = {}) => {
   return notifications;
 };
 
+const notifyAdminProductPending = async (productId, productDetails = {}) => {
+  const { productTitle, sellerName } = productDetails;
+
+  const title = 'Product Pending Review';
+  const message = `Seller ${sellerName || 'Unknown'} updated product "${productTitle || 'Untitled'}" — it requires your review and approval`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'NEW_PRODUCT_SUBMITTED',
+      productId,
+      'product',
+      productDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
 // ADMIN NOTIFICATION FOR ORDER STATUS CHANGES
 const notifyAdminOrderStatusChange = async (orderId, status, orderDetails = {}) => {
   const { customerName, sellerName, totalAmount, itemCount } = orderDetails;
@@ -406,5 +434,6 @@ module.exports = {
   notifySellerProductRecommendation,
   notifyAdminNewOrder,
   notifyAdminNewProduct,
+  notifyAdminProductPending,
   notifyAdminOrderStatusChange
 };

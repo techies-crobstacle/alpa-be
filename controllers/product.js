@@ -2,9 +2,10 @@ const prisma = require("../config/prisma");
 const {
   notifySellerProductStatusChange,
   notifySellerLowStock,
-  notifyAdminNewProduct
+  notifyAdminNewProduct,
+  notifyAdminProductPending
 } = require("./notification");
-const { sendSellerLowStockEmail } = require("../utils/emailService");
+const { sendSellerLowStockEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
 const auditLogger = require("../utils/auditLogger");
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
 
@@ -536,6 +537,36 @@ exports.updateProduct = async (request, reply) => {
       } else {
         console.warn(`⚠️  [Low Stock] No email for seller ${product.sellerId} — email skipped`);
       }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Notify admin when seller edit sends product back to PENDING ───────
+    if (userRole === "SELLER" && newStatus === "PENDING") {
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true }
+      });
+      const pendingDetails = {
+        productTitle: title || product.title,
+        sellerName: sellerUser?.name || 'Unknown'
+      };
+
+      notifyAdminProductPending(request.params.id, pendingDetails)
+        .catch(e => console.error('Admin product-pending notification error:', e.message));
+
+      prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+        .then(admins => {
+          for (const admin of admins) {
+            if (admin.email) {
+              sendAdminProductPendingEmail(admin.email, admin.name, {
+                productTitle: pendingDetails.productTitle,
+                sellerName: pendingDetails.sellerName,
+                productId: request.params.id
+              }).catch(e => console.error('Admin product-pending email error:', e.message));
+            }
+          }
+        })
+        .catch(e => console.error('Admin product-pending email lookup error:', e.message));
     }
     // ─────────────────────────────────────────────────────────────────────────
 
