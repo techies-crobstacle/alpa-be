@@ -1893,6 +1893,36 @@ exports.getProductAuditHistory = async (request, reply) => {
   try {
     const { productId } = request.params;
     const { page = 1, limit = 50 } = request.query;
+    const callerRole = request.user?.role;
+    const callerId   = request.user?.userId;
+
+    // ── Role gate: only ADMIN or SELLER may call this endpoint ───────────────
+    if (callerRole !== 'ADMIN' && callerRole !== 'SELLER') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin or Seller account required.',
+      });
+    }
+
+    // ── Seller ownership check ────────────────────────────────────────────────
+    // Sellers may only view audit logs for their own products.
+    if (callerRole === 'SELLER') {
+      const product = await prisma.product.findUnique({
+        where:  { id: productId },
+        select: { sellerId: true },
+      });
+
+      if (!product) {
+        return reply.status(404).send({ success: false, message: 'Product not found.' });
+      }
+
+      if (product.sellerId !== callerId) {
+        return reply.status(403).send({
+          success: false,
+          message: 'You do not have permission to view audit logs for this product.',
+        });
+      }
+    }
 
     const take = Math.min(Number(limit), 200);
     const skip = (Number(page) - 1) * take;
@@ -1907,10 +1937,15 @@ exports.getProductAuditHistory = async (request, reply) => {
       prisma.auditLog.count({ where: { entityType: 'PRODUCT', entityId: productId } }),
     ]);
 
+    // ── Strip internal-only fields from seller responses ─────────────────────
+    const data = callerRole === 'SELLER'
+      ? logs.map(({ actorIp, userAgent, requestId, ...entry }) => entry)
+      : logs;
+
     return reply.send({
       success: true,
       productId,
-      data:    logs,
+      data,
       meta: {
         total,
         page:  Number(page),
