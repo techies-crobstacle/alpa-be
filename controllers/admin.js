@@ -1491,13 +1491,22 @@ exports.approveProduct = async (request, reply) => {
 
     // Send email to seller about product approval
     if (product.seller?.email) {
-      console.log(`📧 [approveProduct] Sending approval email to ${product.seller.email}`);
-      sendSellerProductApprovedEmail(product.seller.email, product.seller.name, {
-        productTitle: product.title,
-        productId
-      }).catch(e => console.error('Seller product approved email error:', e.message));
+      console.log(`📧 [approveProduct] Sending approval email to seller ${product.seller.email}`);
+      try {
+        const result = await sendSellerProductApprovedEmail(product.seller.email, product.seller.name, {
+          productTitle: product.title,
+          productId
+        });
+        if (result.success) {
+          console.log(`✅ [approveProduct] Approval email sent to ${product.seller.email}`);
+        } else {
+          console.error(`❌ [approveProduct] Email failed for ${product.seller.email}:`, result.error);
+        }
+      } catch (emailErr) {
+        console.error(`❌ [approveProduct] Email error for ${product.seller.email}:`, emailErr.message);
+      }
     } else {
-      console.warn(`⚠️  [approveProduct] No seller email found for product ${productId} — seller email skipped`);
+      console.warn(`⚠️  [approveProduct] No seller email for product ${productId} — email skipped`);
     }
 
     // Fetch updated product with featuredImage via raw SQL
@@ -1584,14 +1593,23 @@ exports.rejectProduct = async (request, reply) => {
 
     // Send email to seller about product rejection
     if (product.seller?.email) {
-      console.log(`📧 [rejectProduct] Sending rejection email to ${product.seller.email}`);
-      sendSellerProductRejectedEmail(product.seller.email, product.seller.name, {
-        productTitle: product.title,
-        reason: reason || 'No specific reason provided',
-        productId
-      }).catch(e => console.error('Seller product rejected email error:', e.message));
+      console.log(`📧 [rejectProduct] Sending rejection email to seller ${product.seller.email}`);
+      try {
+        const result = await sendSellerProductRejectedEmail(product.seller.email, product.seller.name, {
+          productTitle: product.title,
+          reason: reason || 'No specific reason provided',
+          productId
+        });
+        if (result.success) {
+          console.log(`✅ [rejectProduct] Rejection email sent to ${product.seller.email}`);
+        } else {
+          console.error(`❌ [rejectProduct] Email failed for ${product.seller.email}:`, result.error);
+        }
+      } catch (emailErr) {
+        console.error(`❌ [rejectProduct] Email error for ${product.seller.email}:`, emailErr.message);
+      }
     } else {
-      console.warn(`⚠️  [rejectProduct] No seller email found for product ${productId} — seller email skipped`);
+      console.warn(`⚠️  [rejectProduct] No seller email for product ${productId} — email skipped`);
     }
 
     reply.send({

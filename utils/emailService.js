@@ -854,14 +854,16 @@ const buildMsg = (msg) => {
     .replace(/(\s*\n\s*){3,}/g, '\n\n')
     .trim();
 
-  const replyTo = process.env.REPLY_TO_EMAIL || senderEmail;
+  const replyToEmail = process.env.REPLY_TO_EMAIL || senderEmail;
   const unsubscribeEmail = process.env.UNSUBSCRIBE_EMAIL || senderEmail;
 
   return {
     ...msg,
     text,
+    // SendGrid requires replyTo as a dedicated field — NOT inside headers
+    replyTo: { email: replyToEmail, name: senderName },
     headers: {
-      'Reply-To': replyTo,
+      // List-Unsubscribe is allowed as a custom header
       'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>`,
       ...(msg.headers || {}),
     },
