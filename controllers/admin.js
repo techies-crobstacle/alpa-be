@@ -44,7 +44,7 @@ exports.scanLowStockProducts = async (request, reply) => {
       // Deactivate
       await prisma.$executeRaw`
         UPDATE "products"
-        SET "isActive" = false, status = 'INACTIVE'
+        SET "isActive" = false, status = 'INACTIVE'::"ProductStatus"
         WHERE id = ${product.id}
       `;
 

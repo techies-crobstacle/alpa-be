@@ -622,7 +622,7 @@ exports.deleteProduct = async (request, reply) => {
           "deletedBy"     = ${userId},
           "deletedByRole" = ${userRole},
           "isActive"      = false,
-          status          = 'INACTIVE'
+          status          = 'INACTIVE'::"ProductStatus"
       WHERE id = ${request.params.id}
     `;
 
@@ -720,7 +720,7 @@ exports.restoreProduct = async (request, reply) => {
           "deletedBy"     = NULL,
           "deletedByRole" = NULL,
           "isActive"      = false,
-          status          = ${restoredStatus}
+          status          = ${restoredStatus}::"ProductStatus"
       WHERE id = ${productId}
     `;
 
