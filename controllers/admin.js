@@ -1,6 +1,6 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
-const { sendSellerApprovedEmail, sendSellerLowStockEmail } = require("../utils/emailService");
+const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail } = require("../utils/emailService");
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
@@ -1488,6 +1488,14 @@ exports.approveProduct = async (request, reply) => {
     // Send notification to seller about product approval
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
+    // Send email to seller about product approval
+    if (product.seller?.email) {
+      sendSellerProductApprovedEmail(product.seller.email, product.seller.name, {
+        productTitle: product.title,
+        productId
+      }).catch(e => console.error('Seller product approved email error:', e.message));
+    }
+
     // Fetch updated product with featuredImage via raw SQL
     const rows = await prisma.$queryRaw`
       SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
@@ -1568,6 +1576,15 @@ exports.rejectProduct = async (request, reply) => {
 
     // Send notification to seller about product rejection
     await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
+
+    // Send email to seller about product rejection
+    if (product.seller?.email) {
+      sendSellerProductRejectedEmail(product.seller.email, product.seller.name, {
+        productTitle: product.title,
+        reason: reason || 'No specific reason provided',
+        productId
+      }).catch(e => console.error('Seller product rejected email error:', e.message));
+    }
 
     reply.send({
       success: true,

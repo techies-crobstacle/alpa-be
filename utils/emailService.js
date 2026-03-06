@@ -832,6 +832,47 @@ const isDevelopmentMode = !emailConfigured;
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
 const senderName = process.env.SENDER_NAME || 'MIA Marketplace';
 
+/**
+ * Enhances every outgoing SendGrid message with:
+ *  - A plain-text body (required for spam-filter compliance)
+ *  - Reply-To / List-Unsubscribe headers (deliverability signals)
+ * Call this instead of sgMail.send(msg) directly.
+ */
+const buildMsg = (msg) => {
+  // Strip HTML to produce a plain-text alternative
+  const text = (msg.html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/(\s*\n\s*){3,}/g, '\n\n')
+    .trim();
+
+  const replyTo = process.env.REPLY_TO_EMAIL || senderEmail;
+  const unsubscribeEmail = process.env.UNSUBSCRIBE_EMAIL || senderEmail;
+
+  return {
+    ...msg,
+    text,
+    headers: {
+      'Reply-To': replyTo,
+      'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>`,
+      ...(msg.headers || {}),
+    },
+  };
+};
+
+// Wrap sgMail.send so every outgoing message automatically gets
+// plain-text body + Reply-To + List-Unsubscribe headers
+const _sgMailSend = sgMail.send.bind(sgMail);
+sgMail.send = (msg, ...args) => _sgMailSend(buildMsg(msg), ...args);
+
 // Generate 6-digit OTP
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -1246,7 +1287,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-    subject: `Order Update â€” #${orderDetails.orderId?.slice(-8)}`,
+        subject: `Order Update: #${orderDetails.orderId?.slice(-8)} — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1413,7 +1454,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `🎉 New Order #${orderDetails.orderId}`,
+    subject: `New Order Received: #${orderDetails.orderId} — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1623,7 +1664,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `🚨 ${notificationType} Required - Order #${orderId?.slice(-8)}`,
+      subject: `Action Required: ${notificationType} — Order #${orderId?.slice(-8)} — MIA Marketplace`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -1729,7 +1770,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Application Has Been Submitted â€” Alpa Art Marketplace",
+        subject: "Your Seller Application Has Been Submitted — MIA Marketplace",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1940,7 +1981,7 @@ const sendSellerApprovedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Congratulations! Your Seller Account Has Been Approved",
+    subject: "Your Seller Account Has Been Approved — MIA Marketplace",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2064,7 +2105,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: `⚠️ Low Stock Alert: "${productTitle}" — MIA Marketplace`,
+        subject: `Low Stock Alert: "${productTitle}" — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2174,6 +2215,339 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   }
 };
 
+// Send Admin Product Pending Review Email
+const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitle, sellerName, productId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Admin Product Pending");
+    console.log("=".repeat(50));
+    console.log(`To: ${adminEmail} | Admin: ${adminName} | Product: ${productTitle} | Seller: ${sellerName}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.ADMIN_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/products/${productId || ''}`;
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+        subject: `Product Pending Review: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#128276; Product Pending Review</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has updated a product that requires your approval</p>
+                </td>
+              </tr>
+              <!-- Status banner -->
+              <tr>
+                <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#9201; Awaiting Admin Approval</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted an updated product that is now <strong style="color:#5A1E12;">pending your review</strong>. Please log in to the admin dashboard to approve or reject the listing.</p>
+
+                  <!-- Product details box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:8px 0;border-bottom:1px solid #ECD5CF;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:120px;">Product Title</span>
+                          <span style="color:#333;font-size:14px;">${productTitle || 'Untitled'}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:120px;">Seller Name</span>
+                          <span style="color:#333;font-size:14px;">${sellerName || 'Unknown'}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <!-- Action note -->
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; Action Required</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Visit the admin dashboard to review the product images, description, and details — then approve or reject the listing.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Review Product</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Admin product pending email sent to ${adminEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Admin product pending email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send Seller Product Approved Email
+const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { productTitle, productId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Approved");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const productUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products/${productId || ''}`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+        subject: `Product Approved: "${productTitle}" is Now Live — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; Product Approved!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your artwork is now live on the marketplace</p>
+                </td>
+              </tr>
+              <!-- Approved banner -->
+              <tr>
+                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10003; Product Approved &amp; Active</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! Your product has been reviewed and <strong style="color:#4CAF50;">approved</strong> by our team. It is now visible to customers on the MIA Marketplace.</p>
+
+                  <!-- Product box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #4CAF50;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Approved Product</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+
+                  <!-- What's next -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What's Next?</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#128247;</span>
+                          <span style="color:#555;font-size:14px;">Customers can now browse and purchase your artwork</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#128276;</span>
+                          <span style="color:#555;font-size:14px;">You'll be notified when an order is placed</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#128176;</span>
+                          <span style="color:#555;font-size:14px;">Earnings will be credited after the order is fulfilled</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Keep your stock levels updated so the listing stays active. Products with zero stock are automatically hidden from the marketplace.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Product</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller product approved email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller product approved email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Send Seller Product Rejected Email
+const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { productTitle, reason, productId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Rejected");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Reason: ${reason}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+        subject: `Product Review: "${productTitle}" Requires Changes — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Review Update</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product listing requires some changes</p>
+                </td>
+              </tr>
+              <!-- Rejected banner -->
+              <tr>
+                <td style="background-color:#C62828;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10007; Product Not Approved — Action Required</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for submitting your product. After reviewing your listing, our team has requested some changes before it can go live on the marketplace. Please review the feedback below and update your listing accordingly.</p>
+
+                  <!-- Product box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C62828;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Under Review</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+
+                  <!-- Reason box -->
+                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #C62828;margin-bottom:24px;">
+                    <p style="margin:0 0 10px;color:#C62828;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">&#128221; Feedback from Admin</p>
+                    <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${reason || 'No specific reason was provided. Please contact support if you need clarification.'}</p>
+                  </div>
+
+                  <!-- What to do next -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">How to Resubmit</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#49;&#65039;&#8419;</span>
+                          <span style="color:#555;font-size:14px;">Log in to your seller dashboard</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#50;&#65039;&#8419;</span>
+                          <span style="color:#555;font-size:14px;">Find this product and edit the listing based on the feedback above</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;">
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#51;&#65039;&#8419;</span>
+                          <span style="color:#555;font-size:14px;">Save your changes — the product will be resubmitted for review automatically</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; Need Help?</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you have any questions about the feedback or need assistance, please contact our support team. We're here to help you get your artwork listed successfully.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Edit My Products</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller product rejected email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller product rejected email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
@@ -2197,7 +2571,10 @@ module.exports = {
   sendSellerApplicationSubmittedEmail,
   sendSellerApprovedEmail,
   sendSellerRegistrationEmail,
-  sendSellerLowStockEmail
+  sendSellerLowStockEmail,
+  sendAdminProductPendingEmail,
+  sendSellerProductApprovedEmail,
+  sendSellerProductRejectedEmail
 };
 
 
