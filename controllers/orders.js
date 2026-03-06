@@ -636,6 +636,45 @@ exports.cancelOrder = async (request, reply) => {
       where: { id: userId }
     });
 
+    // ── In-app notifications — always fire regardless of email ─────────────
+    // Notify the customer
+    notifyCustomerOrderStatusChange(userId, orderId, "cancelled", {
+      totalAmount: order.totalAmount.toString(),
+      itemCount: order.items?.length || 0,
+      reason: finalReason
+    }).catch(error => {
+      console.error("Customer cancel notification error (non-blocking):", error.message);
+    });
+
+    // Notify all sellers whose products are in this cancelled order
+    const cancelledSellerIds = [...new Set(
+      order.items.map(item => item.product?.sellerId).filter(Boolean)
+    )];
+    const readableOrderId = orderId.slice(-8).toUpperCase();
+    for (const sellerId of cancelledSellerIds) {
+      const sellerProducts = order.items
+        .filter(item => item.product?.sellerId === sellerId)
+        .map(item => item.product?.title || 'Product');
+      prisma.notification.create({
+        data: {
+          userId: sellerId,
+          title: 'Order Cancelled by Customer',
+          message: `Customer ${order.customerName || 'Customer'} cancelled order #${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
+          type: 'ORDER_CANCELLED',
+          relatedId: orderId,
+          relatedType: 'order',
+          metadata: {
+            orderId,
+            reason: finalReason,
+            customerName: order.customerName,
+            cancelledProducts: sellerProducts
+          }
+        }
+      }).catch(err => console.error(`Seller cancel notification error (sellerId=${sellerId}):`, err.message));
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Email (only when email address is available) ──────────────────────
     if (user && user.email) {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
 
@@ -688,41 +727,6 @@ exports.cancelOrder = async (request, reply) => {
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
-
-      notifyCustomerOrderStatusChange(user.id, orderId, "cancelled", {
-        totalAmount: order.totalAmount.toString(),
-        itemCount: order.items?.length || 0,
-        reason: finalReason
-      }).catch(error => {
-        console.error("Customer notification error (non-blocking):", error.message);
-      });
-
-      // Notify all sellers whose products are in this cancelled order
-      const cancelledSellerIds = [...new Set(
-        order.items.map(item => item.product?.sellerId).filter(Boolean)
-      )];
-      const readableOrderId = orderId.slice(-8).toUpperCase();
-      for (const sellerId of cancelledSellerIds) {
-        const sellerProducts = order.items
-          .filter(item => item.product?.sellerId === sellerId)
-          .map(item => item.product?.title || 'Product');
-        prisma.notification.create({
-          data: {
-            userId: sellerId,
-            title: 'Order Cancelled by Customer',
-            message: `Customer ${order.customerName || 'Customer'} cancelled order #${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
-            type: 'ORDER_CANCELLED',
-            relatedId: orderId,
-            relatedType: 'order',
-            metadata: {
-              orderId,
-              reason: finalReason,
-              customerName: order.customerName,
-              cancelledProducts: sellerProducts
-            }
-          }
-        }).catch(err => console.error(`Seller cancel notification error (sellerId=${sellerId}):`, err.message));
-      }
     }
 
     return reply.status(200).send({ success: true, message: "Order cancelled successfully. Email notification sent." });
