@@ -393,6 +393,15 @@ exports.createOrder = async (request, reply) => {
       });
     }
 
+    // Notify customer about their placed order (fired before reply — guaranteed delivery)
+    notifyCustomerOrderStatusChange(userId, order.id, 'confirmed', {
+      totalAmount: totalAmount.toFixed(2),
+      itemCount: order.items.length,
+      productNames: allProductTitles
+    }).catch(error => {
+      console.error('Customer order placed notification error:', error.message);
+    });
+
     // ── Fire all emails & notifications in background (non-blocking) ────────
     // Reply is sent immediately below; PDF generation + all outbound calls
     // run in the background so they never delay the API response.
@@ -1793,6 +1802,8 @@ exports.createGuestOrder = async (request, reply) => {
         console.error(`Seller order notification error (sellerId=${sellerId}):`, error.message);
       });
     }
+    // Guest orders: no in-app customer notification (guest has no user account / userId)
+    // Guest receives email confirmation instead.
 
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
