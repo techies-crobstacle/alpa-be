@@ -5,6 +5,8 @@ const {
   notifyAdminNewProduct
 } = require("./notification");
 const { sendSellerLowStockEmail } = require("../utils/emailService");
+const auditLogger = require("../utils/auditLogger");
+const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
 
 const LOW_STOCK_THRESHOLD = 2;
 
@@ -140,6 +142,15 @@ exports.addProduct = async (request, reply) => {
       await prisma.$executeRaw`UPDATE "products" SET "featuredImage" = ${featuredImageUrl} WHERE "id" = ${product.id}`;
     }
 
+    // ── Audit log: product created ────────────────────────────────────────────
+    auditLog({
+      entityType: ENTITY_TYPES.PRODUCT,
+      entityId:   product.id,
+      action:     AUDIT_ACTIONS.PRODUCT_CREATED,
+      newData:    { ...product, isActive, featuredImage: featuredImageUrl },
+      ...extractRequestMeta(request),
+    });
+
     // Update seller product count
     await prisma.sellerProfile.update({
       where: { userId: sellerId },
@@ -154,6 +165,17 @@ exports.addProduct = async (request, reply) => {
       await prisma.$executeRaw`UPDATE "products" SET "isActive" = false, status = 'INACTIVE' WHERE id = ${product.id}`;
       isActive = false;
       console.log(`⚠️  New product "${product.title}" auto-deactivated on add — stock: ${stock}`);
+
+      // ── Audit log: auto-deactivated due to low stock ───────────────────────
+      auditLog({
+        entityType:   ENTITY_TYPES.PRODUCT,
+        entityId:     product.id,
+        action:       AUDIT_ACTIONS.PRODUCT_AUTO_DEACTIVATED_LOW_STOCK,
+        previousData: { ...product, isActive: true },
+        newData:      { ...product, isActive: false, status: 'INACTIVE' },
+        reason:       `Stock (${stock}) at or below low-stock threshold (${LOW_STOCK_THRESHOLD})`,
+        ...extractRequestMeta(request),
+      });
 
       const sellerUser = await prisma.user.findUnique({
         where: { id: sellerId },
@@ -452,6 +474,16 @@ exports.updateProduct = async (request, reply) => {
       await prisma.$executeRaw`UPDATE "products" SET "featuredImage" = ${featuredImageUrl} WHERE "id" = ${request.params.id}`;
     }
 
+    // ── Audit log: product updated ────────────────────────────────────────────
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     request.params.id,
+      action:       AUDIT_ACTIONS.PRODUCT_UPDATED,
+      previousData: product,
+      newData:      updatedProduct,
+      ...extractRequestMeta(request),
+    });
+
     // ── Low stock auto-deactivation ──────────────────────────────────────────
     // Work out the effective stock after this update
     const finalStock = (stock !== undefined && stock !== '') ? stock : product.stock;
@@ -464,6 +496,17 @@ exports.updateProduct = async (request, reply) => {
       `;
       newIsActive = false;
       console.log(`⚠️  Product "${updatedProduct.title}" auto-deactivated — stock: ${finalStock}`);
+
+      // ── Audit log: auto-deactivated due to low stock ───────────────────────
+      auditLog({
+        entityType:   ENTITY_TYPES.PRODUCT,
+        entityId:     request.params.id,
+        action:       AUDIT_ACTIONS.PRODUCT_AUTO_DEACTIVATED_LOW_STOCK,
+        previousData: { ...updatedProduct, isActive: true },
+        newData:      { ...updatedProduct, isActive: false, status: 'INACTIVE' },
+        reason:       `Stock (${finalStock}) at or below low-stock threshold (${LOW_STOCK_THRESHOLD})`,
+        ...extractRequestMeta(request),
+      });
 
       // Fetch seller email for notification
       const sellerUser = await prisma.user.findUnique({
@@ -535,6 +578,16 @@ exports.deleteProduct = async (request, reply) => {
     if (userRole !== "ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
     }
+
+    // ── Audit log: product deleted (capture snapshot BEFORE deletion) ─────────
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     request.params.id,
+      action:       AUDIT_ACTIONS.PRODUCT_DELETED,
+      previousData: product,
+      reason:       request.body?.reason ?? null,
+      ...extractRequestMeta(request),
+    });
 
     await prisma.product.delete({
       where: { id: request.params.id }

@@ -105,6 +105,12 @@ async function adminRoutes(fastify, options) {
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
   fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);
+
+  // ---------------- AUDIT LOGS (immutable, read-only) ----------------
+  // GET /admin/audit-logs?entityType=PRODUCT&action=PRODUCT_APPROVED&from=2026-01-01&page=1&limit=50
+  fastify.get("/audit-logs", { preHandler: adminAuth }, adminController.getAuditLogs);
+  // GET /admin/audit-logs/products/:productId  — full history for one product
+  fastify.get("/audit-logs/products/:productId", { preHandler: adminAuth }, adminController.getProductAuditHistory);
 } 
 
 module.exports = adminRoutes;

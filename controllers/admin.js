@@ -10,6 +10,7 @@ const {
 } = require("./notification");
 const { backfillOrderNotifications } = require("./orderNotification");
 const { getCommissionForSeller } = require("./commission");
+const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = require("../utils/auditLogger");
 const LOW_STOCK_THRESHOLD = 2;
 
 // SCAN & DEACTIVATE ALL LOW-STOCK PRODUCTS (Admin only)
@@ -1466,6 +1467,16 @@ exports.approveProduct = async (request, reply) => {
     // Update isActive using raw SQL since client doesn't recognize it yet
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
 
+    // ── Audit log: product approved ───────────────────────────────────────
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     productId,
+      action:       AUDIT_ACTIONS.PRODUCT_APPROVED,
+      previousData: product,
+      newData:      { ...product, status: 'ACTIVE', isActive: true, rejectionReason: null },
+      ...extractRequestMeta(request),
+    });
+
     // Send notification to seller about product approval
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
@@ -1536,6 +1547,17 @@ exports.rejectProduct = async (request, reply) => {
     // isActive managed outside Prisma schema regeneration — keep via raw SQL
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
 
+    // ── Audit log: product rejected ───────────────────────────────────────
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     productId,
+      action:       AUDIT_ACTIONS.PRODUCT_REJECTED,
+      previousData: product,
+      newData:      { ...product, status: 'REJECTED', isActive: false, rejectionReason: reason || 'No reason provided' },
+      reason:       reason || 'No reason provided',
+      ...extractRequestMeta(request),
+    });
+
     // Send notification to seller about product rejection
     await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
 
@@ -1570,6 +1592,16 @@ exports.activateProduct = async (request, reply) => {
     });
 
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
+
+    // ── Audit log: product activated ──────────────────────────────────────
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     productId,
+      action:       AUDIT_ACTIONS.PRODUCT_ACTIVATED,
+      previousData: product,
+      newData:      { ...product, status: 'ACTIVE', isActive: true },
+      ...extractRequestMeta(request),
+    });
 
     // Send notification to seller
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
@@ -1607,6 +1639,17 @@ exports.deactivateProduct = async (request, reply) => {
     });
 
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
+
+    // ── Audit log: product deactivated ────────────────────────────────────
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     productId,
+      action:       AUDIT_ACTIONS.PRODUCT_DEACTIVATED,
+      previousData: product,
+      newData:      { ...product, status: 'INACTIVE', isActive: false },
+      reason:       reason || null,
+      ...extractRequestMeta(request),
+    });
 
     // Send notification to seller
     await notifySellerProductStatusChange(product.sellerId, productId, "INACTIVE", product.title, reason);
@@ -1647,6 +1690,16 @@ exports.bulkApproveProducts = async (request, reply) => {
 
     // Update isActive using raw SQL for bulk approval
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ANY(${productIds})`;
+
+    // ── Audit log: bulk approved ─────────────────────────────────────────────
+    auditLog({
+      entityType: ENTITY_TYPES.PRODUCT,
+      entityId:   'BULK',
+      action:     AUDIT_ACTIONS.PRODUCT_BULK_APPROVED,
+      newData:    { productIds, approvedCount: result.count },
+      reason:     `Bulk approval of ${result.count} product(s)`,
+      ...extractRequestMeta(request),
+    });
 
     reply.send({
       success: true,
@@ -1772,6 +1825,105 @@ exports.backfillOrderNotifications = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
+// ==================== AUDIT LOG QUERIES (Admin only) ====================
+
+/**
+ * GET /admin/audit-logs
+ * Query params: entityType, entityId, actorId, action, from, to, page, limit
+ */
+exports.getAuditLogs = async (request, reply) => {
+  try {
+    const {
+      entityType,
+      entityId,
+      actorId,
+      action,
+      from,
+      to,
+      page  = 1,
+      limit = 50,
+    } = request.query;
+
+    const where = {};
+    if (entityType) where.entityType = entityType;
+    if (entityId)   where.entityId   = entityId;
+    if (actorId)    where.actorId    = actorId;
+    if (action)     where.action     = action;
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to)   where.createdAt.lte = new Date(to);
+    }
+
+    const take = Math.min(Number(limit), 200); // hard cap
+    const skip = (Number(page) - 1) * take;
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.auditLog.count({ where }),
+    ]);
+
+    return reply.send({
+      success: true,
+      data:    logs,
+      meta: {
+        total,
+        page:  Number(page),
+        limit: take,
+        pages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('Get audit logs error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+/**
+ * GET /admin/audit-logs/products/:productId
+ * Full immutable history for a single product, newest first.
+ */
+exports.getProductAuditHistory = async (request, reply) => {
+  try {
+    const { productId } = request.params;
+    const { page = 1, limit = 50 } = request.query;
+
+    const take = Math.min(Number(limit), 200);
+    const skip = (Number(page) - 1) * take;
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where:   { entityType: 'PRODUCT', entityId: productId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.auditLog.count({ where: { entityType: 'PRODUCT', entityId: productId } }),
+    ]);
+
+    return reply.send({
+      success: true,
+      productId,
+      data:    logs,
+      meta: {
+        total,
+        page:  Number(page),
+        limit: take,
+        pages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('Get product audit history error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 
 
 
