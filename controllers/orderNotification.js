@@ -8,6 +8,11 @@ const {
   sendSellerOrderNotificationEmail,
   sendSLAWarningEmail 
 } = require("../utils/emailService");
+const {
+  normalizeOrderStatus,
+  validateStatusTransition,
+  VALID_TARGET_STATUSES
+} = require("../utils/orderStatusRules");
 
 // CREATE ORDER NOTIFICATION
 const createOrderNotification = async (orderId, sellerId, type, priority = 'MEDIUM', additionalData = {}) => {
@@ -212,21 +217,41 @@ exports.getSellerNotifications = async (request, reply) => {
 exports.updateOrderStatus = async (request, reply) => {
   try {
     const { orderId } = request.params;
-    const { status, notes, trackingNumber } = request.body;
-    const sellerId = request.user.userId;
+    const {
+      status,
+      notes,
+      trackingNumber,
+      estimatedDelivery,
+      reason,
+      statusReason
+    } = request.body;
+    const authenticatedUserId = request.user.userId;
+    const userRole = request.user.role;
+    const normalizedStatus = normalizeOrderStatus(status);
 
-    // Verify seller owns this order
-    const order = await prisma.order.findFirst({
-      where: { 
-        id: orderId,
+    if (!normalizedStatus) {
+      return reply.status(400).send({
+        success: false,
+        message: `Invalid status. Allowed values: ${VALID_TARGET_STATUSES.join(', ')}`
+      });
+    }
+
+    const orderWhere = {
+      id: orderId,
+      ...(userRole === 'ADMIN' ? {} : {
         items: {
           some: {
             product: {
-              sellerId
+              sellerId: authenticatedUserId
             }
           }
         }
-      },
+      })
+    };
+
+    // Verify authorization: admin can update any order, seller only their own products' orders
+    const order = await prisma.order.findFirst({
+      where: orderWhere,
       include: {
         items: {
           include: {
@@ -243,14 +268,34 @@ exports.updateOrderStatus = async (request, reply) => {
       });
     }
 
+    const finalReason = (statusReason || reason || '').trim();
+    const transitionValidation = validateStatusTransition({
+      currentStatus: order.status,
+      nextStatus: normalizedStatus,
+      trackingNumber,
+      estimatedDelivery,
+      reason: finalReason
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
+    }
+
     // Update order status
     const updateData = { 
-      status,
+      status: normalizedStatus,
+      statusReason: ['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(normalizedStatus)
+        ? finalReason
+        : null,
       updatedAt: new Date()
     };
     
-    if (trackingNumber) {
-      updateData.trackingNumber = trackingNumber;
+    if (normalizedStatus === 'SHIPPED') {
+      updateData.trackingNumber = trackingNumber.trim();
+      updateData.estimatedDelivery = new Date(estimatedDelivery);
     }
 
     const updatedOrder = await prisma.order.update({
@@ -262,18 +307,25 @@ exports.updateOrderStatus = async (request, reply) => {
     await prisma.orderNotification.updateMany({
       where: {
         orderId,
-        sellerId,
+        ...(userRole === 'ADMIN' ? {} : { sellerId: authenticatedUserId }),
         status: 'PENDING'
       },
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
-        notes: notes || `Order status updated to ${status}`
+        notes: notes || `Order status updated to ${normalizedStatus}`
       }
     });
 
     // Create next workflow notification based on new status
-    await createWorkflowNotification(orderId, sellerId, status);
+    if (userRole === 'ADMIN') {
+      const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
+      for (const sellerId of sellerIds) {
+        await createWorkflowNotification(orderId, sellerId, normalizedStatus);
+      }
+    } else {
+      await createWorkflowNotification(orderId, authenticatedUserId, normalizedStatus);
+    }
 
     return reply.status(200).send({
       success: true,
@@ -583,10 +635,12 @@ const backfillOrderNotifications = async () => {
           PROCESSING: 'SHIPPING_PREPARATION',
           SHIPPED:    'ORDER_SHIPPED',
           DELIVERED:  'ORDER_DELIVERED',
-          CANCELLED:  'ORDER_CANCELLED'
+          CANCELLED:  'ORDER_CANCELLED',
+          REFUND:     'ORDER_CANCELLED',
+          PARTIAL_REFUND: 'ORDER_CANCELLED'
         };
         const type = typeMap[order.status] || 'ORDER_PROCESSING';
-        const isComplete = ['DELIVERED', 'CANCELLED'].includes(order.status);
+        const isComplete = ['DELIVERED', 'CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(order.status);
 
         await prisma.orderNotification.create({
           data: {

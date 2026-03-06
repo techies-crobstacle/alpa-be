@@ -1181,6 +1181,10 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       statusMessage = "Your order has been confirmed! We are now preparing it for you. &#9989;";
       statusColor = "#4CAF50";
       break;
+    case "processing":
+      statusMessage = "Your order is now being processed and prepared for shipping. &#128230;";
+      statusColor = "#B05E2A";
+      break;
     case "packed":
       statusMessage = "Your order has been packed and is ready for shipping! &#128230;";
       statusColor = "#B05E2A";
@@ -1196,6 +1200,14 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
     case "cancelled":
       statusMessage = "Your order has been cancelled. If you paid online, a refund will be processed within 3&#8211;5 business days.";
       statusColor = "#A03020";
+      break;
+    case "refund":
+      statusMessage = "Your order has been fully refunded. The amount will reflect in your account as per your payment provider timeline.";
+      statusColor = "#2E7D32";
+      break;
+    case "partial_refund":
+      statusMessage = "A partial refund has been issued for your order. Please check your account for the credited amount.";
+      statusColor = "#6B4C9A";
       break;
     default:
       statusMessage = `Your order status has been updated to: <strong>${orderDetails.status}</strong>`;

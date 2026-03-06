@@ -1273,7 +1273,14 @@ exports.getSalesAnalytics = async (request, reply) => {
     let totalOrders = orders.length;
     let totalItemsSold = 0;
     let statusBreakdown = {
-      PENDING: 0, CONFIRMED: 0, PROCESSING: 0, SHIPPED: 0, DELIVERED: 0, CANCELLED: 0
+      PENDING: 0,
+      CONFIRMED: 0,
+      PROCESSING: 0,
+      SHIPPED: 0,
+      DELIVERED: 0,
+      CANCELLED: 0,
+      REFUND: 0,
+      PARTIAL_REFUND: 0
     };
     let productSales = {};
     let topProducts = [];

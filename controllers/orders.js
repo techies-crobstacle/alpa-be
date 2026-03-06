@@ -14,6 +14,7 @@ const {
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
 const { calculateCartTotals } = require("./cart");
+const { normalizeOrderStatus, validateStatusTransition } = require("../utils/orderStatusRules");
 const PDFDocument = require('pdfkit');
 
 // ─── Low Stock Alert Helper ───────────────────────────────────────────────────
@@ -564,6 +565,7 @@ exports.cancelOrder = async (request, reply) => {
   try {
     const orderId = request.params.id;
     const userId = request.user.userId;
+    const { reason, statusReason } = request.body || {};
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -584,9 +586,34 @@ exports.cancelOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
     }
 
+    const finalReason = (statusReason || reason || '').trim();
+
+    if (!finalReason) {
+      return reply.status(400).send({
+        success: false,
+        message: "Reason is required for order cancellation request"
+      });
+    }
+
+    const transitionValidation = validateStatusTransition({
+      currentStatus: order.status === 'PENDING' ? 'CONFIRMED' : order.status,
+      nextStatus: 'CANCELLED',
+      reason: finalReason
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
+    }
+
     await prisma.order.update({
       where: { id: orderId },
-      data: { status: "CANCELLED" }
+      data: {
+        status: "CANCELLED",
+        statusReason: finalReason
+      }
     });
 
     // Send email notification about cancellation
@@ -626,6 +653,7 @@ exports.cancelOrder = async (request, reply) => {
       sendOrderStatusEmail(user.email, user.name, {
         orderId,
         status: "cancelled",
+        reason: finalReason,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         orderDate: order.createdAt,
@@ -648,7 +676,8 @@ exports.cancelOrder = async (request, reply) => {
 
       notifyCustomerOrderStatusChange(user.id, orderId, "cancelled", {
         totalAmount: order.totalAmount.toString(),
-        itemCount: order.items?.length || 0
+        itemCount: order.items?.length || 0,
+        reason: finalReason
       }).catch(error => {
         console.error("Customer notification error (non-blocking):", error.message);
       });
@@ -658,6 +687,574 @@ exports.cancelOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Cancel order error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+const formatRefundRequestFromTicket = (ticket) => {
+  const message = ticket.message || '';
+  const orderIdMatch = message.match(/Order ID:\s*(.+)/i);
+  const requestTypeMatch = message.match(/Request Type:\s*(.+)/i);
+  const reasonMatch = message.match(/Reason:\s*([\s\S]+)/i);
+
+  return {
+    id: ticket.id,
+    requestId: ticket.id,
+    orderId: ticket.orderId || orderIdMatch?.[1]?.trim() || null,
+    requestType: ticket.requestType || requestTypeMatch?.[1]?.trim() || null,
+    reason: reasonMatch?.[1]?.trim() || null,
+    guestEmail: ticket.guestEmail || null,
+    status: ticket.status,
+    priority: ticket.priority,
+    adminResponse: ticket.response,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt
+  };
+};
+
+// USER — REQUEST REFUND / PARTIAL REFUND
+exports.requestRefund = async (request, reply) => {
+  try {
+    const orderId = request.params.id;
+    const userId = request.user.userId;
+    const { requestType, reason, statusReason } = request.body || {};
+
+    const normalizedRequestType = normalizeOrderStatus(requestType);
+    if (!['REFUND', 'PARTIAL_REFUND'].includes(normalizedRequestType)) {
+      return reply.status(400).send({
+        success: false,
+        message: "Invalid requestType. Use: refund or partial_refund"
+      });
+    }
+
+    const finalReason = (statusReason || reason || '').trim();
+    if (!finalReason) {
+      return reply.status(400).send({
+        success: false,
+        message: `Reason is required for ${normalizedRequestType} request`
+      });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                sellerId: true,
+                title: true
+              }
+            }
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: "Order not found" });
+    }
+
+    if (order.userId !== userId) {
+      return reply.status(403).send({ success: false, message: "Not authorized" });
+    }
+
+    if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(order.status)) {
+      return reply.status(400).send({
+        success: false,
+        message: `Refund request cannot be initiated for order in ${order.status} status`
+      });
+    }
+
+    const transitionValidation = validateStatusTransition({
+      currentStatus: order.status,
+      nextStatus: normalizedRequestType,
+      reason: finalReason
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
+    }
+
+    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Refund Request' : 'Partial Refund Request';
+    const readableOrderId = orderId.slice(-8).toUpperCase();
+    const supportTicket = await prisma.supportTicket.create({
+      data: {
+        userId,
+        orderId,
+        requestType: normalizedRequestType,
+        subject: `${ticketTitle} for Order #${readableOrderId}`,
+        message: `Order ID: ${orderId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}`,
+        category: 'REFUND_REQUEST',
+        priority: 'MEDIUM'
+      }
+    });
+
+    const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN' },
+      select: { id: true }
+    });
+
+    const notificationTitle = `${ticketTitle} Submitted`;
+    const notificationMessage = `Customer ${order.customerName || order.user?.name || 'Customer'} requested ${normalizedRequestType} for order #${readableOrderId}.`;
+    const metadata = {
+      orderId,
+      requestType: normalizedRequestType,
+      reason: finalReason,
+      supportTicketId: supportTicket.id,
+      totalAmount: order.totalAmount?.toString()
+    };
+
+    // Notify admins
+    for (const admin of admins) {
+      await prisma.notification.create({
+        data: {
+          userId: admin.id,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'GENERAL',
+          relatedId: orderId,
+          relatedType: 'order',
+          metadata
+        }
+      });
+    }
+
+    // Notify sellers involved in this order
+    for (const sellerId of sellerIds) {
+      await prisma.notification.create({
+        data: {
+          userId: sellerId,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'GENERAL',
+          relatedId: orderId,
+          relatedType: 'order',
+          metadata
+        }
+      });
+    }
+
+    // Acknowledge customer request
+    await prisma.notification.create({
+      data: {
+        userId,
+        title: `${ticketTitle} Received`,
+        message: `Your ${normalizedRequestType.toLowerCase()} request for order #${readableOrderId} has been submitted and is under review.`,
+        type: 'GENERAL',
+        relatedId: orderId,
+        relatedType: 'order',
+        metadata
+      }
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: `${ticketTitle} submitted successfully`,
+      request: {
+        id: supportTicket.id,
+        orderId,
+        requestType: normalizedRequestType,
+        reason: finalReason,
+        supportTicketId: supportTicket.id,
+        status: supportTicket.status,
+        createdAt: supportTicket.createdAt
+      }
+    });
+  } catch (error) {
+    console.error("Refund request error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// USER — TRACK MY REFUND / PARTIAL REFUND REQUESTS
+exports.getMyRefundRequests = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+
+    const requests = await prisma.supportTicket.findMany({
+      where: {
+        userId,
+        category: 'REFUND_REQUEST'
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        orderId: true,
+        guestEmail: true,
+        requestType: true,
+        subject: true,
+        message: true,
+        status: true,
+        priority: true,
+        response: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    const formattedRequests = requests.map(formatRefundRequestFromTicket);
+
+    return reply.status(200).send({
+      success: true,
+      requests: formattedRequests,
+      count: formattedRequests.length
+    });
+  } catch (error) {
+    console.error('Get refund requests error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// USER — TRACK SINGLE REFUND REQUEST DETAILS
+exports.getRefundRequestById = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+    const { requestId } = request.params;
+
+    const ticket = await prisma.supportTicket.findFirst({
+      where: {
+        id: requestId,
+        userId,
+        category: 'REFUND_REQUEST'
+      },
+      select: {
+        id: true,
+        orderId: true,
+        guestEmail: true,
+        requestType: true,
+        subject: true,
+        message: true,
+        status: true,
+        priority: true,
+        response: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    if (!ticket) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Refund request not found'
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      request: formatRefundRequestFromTicket(ticket)
+    });
+  } catch (error) {
+    console.error('Get refund request by id error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// GUEST — REQUEST REFUND / PARTIAL REFUND
+exports.requestGuestRefund = async (request, reply) => {
+  try {
+    const { orderId, customerEmail, requestType, reason, statusReason } = request.body || {};
+
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({
+        success: false,
+        message: 'orderId and customerEmail are required'
+      });
+    }
+
+    const normalizedRequestType = normalizeOrderStatus(requestType);
+    if (!['REFUND', 'PARTIAL_REFUND'].includes(normalizedRequestType)) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Invalid requestType. Use: refund or partial_refund'
+      });
+    }
+
+    const finalReason = (statusReason || reason || '').trim();
+    if (!finalReason) {
+      return reply.status(400).send({
+        success: false,
+        message: `Reason is required for ${normalizedRequestType} request`
+      });
+    }
+
+    const normalizedEmail = customerEmail.trim().toLowerCase();
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                sellerId: true,
+                title: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: 'Order not found' });
+    }
+
+    if (order.userId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'This endpoint is for guest orders only'
+      });
+    }
+
+    if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
+      return reply.status(403).send({ success: false, message: 'Email does not match order' });
+    }
+
+    if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(order.status)) {
+      return reply.status(400).send({
+        success: false,
+        message: `Refund request cannot be initiated for order in ${order.status} status`
+      });
+    }
+
+    const transitionValidation = validateStatusTransition({
+      currentStatus: order.status,
+      nextStatus: normalizedRequestType,
+      reason: finalReason
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
+    }
+
+    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Refund Request' : 'Partial Refund Request';
+    const readableOrderId = orderId.slice(-8).toUpperCase();
+
+    const supportTicket = await prisma.supportTicket.create({
+      data: {
+        userId: null,
+        orderId,
+        guestEmail: normalizedEmail,
+        requestType: normalizedRequestType,
+        subject: `${ticketTitle} for Order #${readableOrderId}`,
+        message: `Order ID: ${orderId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}`,
+        category: 'REFUND_REQUEST',
+        priority: 'MEDIUM'
+      }
+    });
+
+    const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN' },
+      select: { id: true }
+    });
+
+    const notificationTitle = `${ticketTitle} Submitted`;
+    const notificationMessage = `Guest customer ${order.customerName || 'Customer'} requested ${normalizedRequestType} for order #${readableOrderId}.`;
+    const metadata = {
+      orderId,
+      requestType: normalizedRequestType,
+      reason: finalReason,
+      supportTicketId: supportTicket.id,
+      guestEmail: normalizedEmail,
+      totalAmount: order.totalAmount?.toString()
+    };
+
+    for (const admin of admins) {
+      await prisma.notification.create({
+        data: {
+          userId: admin.id,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'GENERAL',
+          relatedId: orderId,
+          relatedType: 'order',
+          metadata
+        }
+      });
+    }
+
+    for (const sellerId of sellerIds) {
+      await prisma.notification.create({
+        data: {
+          userId: sellerId,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'GENERAL',
+          relatedId: orderId,
+          relatedType: 'order',
+          metadata
+        }
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: `${ticketTitle} submitted successfully`,
+      request: {
+        id: supportTicket.id,
+        requestId: supportTicket.id,
+        orderId,
+        requestType: normalizedRequestType,
+        reason: finalReason,
+        guestEmail: normalizedEmail,
+        status: supportTicket.status,
+        createdAt: supportTicket.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Guest refund request error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// GUEST — TRACK REFUND REQUESTS BY ORDER + EMAIL
+exports.getGuestRefundRequests = async (request, reply) => {
+  try {
+    const { orderId, customerEmail } = request.query;
+
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({
+        success: false,
+        message: 'orderId and customerEmail are required'
+      });
+    }
+
+    const normalizedEmail = customerEmail.trim().toLowerCase();
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: 'Order not found' });
+    }
+
+    if (order.userId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'This endpoint is for guest orders only'
+      });
+    }
+
+    if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
+      return reply.status(403).send({ success: false, message: 'Email does not match order' });
+    }
+
+    const requests = await prisma.supportTicket.findMany({
+      where: {
+        category: 'REFUND_REQUEST',
+        orderId,
+        guestEmail: normalizedEmail
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        orderId: true,
+        guestEmail: true,
+        requestType: true,
+        subject: true,
+        message: true,
+        status: true,
+        priority: true,
+        response: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    const formattedRequests = requests.map(formatRefundRequestFromTicket);
+
+    return reply.status(200).send({
+      success: true,
+      requests: formattedRequests,
+      count: formattedRequests.length
+    });
+  } catch (error) {
+    console.error('Get guest refund requests error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// GUEST — TRACK SINGLE REFUND REQUEST BY REQUEST ID + ORDER + EMAIL
+exports.getGuestRefundRequestById = async (request, reply) => {
+  try {
+    const { requestId } = request.params;
+    const { orderId, customerEmail } = request.query;
+
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({
+        success: false,
+        message: 'orderId and customerEmail are required'
+      });
+    }
+
+    const normalizedEmail = customerEmail.trim().toLowerCase();
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: 'Order not found' });
+    }
+
+    if (order.userId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'This endpoint is for guest orders only'
+      });
+    }
+
+    if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
+      return reply.status(403).send({ success: false, message: 'Email does not match order' });
+    }
+
+    const ticket = await prisma.supportTicket.findFirst({
+      where: {
+        id: requestId,
+        category: 'REFUND_REQUEST',
+        orderId,
+        guestEmail: normalizedEmail
+      },
+      select: {
+        id: true,
+        orderId: true,
+        guestEmail: true,
+        requestType: true,
+        subject: true,
+        message: true,
+        status: true,
+        priority: true,
+        response: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    if (!ticket) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Refund request not found'
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      request: formatRefundRequestFromTicket(ticket)
+    });
+  } catch (error) {
+    console.error('Get guest refund request by id error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
