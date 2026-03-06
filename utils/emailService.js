@@ -832,6 +832,47 @@ const isDevelopmentMode = !emailConfigured;
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
 const senderName = process.env.SENDER_NAME || 'MIA Marketplace';
 
+/**
+ * Enhances every outgoing SendGrid message with:
+ *  - A plain-text body (required for spam-filter compliance)
+ *  - Reply-To / List-Unsubscribe headers (deliverability signals)
+ * Call this instead of sgMail.send(msg) directly.
+ */
+const buildMsg = (msg) => {
+  // Strip HTML to produce a plain-text alternative
+  const text = (msg.html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&#\d+;/g, '')
+    .replace(/&[a-z]+;/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/(\s*\n\s*){3,}/g, '\n\n')
+    .trim();
+
+  const replyTo = process.env.REPLY_TO_EMAIL || senderEmail;
+  const unsubscribeEmail = process.env.UNSUBSCRIBE_EMAIL || senderEmail;
+
+  return {
+    ...msg,
+    text,
+    headers: {
+      'Reply-To': replyTo,
+      'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>`,
+      ...(msg.headers || {}),
+    },
+  };
+};
+
+// Wrap sgMail.send so every outgoing message automatically gets
+// plain-text body + Reply-To + List-Unsubscribe headers
+const _sgMailSend = sgMail.send.bind(sgMail);
+sgMail.send = (msg, ...args) => _sgMailSend(buildMsg(msg), ...args);
+
 // Generate 6-digit OTP
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -1246,7 +1287,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-    subject: `Order Update â€” #${orderDetails.orderId?.slice(-8)}`,
+        subject: `Order Update: #${orderDetails.orderId?.slice(-8)} — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1413,7 +1454,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `🎉 New Order #${orderDetails.orderId}`,
+    subject: `New Order Received: #${orderDetails.orderId} — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1623,7 +1664,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `🚨 ${notificationType} Required - Order #${orderId?.slice(-8)}`,
+      subject: `Action Required: ${notificationType} — Order #${orderId?.slice(-8)} — MIA Marketplace`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -1729,7 +1770,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Application Has Been Submitted â€” Alpa Art Marketplace",
+        subject: "Your Seller Application Has Been Submitted — MIA Marketplace",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1940,7 +1981,7 @@ const sendSellerApprovedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Congratulations! Your Seller Account Has Been Approved",
+    subject: "Your Seller Account Has Been Approved — MIA Marketplace",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2064,7 +2105,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: `⚠️ Low Stock Alert: "${productTitle}" — MIA Marketplace`,
+        subject: `Low Stock Alert: "${productTitle}" — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2190,7 +2231,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `🔔 Product Pending Review: "${productTitle}" — MIA Marketplace`,
+        subject: `Product Pending Review: "${productTitle}" — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2292,7 +2333,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `✅ Product Approved: "${productTitle}" is Now Live — MIA Marketplace`,
+        subject: `Product Approved: "${productTitle}" is Now Live — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2404,7 +2445,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `❌ Product Review: "${productTitle}" Requires Changes — MIA Marketplace`,
+        subject: `Product Review: "${productTitle}" Requires Changes — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
