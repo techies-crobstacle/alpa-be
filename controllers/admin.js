@@ -28,6 +28,7 @@ exports.scanLowStockProducts = async (request, reply) => {
       JOIN "users" u ON u.id = p."sellerId"
       WHERE p."isActive" = true
         AND p.stock <= ${LOW_STOCK_THRESHOLD}
+        AND p."deletedAt" IS NULL
     `;
 
     if (products.length === 0) {
@@ -411,6 +412,7 @@ exports.getProductsBySeller = async (request, reply) => {
              "rejectionReason", "createdAt", "updatedAt"
       FROM "products"
       WHERE "sellerId" = ${sellerId}
+        AND "deletedAt" IS NULL
       ORDER BY "createdAt" DESC
     `;
 
@@ -464,6 +466,7 @@ exports.getAllAdminProducts = async (request, reply) => {
         LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
         WHERE p.status = ${dbStatus}::"ProductStatus"
           AND p."sellerId" = ${sellerId}
+          AND p."deletedAt" IS NULL
         ORDER BY p."createdAt" DESC
         LIMIT ${parseInt(limit)} OFFSET ${offset}
       `;
@@ -479,6 +482,7 @@ exports.getAllAdminProducts = async (request, reply) => {
         JOIN "users" u ON p."sellerId" = u.id
         LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
         WHERE p.status = ${dbStatus}::"ProductStatus"
+          AND p."deletedAt" IS NULL
         ORDER BY p."createdAt" DESC
         LIMIT ${parseInt(limit)} OFFSET ${offset}
       `;
@@ -494,6 +498,7 @@ exports.getAllAdminProducts = async (request, reply) => {
         JOIN "users" u ON p."sellerId" = u.id
         LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
         WHERE p."sellerId" = ${sellerId}
+          AND p."deletedAt" IS NULL
         ORDER BY p."createdAt" DESC
         LIMIT ${parseInt(limit)} OFFSET ${offset}
       `;
@@ -508,6 +513,7 @@ exports.getAllAdminProducts = async (request, reply) => {
         FROM "products" p
         JOIN "users" u ON p."sellerId" = u.id
         LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
+        WHERE p."deletedAt" IS NULL
         ORDER BY p."createdAt" DESC
         LIMIT ${parseInt(limit)} OFFSET ${offset}
       `;
@@ -520,12 +526,14 @@ exports.getAllAdminProducts = async (request, reply) => {
         SELECT status::text, COUNT(*)::int AS count
         FROM "products"
         WHERE "sellerId" = ${sellerId}
+          AND "deletedAt" IS NULL
         GROUP BY status
       `;
     } else {
       counts = await prisma.$queryRaw`
         SELECT status::text, COUNT(*)::int AS count
         FROM "products"
+        WHERE "deletedAt" IS NULL
         GROUP BY status
       `;
     }
@@ -1847,6 +1855,120 @@ exports.backfillOrderNotifications = async (request, reply) => {
     });
   } catch (error) {
     console.error('Backfill notifications error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ==================== PRODUCT RECYCLE BIN (Admin) ====================
+
+/**
+ * GET /admin/products/recycle-bin
+ * Lists all soft-deleted products across all sellers.
+ * Optional: ?sellerId=xxx &page=1 &limit=50
+ */
+exports.getAdminRecycleBin = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { sellerId, page = 1, limit = 50 } = request.query;
+    const take   = Math.min(Number(limit), 200);
+    const offset = (Number(page) - 1) * take;
+
+    let products;
+    if (sellerId) {
+      products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.price, p.category, p.stock, p."sellerId",
+               p."sellerName", p.status, p."featuredImage",
+               p."deletedAt", p."deletedBy", p."deletedByRole",
+               p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email"
+        FROM "products" p
+        JOIN "users" u ON u.id = p."sellerId"
+        WHERE p."deletedAt" IS NOT NULL
+          AND p."sellerId" = ${sellerId}
+        ORDER BY p."deletedAt" DESC
+        LIMIT ${take} OFFSET ${offset}
+      `;
+    } else {
+      products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.price, p.category, p.stock, p."sellerId",
+               p."sellerName", p.status, p."featuredImage",
+               p."deletedAt", p."deletedBy", p."deletedByRole",
+               p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email"
+        FROM "products" p
+        JOIN "users" u ON u.id = p."sellerId"
+        WHERE p."deletedAt" IS NOT NULL
+        ORDER BY p."deletedAt" DESC
+        LIMIT ${take} OFFSET ${offset}
+      `;
+    }
+
+    const countRows = sellerId
+      ? await prisma.$queryRaw`SELECT COUNT(*)::int AS total FROM "products" WHERE "deletedAt" IS NOT NULL AND "sellerId" = ${sellerId}`
+      : await prisma.$queryRaw`SELECT COUNT(*)::int AS total FROM "products" WHERE "deletedAt" IS NOT NULL`;
+    const total = countRows[0]?.total ?? 0;
+
+    return reply.send({
+      success:  true,
+      products: products.map(({ seller_name, seller_email, ...p }) => ({
+        ...p,
+        seller: { id: p.sellerId, name: seller_name, email: seller_email }
+      })),
+      meta: { total, page: Number(page), limit: take, pages: Math.ceil(total / take) }
+    });
+  } catch (error) {
+    console.error('Get admin recycle bin error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+/**
+ * DELETE /admin/products/:productId/permanent
+ * Permanently (hard) deletes a product that is already in the Recycle Bin.
+ */
+exports.permanentlyDeleteProduct = async (request, reply) => {
+  try {
+    if (!request.user || request.user.role !== 'ADMIN') {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { productId } = request.params;
+
+    const rows = await prisma.$queryRaw`SELECT * FROM "products" WHERE id = ${productId}`;
+    const product = rows[0];
+
+    if (!product) {
+      return reply.status(404).send({ success: false, message: 'Product not found.' });
+    }
+
+    if (!product.deletedAt) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Product is not in the Recycle Bin. Soft-delete it first before permanently deleting.'
+      });
+    }
+
+    // Audit log before hard delete — last chance to record it
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     productId,
+      action:       AUDIT_ACTIONS.PRODUCT_PERMANENTLY_DELETED,
+      previousData: product,
+      reason:       request.body?.reason ?? 'Permanent deletion from Recycle Bin by Admin',
+      ...extractRequestMeta(request),
+    });
+
+    await prisma.product.delete({ where: { id: productId } });
+
+    return reply.send({
+      success: true,
+      message: 'Product permanently deleted. This action cannot be undone.'
+    });
+  } catch (error) {
+    console.error('Permanent delete product error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

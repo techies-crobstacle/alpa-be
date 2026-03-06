@@ -169,6 +169,10 @@ model Product {
   rejectionReason String?    // Reason for product rejection
   featured    Boolean       @default(false)
   tags        String[]      @default([])
+  // Soft delete — rows are never hard-deleted; recycle bin uses these fields
+  deletedAt     DateTime?   // null = live product; set = in recycle bin
+  deletedBy     String?     // userId of who deleted it
+  deletedByRole String?     // "ADMIN" or "SELLER"
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -182,6 +186,7 @@ model Product {
   @@index([status])
   @@index([isActive])
   @@index([featured])
+  @@index([deletedAt])
   @@map("products")
 }
 

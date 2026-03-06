@@ -9,7 +9,9 @@ const {
   deleteProduct,
   updateProduct,
   getProductStock,
-  getBulkStock
+  getBulkStock,
+  getRecycleBin,
+  restoreProduct
 } = require("../controllers/product");
 
 async function productRoutes(fastify, options) {
@@ -34,8 +36,15 @@ async function productRoutes(fastify, options) {
   // UPDATE PRODUCT (Seller and Admin - own products or admin access, with image upload)
   fastify.put("/:id", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN']), handleProductImagesUpload] }, updateProduct);
 
-  // DELETE PRODUCT (Seller and Admin - own products or admin access)
+  // DELETE PRODUCT (Seller and Admin - soft delete — moves to Recycle Bin)
   fastify.delete("/:id", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, deleteProduct);
+
+  // ── Recycle Bin ────────────────────────────────────────────────────────────
+  // GET  /products/recycle-bin       — seller views their own deleted products
+  fastify.get("/recycle-bin", { preHandler: authenticateSeller }, getRecycleBin);
+
+  // POST /products/:id/restore       — seller or admin restores a deleted product
+  fastify.post("/:id/restore", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, restoreProduct);
 }
 
 module.exports = productRoutes;
