@@ -435,32 +435,41 @@ exports.createOrder = async (request, reply) => {
           } catch (pdfErr) {
             console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
           }
-          sendOrderConfirmationEmail(user.email, user.name, {
-            orderId: order.id,
-            totalAmount,
-            itemCount: order.items.length,
-            products: order.items.map(item => ({
-              title: item.product.title,
-              quantity: item.quantity,
-              price: item.price
-            })),
-            shippingAddress,
-            orderSummary: {
-              subtotal: cartCalculations.subtotal,
-              subtotalExGST: cartCalculations.subtotalExGST,
-              shippingCost: cartCalculations.shippingCost,
-              gstPercentage: cartCalculations.gstPercentage,
-              gstAmount: cartCalculations.gstAmount,
-              grandTotal: cartCalculations.grandTotal,
-              gstInclusive: true,
-              shippingMethod: {
-                name: shippingMethod.name,
-                cost: shippingMethod.cost,
-                estimatedDays: shippingMethod.estimatedDays
-              }
-            },
-            invoicePDFBuffer
-          }).catch(e => console.error("Customer email error:", e.message));
+          try {
+            const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
+              orderId: order.id,
+              totalAmount,
+              itemCount: order.items.length,
+              products: order.items.map(item => ({
+                title: item.product.title,
+                quantity: item.quantity,
+                price: item.price
+              })),
+              shippingAddress,
+              orderSummary: {
+                subtotal: cartCalculations.subtotal,
+                subtotalExGST: cartCalculations.subtotalExGST,
+                shippingCost: cartCalculations.shippingCost,
+                gstPercentage: cartCalculations.gstPercentage,
+                gstAmount: cartCalculations.gstAmount,
+                grandTotal: cartCalculations.grandTotal,
+                gstInclusive: true,
+                shippingMethod: {
+                  name: shippingMethod.name,
+                  cost: shippingMethod.cost,
+                  estimatedDays: shippingMethod.estimatedDays
+                }
+              },
+              invoicePDFBuffer
+            });
+            if (emailResult?.success) {
+              console.log(`✅ Order confirmation email sent to ${user.email} (PDF attached: ${!!invoicePDFBuffer})`);
+            } else {
+              console.error(`❌ Order confirmation email failed for ${user.email}:`, emailResult?.error);
+            }
+          } catch (emailErr) {
+            console.error(`❌ Order confirmation email error for ${user.email}:`, emailErr.message);
+          }
         }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
@@ -1862,37 +1871,72 @@ exports.createGuestOrder = async (request, reply) => {
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
       try {
-        // 1. Guest customer confirmation email
+        // 1. Guest customer confirmation email (with PDF invoice attachment)
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
-        sendOrderConfirmationEmail(customerEmail, customerName, {
-          orderId: order.id,
-          totalAmount,
-          itemCount: order.items.length,
-          products: order.items.map(item => ({
-            title: item.product.title,
-            quantity: item.quantity,
-            price: item.price
-          })),
-          shippingAddress,
-          paymentMethod,
-          customerPhone,
-          isGuest: true,
-          orderSummary: {
-            subtotal: cartCalculations.subtotal,
-            subtotalExGST: cartCalculations.subtotalExGST,
-            shippingCost: cartCalculations.shippingCost,
-            gstPercentage: cartCalculations.gstPercentage,
-            gstAmount: cartCalculations.gstAmount,
-            grandTotal: cartCalculations.grandTotal,
-            couponCode: appliedCoupon ? appliedCoupon.code : null,
-            discountAmount: discountAmount > 0 ? discountAmount : null,
-            shippingMethod: {
-              name: shippingMethod.name,
-              cost: shippingMethod.cost,
-              estimatedDays: shippingMethod.estimatedDays
-            }
+        let guestInvoicePDFBuffer = null;
+        try {
+          guestInvoicePDFBuffer = await generateInvoiceBuffer({
+            id: order.id,
+            createdAt: order.createdAt,
+            status: order.status,
+            customerName: order.customerName || customerName,
+            customerEmail: order.customerEmail || customerEmail,
+            customerPhone: customerPhone,
+            shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
+            shippingCity: order.shippingCity,
+            shippingState: order.shippingState,
+            shippingZipCode: order.shippingZipCode,
+            shippingCountry: order.shippingCountry,
+            shippingPhone: customerPhone,
+            totalAmount: order.totalAmount,
+            discountAmount: order.discountAmount,
+            couponCode: order.couponCode,
+            paymentMethod,
+            items: order.items
+          });
+          console.log(`✅ Guest invoice PDF generated, size: ${guestInvoicePDFBuffer?.length || 0} bytes`);
+        } catch (pdfErr) {
+          console.error('❌ Guest invoice PDF generation error (non-fatal):', pdfErr.message);
+        }
+        try {
+          const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
+            orderId: order.id,
+            totalAmount,
+            itemCount: order.items.length,
+            products: order.items.map(item => ({
+              title: item.product.title,
+              quantity: item.quantity,
+              price: item.price
+            })),
+            shippingAddress,
+            paymentMethod,
+            customerPhone,
+            isGuest: true,
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
+              shippingCost: cartCalculations.shippingCost,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              couponCode: appliedCoupon ? appliedCoupon.code : null,
+              discountAmount: discountAmount > 0 ? discountAmount : null,
+              shippingMethod: {
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays
+              }
+            },
+            invoicePDFBuffer: guestInvoicePDFBuffer
+          });
+          if (guestEmailResult?.success) {
+            console.log(`✅ Guest order confirmation email sent to ${customerEmail} (PDF attached: ${!!guestInvoicePDFBuffer})`);
+          } else {
+            console.error(`❌ Guest order confirmation email failed for ${customerEmail}:`, guestEmailResult?.error);
           }
-        }).catch(e => console.error("Guest customer email error:", e.message));
+        } catch (emailErr) {
+          console.error(`❌ Guest order confirmation email error for ${customerEmail}:`, emailErr.message);
+        }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
         await Promise.all([...sellerNotifications.entries()].map(async ([sellerId, sellerData]) => {

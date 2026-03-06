@@ -211,31 +211,39 @@ exports.addProduct = async (request, reply) => {
           sellerName: sellerUserInfo?.name || seller.storeName || seller.businessName || 'Unknown'
         };
 
-        // In-app notifications for all admins
-        await notifyAdminNewProduct(product.id, pendingDetails);
-        console.log(`✅ [addProduct] In-app notifications sent to all admins for product "${title}"`);
+        // In-app notifications for all admins (failure must not block email)
+        try {
+          await notifyAdminNewProduct(product.id, pendingDetails);
+          console.log(`✅ [addProduct] In-app notifications sent to all admins for product "${title}"`);
+        } catch (inAppErr) {
+          console.error('❌ [addProduct] In-app notification error (non-fatal):', inAppErr.message);
+        }
 
-        // Email all admins
-        const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
-        console.log(`📧 [addProduct] Found ${admins.length} admin(s) to email — product "${title}"`);
-        for (const admin of admins) {
-          if (admin.email) {
-            const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
-              productTitle: title,
-              sellerName: pendingDetails.sellerName,
-              productId: product.id
-            });
-            if (result.success) {
-              console.log(`✅ [addProduct] Pending-review email sent to admin ${admin.email}`);
+        // Email all admins — separate try/catch so notification failure never blocks email
+        try {
+          const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
+          console.log(`📧 [addProduct] Found ${admins.length} admin(s) to email — product "${title}"`);
+          for (const admin of admins) {
+            if (admin.email) {
+              const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
+                productTitle: title,
+                sellerName: pendingDetails.sellerName,
+                productId: product.id
+              });
+              if (result.success) {
+                console.log(`✅ [addProduct] Pending-review email sent to admin ${admin.email}`);
+              } else {
+                console.error(`❌ [addProduct] Failed to email admin ${admin.email}:`, result.error);
+              }
             } else {
-              console.error(`❌ [addProduct] Failed to email admin ${admin.email}:`, result.error);
+              console.warn(`⚠️  [addProduct] Admin user has no email address — skipping`);
             }
-          } else {
-            console.warn(`⚠️  [addProduct] Admin user has no email address — skipping`);
           }
+        } catch (emailErr) {
+          console.error('❌ [addProduct] Admin email error:', emailErr.message);
         }
       } catch (notifyErr) {
-        console.error('❌ [addProduct] Admin notification/email error:', notifyErr.message);
+        console.error('❌ [addProduct] Admin notification/email block error:', notifyErr.message);
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -600,31 +608,39 @@ exports.updateProduct = async (request, reply) => {
           sellerName: sellerUser?.name || 'Unknown'
         };
 
-        // In-app notifications for all admins
-        await notifyAdminProductPending(request.params.id, pendingDetails);
-        console.log(`✅ [updateProduct] In-app notifications sent to all admins for product "${pendingDetails.productTitle}"`);
+        // In-app notifications for all admins (failure must not block email)
+        try {
+          await notifyAdminProductPending(request.params.id, pendingDetails);
+          console.log(`✅ [updateProduct] In-app notifications sent to all admins for product "${pendingDetails.productTitle}"`);
+        } catch (inAppErr) {
+          console.error('❌ [updateProduct] In-app notification error (non-fatal):', inAppErr.message);
+        }
 
-        // Email all admins
-        const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
-        console.log(`📧 [updateProduct] Found ${admins.length} admin(s) to email — product "${pendingDetails.productTitle}"`);
-        for (const admin of admins) {
-          if (admin.email) {
-            const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
-              productTitle: pendingDetails.productTitle,
-              sellerName: pendingDetails.sellerName,
-              productId: request.params.id
-            });
-            if (result.success) {
-              console.log(`✅ [updateProduct] Pending-review email sent to admin ${admin.email}`);
+        // Email all admins — separate try/catch so notification failure never blocks email
+        try {
+          const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
+          console.log(`📧 [updateProduct] Found ${admins.length} admin(s) to email — product "${pendingDetails.productTitle}"`);
+          for (const admin of admins) {
+            if (admin.email) {
+              const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
+                productTitle: pendingDetails.productTitle,
+                sellerName: pendingDetails.sellerName,
+                productId: request.params.id
+              });
+              if (result.success) {
+                console.log(`✅ [updateProduct] Pending-review email sent to admin ${admin.email}`);
+              } else {
+                console.error(`❌ [updateProduct] Failed to email admin ${admin.email}:`, result.error);
+              }
             } else {
-              console.error(`❌ [updateProduct] Failed to email admin ${admin.email}:`, result.error);
+              console.warn(`⚠️  [updateProduct] Admin user has no email address — skipping`);
             }
-          } else {
-            console.warn(`⚠️  [updateProduct] Admin user has no email address — skipping`);
           }
+        } catch (emailErr) {
+          console.error('❌ [updateProduct] Admin email error:', emailErr.message);
         }
       } catch (notifyErr) {
-        console.error('❌ [updateProduct] Admin notification/email error:', notifyErr.message);
+        console.error('❌ [updateProduct] Admin notification/email block error:', notifyErr.message);
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
