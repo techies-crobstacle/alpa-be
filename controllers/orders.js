@@ -452,6 +452,13 @@ exports.createOrder = async (request, reply) => {
                 message: `New order received from ${user.name}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
+              // In-app notification — always fires regardless of sellerProfile
+              notifySellerNewOrder(sellerId, order.id, {
+                customerName: user.name,
+                totalAmount: sellerData.totalAmount.toFixed(2),
+                itemCount: sellerData.productCount,
+                productNames: sellerData.products.map(p => p.title).filter(Boolean)
+              }).catch(e => console.error("Seller notification error:", e.message));
             }
             if (seller && seller.email && seller.sellerProfile) {
               const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
@@ -467,13 +474,6 @@ exports.createOrder = async (request, reply) => {
                 customerEmail: user.email,
                 customerPhone: user.phone
               }).catch(e => console.error("Seller email error:", e.message));
-              notifySellerNewOrder(sellerId, order.id, {
-                customerName: user.name,
-                totalAmount: sellerData.totalAmount.toFixed(2),
-                itemCount: sellerData.productCount,
-                sellerName,
-                productNames: sellerData.products.map(p => p.title).filter(Boolean)
-              }).catch(e => console.error("Seller notification error:", e.message));
             }
           } catch (err) {
             console.error(`Error notifying seller ${sellerId}:`, err.message);
@@ -1199,6 +1199,13 @@ exports.createGuestOrder = async (request, reply) => {
                 message: `New guest order received from ${customerName}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
+              // In-app notification — always fires regardless of sellerProfile
+              notifySellerNewOrder(sellerId, order.id, {
+                customerName,
+                totalAmount: sellerData.totalAmount.toFixed(2),
+                itemCount: sellerData.productCount,
+                productNames: sellerData.products.map(p => p.title).filter(Boolean)
+              }).catch(e => console.error("Seller notification error:", e.message));
             }
             if (seller && seller.email && seller.sellerProfile) {
               const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
@@ -1215,13 +1222,6 @@ exports.createGuestOrder = async (request, reply) => {
                 customerPhone,
                 isGuest: true
               }).catch(e => console.error("Seller email error:", e.message));
-              notifySellerNewOrder(sellerId, order.id, {
-                customerName,
-                totalAmount: sellerData.totalAmount.toFixed(2),
-                itemCount: sellerData.productCount,
-                sellerName,
-                productNames: sellerData.products.map(p => p.title).filter(Boolean)
-              }).catch(e => console.error("Seller notification error:", e.message));
             }
           } catch (err) {
             console.error(`Error notifying seller ${sellerId}:`, err.message);
