@@ -437,16 +437,12 @@ exports.updateProduct = async (request, reply) => {
     let newIsActive = true; // Assume active for now
     
     if (userRole === "SELLER" && product.sellerId === userId) {
-      // Seller editing their own product - needs re-approval
+      // Seller editing their own product - always goes back to PENDING for re-approval
+      // This covers both normal edits AND re-submissions after a REJECTED status
       newStatus = "PENDING";
       newIsActive = false;
     }
     // Admin edits don't change approval status
-
-    // Clear rejection reason when seller resubmits
-    if (userRole === "SELLER" && product.status === "REJECTED") {
-      updateData.rejectionReason = null;
-    }
 
     // Only update fields that are not undefined and not empty string
     const updateData = {};
@@ -459,6 +455,11 @@ exports.updateProduct = async (request, reply) => {
     if (parsedFeatured !== undefined) updateData.featured = parsedFeatured;
     if (parsedTags !== undefined) updateData.tags = parsedTags;
     if (finalArtistName !== undefined && finalArtistName !== '') updateData.artistName = finalArtistName;
+
+    // Clear rejection reason when seller re-submits a rejected product
+    if (userRole === "SELLER" && product.status === "REJECTED") {
+      updateData.rejectionReason = null;
+    }
     
     // Set status for approval workflow
     updateData.status = newStatus;
