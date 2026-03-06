@@ -45,8 +45,8 @@ exports.addProduct = async (request, reply) => {
         const result = await uploadToCloudinary(file.path, 'products');
         if (file.fieldname === 'featuredImage') {
           featuredImageUrl = result.url; // Only one featured image
-        } else {
-          galleryImages.push(result.url); // galleryImages field name or others
+        } else if (file.fieldname === 'galleryImages') {
+          galleryImages.push(result.url); // Gallery images field
         }
       } catch (err) {
         console.error('Cloudinary upload error:', err);
@@ -61,9 +61,9 @@ exports.addProduct = async (request, reply) => {
     }
     if (request.body.galleryImages) {
       if (Array.isArray(request.body.galleryImages)) {
-        galleryImages = request.body.galleryImages;
+        galleryImages = request.body.galleryImages.filter(img => img && img.trim() !== '');
       } else if (typeof request.body.galleryImages === 'string') {
-        galleryImages = [request.body.galleryImages];
+        galleryImages = [request.body.galleryImages].filter(img => img && img.trim() !== '');
       }
     }
     // Backward compat: old 'images' field maps first to featuredImage, rest to gallery
@@ -73,6 +73,16 @@ exports.addProduct = async (request, reply) => {
       galleryImages = imgs.slice(1);
     }
   }
+
+  // Remove duplicates from gallery images
+  galleryImages = [...new Set(galleryImages)];
+
+  // Debug logging
+  console.log('DEBUG - Add Product Images:', {
+    featuredImage: featuredImageUrl,
+    galleryImagesCount: galleryImages.length,
+    galleryImages: galleryImages
+  });
 
   try {
     const sellerId = request.user.userId; // From authenticateSeller middleware
@@ -315,7 +325,12 @@ exports.updateProduct = async (request, reply) => {
       existingGalleryImages = Array.isArray(body.existingGalleryImages)
         ? body.existingGalleryImages
         : [body.existingGalleryImages];
+      // Filter out empty strings
+      existingGalleryImages = existingGalleryImages.filter(img => img && img.trim() !== '');
     }
+
+    // Array to collect new uploaded gallery files
+    let newGalleryFiles = [];
 
     // If files were uploaded, upload them to Cloudinary
     if (request.files) {
@@ -326,8 +341,8 @@ exports.updateProduct = async (request, reply) => {
             const result = await uploadToCloudinary(file.path, 'products');
             if (file.fieldname === 'featuredImage') {
               featuredImageUrl = result.url;
-            } else {
-              galleryImages.push(result.url);
+            } else if (file.fieldname === 'galleryImages') {
+              newGalleryFiles.push(result.url);
             }
           } catch (err) {
             console.error('Cloudinary upload error:', err);
@@ -341,25 +356,59 @@ exports.updateProduct = async (request, reply) => {
       }
       if (body.galleryImages) {
         if (Array.isArray(body.galleryImages)) {
-          galleryImages = body.galleryImages;
+          newGalleryFiles = body.galleryImages;
         } else if (typeof body.galleryImages === 'string') {
-          galleryImages = [body.galleryImages];
+          newGalleryFiles = [body.galleryImages];
         }
       }
       // Backward compat: old 'images' field maps first to featuredImage, rest to gallery
-      if (featuredImageUrl === undefined && !galleryImages.length && body.images) {
+      if (featuredImageUrl === undefined && !newGalleryFiles.length && body.images) {
         const imgs = Array.isArray(body.images) ? body.images : [body.images];
         featuredImageUrl = imgs[0] || undefined;
-        galleryImages = imgs.slice(1);
+        newGalleryFiles = imgs.slice(1);
       }
     }
 
-    // Merge: keep existing gallery URLs + add newly uploaded ones
-    const finalGallery = [...existingGalleryImages, ...galleryImages];
-    if (finalGallery.length > 0 || body.existingGalleryImages !== undefined) {
+    // Debug logging
+    console.log('DEBUG - Form Data Received:', {
+      existingGalleryImages: existingGalleryImages,
+      newGalleryFiles: newGalleryFiles,
+      keepExistingGallery: body.keepExistingGallery
+    });
+
+    // MERGE existing images with new uploaded images
+    let allGalleryImages = [];
+    
+    // Handle edge cases according to the guide
+    if (newGalleryFiles.length > 0 && existingGalleryImages.length > 0) {
+      // User added new files AND has existing images - merge both
+      allGalleryImages = [...existingGalleryImages, ...newGalleryFiles];
       hasGalleryUpdate = true;
-      galleryImages = finalGallery;
+    } else if (newGalleryFiles.length > 0 && existingGalleryImages.length === 0) {
+      // User deleted all old images but added new files - use only new files
+      allGalleryImages = newGalleryFiles;
+      hasGalleryUpdate = true;
+    } else if (newGalleryFiles.length === 0 && existingGalleryImages.length > 0) {
+      // User didn't add new files but has existing images - keep existing as-is
+      allGalleryImages = existingGalleryImages;
+      hasGalleryUpdate = true;
+    } else if (body.existingGalleryImages !== undefined || body.keepExistingGallery !== undefined) {
+      // Explicit gallery update (even if empty)
+      allGalleryImages = [];
+      hasGalleryUpdate = true;
     }
+
+    // Remove duplicates
+    const uniqueGalleryImages = [...new Set(allGalleryImages)];
+    
+    if (hasGalleryUpdate) {
+      galleryImages = uniqueGalleryImages;
+    }
+
+    console.log('DEBUG - Final Gallery Images:', {
+      count: galleryImages.length,
+      images: galleryImages
+    });
 
     // Parse price and stock to correct types, ignore empty string
     if (typeof price === 'string' && price.trim() !== '') price = parseFloat(price);
@@ -388,16 +437,12 @@ exports.updateProduct = async (request, reply) => {
     let newIsActive = true; // Assume active for now
     
     if (userRole === "SELLER" && product.sellerId === userId) {
-      // Seller editing their own product - needs re-approval
+      // Seller editing their own product - always goes back to PENDING for re-approval
+      // This covers both normal edits AND re-submissions after a REJECTED status
       newStatus = "PENDING";
       newIsActive = false;
     }
     // Admin edits don't change approval status
-
-    // Clear rejection reason when seller resubmits
-    if (userRole === "SELLER" && product.status === "REJECTED") {
-      updateData.rejectionReason = null;
-    }
 
     // Only update fields that are not undefined and not empty string
     const updateData = {};
@@ -410,6 +455,11 @@ exports.updateProduct = async (request, reply) => {
     if (parsedFeatured !== undefined) updateData.featured = parsedFeatured;
     if (parsedTags !== undefined) updateData.tags = parsedTags;
     if (finalArtistName !== undefined && finalArtistName !== '') updateData.artistName = finalArtistName;
+
+    // Clear rejection reason when seller re-submits a rejected product
+    if (userRole === "SELLER" && product.status === "REJECTED") {
+      updateData.rejectionReason = null;
+    }
     
     // Set status for approval workflow
     updateData.status = newStatus;

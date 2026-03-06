@@ -23,7 +23,7 @@ const axios = require("axios");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
 const { sendOrderConfirmationEmail } = require("../utils/emailService");
-const { notifyAdminNewOrder } = require("./notification");
+const { notifyAdminNewOrder, notifySellerNewOrder } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -420,15 +420,22 @@ exports.captureOrder = async (request, reply) => {
       orderId: order.id,
     }).catch((e) => console.error("Admin notification error (non-blocking):", e.message));
 
-    // ── Create SLA notifications for each seller ──────────────────────────
+    // ── Create SLA + in-app notifications for each seller ─────────────────
     for (const sid of sellerIdSet) {
       const sellerItems = order.items.filter(i => i.product?.sellerId === sid);
       const itemCount = sellerItems.reduce((s, i) => s + i.quantity, 0);
       const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
+      const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
       createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
         message: `New order received from ${user?.name || 'Customer'}`,
         notes: `${itemCount} item(s), Total: $${itemTotal.toFixed(2)}`
       }).catch((e) => console.error("SLA notification error (non-blocking):", e.message));
+      notifySellerNewOrder(sid, order.id, {
+        customerName: user?.name || 'Customer',
+        totalAmount: itemTotal.toFixed(2),
+        itemCount,
+        productNames
+      }).catch((e) => console.error("Seller in-app notification error (non-blocking):", e.message));
     }
 
     return reply.status(200).send({

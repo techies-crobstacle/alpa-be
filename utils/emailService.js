@@ -859,7 +859,8 @@ const sendOTPEmail = async (email, otp, name) => {
     subject: "Email Verification - OTP",
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -894,7 +895,7 @@ const sendOTPEmail = async (email, otp, name) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email â€” please do not reply.</p>
-                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">Â© 2026 MIA Marketplace. All rights reserved.</p>
+                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;© 2026 MIA Marketplace. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -974,7 +975,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     subject: `Order Confirmation - Invoice #${orderDetails.orderId}`,
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -1411,10 +1413,11 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `ðŸŽ‰ New Order #${orderDetails.orderId}`,
+    subject: `🎉 New Order #${orderDetails.orderId}`,
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -1536,7 +1539,8 @@ const sendContactFormEmail = async (email, name, subject, message) => {
     subject: `Contact Form Received - ${subject}`,
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -1619,10 +1623,11 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `ðŸš¨ ${notificationType} Required - Order #${orderId?.slice(-8)}`,
+      subject: `🚨 ${notificationType} Required - Order #${orderId?.slice(-8)}`,
       html: `
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
+        <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
         <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
           <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
             <tr><td align="center">
@@ -1830,7 +1835,8 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
     subject: "Your Seller Account Has Been Created — MIA Marketplace",
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -1840,14 +1846,14 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127881; Account Created!</h1>
-                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready — let's get started</p>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready &mdash; let's get started</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to MIA Marketplace! Your email has been verified and your seller account has been successfully created. Please keep your application number safe — you'll need it when contacting our support team.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to MIA Marketplace! Your email has been verified and your seller account has been successfully created. Please keep your application number safe &mdash; you'll need it when contacting our support team.</p>
 
                   <!-- Application Number Box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;text-align:center;">
@@ -1937,7 +1943,8 @@ const sendSellerApprovedEmail = async (email, name) => {
     subject: "Congratulations! Your Seller Account Has Been Approved",
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -2060,7 +2067,8 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
     subject: `⚠️ Low Stock Alert: "${productTitle}" — MIA Marketplace`,
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
@@ -2144,7 +2152,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace — Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
