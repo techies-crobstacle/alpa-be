@@ -583,3 +583,42 @@ enum BlogStatus {
   DRAFT
   PUBLISHED
 }
+
+// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
+// Append-only table. Never update or delete rows from this table.
+// Captures every mutation to Products (and future entities) with full before/after snapshots.
+model AuditLog {
+  id           String   @id @default(cuid())
+
+  // What was affected
+  entityType   String   // "PRODUCT", "ORDER", "USER", etc.
+  entityId     String   // Primary key of the affected record
+
+  // What happened
+  action       String   // e.g. "PRODUCT_CREATED", "PRODUCT_APPROVED"
+
+  // Who did it
+  actorId      String?  // userId — null for system/scheduler actions
+  actorEmail   String?  // Denormalised so it survives user deletion
+  actorRole    String?  // "ADMIN", "SELLER", "CUSTOMER", "SYSTEM"
+  actorIp      String?  // Client IP address
+
+  // What changed
+  previousData Json?    // Full record snapshot BEFORE the change
+  newData      Json?    // Full record snapshot AFTER the change
+  changedFields String[] // ["price", "stock", "isActive"] — quick diff index
+
+  // Extra context
+  reason       String?  // Optional human-readable reason / note
+  userAgent    String?  // Browser / client info
+  requestId    String?  // Correlates with server logs (x-request-id header)
+
+  // Immutability anchor — this column is never modified after insert
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([entityType, action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
