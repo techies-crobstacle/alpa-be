@@ -199,6 +199,37 @@ exports.addProduct = async (request, reply) => {
       }
     }
 
+    // ── Notify all admins about new product pending review ───────────────────
+    if (userRole === "SELLER" && productStatus === "PENDING") {
+      const sellerUserInfo = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { name: true }
+      });
+      const pendingDetails = {
+        productTitle: title,
+        sellerName: sellerUserInfo?.name || seller.storeName || seller.businessName || 'Unknown'
+      };
+
+      notifyAdminNewProduct(product.id, pendingDetails)
+        .catch(e => console.error('Admin new-product notification error:', e.message));
+
+      prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+        .then(admins => {
+          console.log(`📧 [addProduct] Notifying ${admins.length} admin(s) about new product "${title}"`);
+          for (const admin of admins) {
+            if (admin.email) {
+              sendAdminProductPendingEmail(admin.email, admin.name, {
+                productTitle: title,
+                sellerName: pendingDetails.sellerName,
+                productId: product.id
+              }).catch(e => console.error('Admin new-product email error:', e.message));
+            }
+          }
+        })
+        .catch(e => console.error('Admin email lookup error (addProduct):', e.message));
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return reply.status(200).send({ 
       success: true, 
       message: "Product added successfully",
@@ -221,6 +252,9 @@ exports.addProduct = async (request, reply) => {
       note: userRole === "ADMIN" ? "Product is live" : "Product submitted for admin review - will be live after approval",
       totalProducts: seller.productCount + 1
     });
+
+    // ── [DEAD CODE REMOVED] Notification block was here but after return ──
+
   } catch (err) {
     console.error("Add product error:", err);
     return reply.status(500).send({ success: false, error: err.message });
@@ -488,6 +522,7 @@ exports.updateProduct = async (request, reply) => {
 
     // ── Low stock auto-deactivation ──────────────────────────────────────────
     // Work out the effective stock after this update
+    let lowStockTriggered = false;
     const finalStock = (stock !== undefined && stock !== '') ? stock : product.stock;
     if (finalStock <= LOW_STOCK_THRESHOLD) {
       // Force inactive regardless of role or status
@@ -497,6 +532,7 @@ exports.updateProduct = async (request, reply) => {
         WHERE id = ${request.params.id}
       `;
       newIsActive = false;
+      lowStockTriggered = true;
       console.log(`⚠️  Product "${updatedProduct.title}" auto-deactivated — stock: ${finalStock}`);
 
       // ── Audit log: auto-deactivated due to low stock ───────────────────────
@@ -541,7 +577,7 @@ exports.updateProduct = async (request, reply) => {
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Notify admin when seller edit sends product back to PENDING ───────
-    if (userRole === "SELLER" && newStatus === "PENDING") {
+    if (userRole === "SELLER" && newStatus === "PENDING" && !lowStockTriggered) {
       const sellerUser = await prisma.user.findUnique({
         where: { id: userId },
         select: { name: true }
@@ -551,11 +587,13 @@ exports.updateProduct = async (request, reply) => {
         sellerName: sellerUser?.name || 'Unknown'
       };
 
+      console.log(`📧 [updateProduct] Notifying admins — product "${pendingDetails.productTitle}" is PENDING review`);
       notifyAdminProductPending(request.params.id, pendingDetails)
         .catch(e => console.error('Admin product-pending notification error:', e.message));
 
       prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
         .then(admins => {
+          console.log(`📧 [updateProduct] Emailing ${admins.length} admin(s) about pending product "${pendingDetails.productTitle}"`);
           for (const admin of admins) {
             if (admin.email) {
               sendAdminProductPendingEmail(admin.email, admin.name, {
