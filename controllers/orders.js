@@ -5,13 +5,17 @@ const {
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail,
   sendAdminNewOrderEmail,
-  sendSellerLowStockEmail
+  sendSellerLowStockEmail,
+  sendSellerOrderStatusEmail,
+  sendAdminOrderStatusEmail
 } = require("../utils/emailService");
 const {
   notifyCustomerOrderStatusChange,
   notifySellerNewOrder,
   notifyAdminNewOrder,
-  notifySellerLowStock
+  notifySellerLowStock,
+  notifyAdminOrderStatusChange,
+  notifySellerOrderStatusChange
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
 const { calculateCartTotals } = require("./cart");
@@ -705,7 +709,7 @@ exports.cancelOrder = async (request, reply) => {
       console.error("Customer cancel notification error (non-blocking):", error.message);
     });
 
-    // Notify all sellers whose products are in this cancelled order
+    // Notify all sellers whose products are in this cancelled order (in-app + email)
     const cancelledSellerIds = [...new Set(
       order.items.map(item => item.product?.sellerId).filter(Boolean)
     )];
@@ -730,7 +734,39 @@ exports.cancelOrder = async (request, reply) => {
           }
         }
       }).catch(err => console.error(`Seller cancel notification error (sellerId=${sellerId}):`, err.message));
+      // Email the seller
+      prisma.user.findUnique({ where: { id: sellerId }, select: { email: true, name: true } })
+        .then(sellerUser => {
+          if (sellerUser?.email) {
+            sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
+              orderId, status: 'cancelled', updatedBy: 'Customer',
+              customerName: order.customerName || 'Customer',
+              totalAmount: order.totalAmount, reason: finalReason
+            }).catch(err => console.error(`Seller cancel email error (sellerId=${sellerId}):`, err.message));
+          }
+        }).catch(err => console.error(`Seller lookup error for cancel email (sellerId=${sellerId}):`, err.message));
     }
+
+    // Notify all admins (in-app + email)
+    notifyAdminOrderStatusChange(orderId, 'cancelled', {
+      customerName: order.customerName || 'Customer',
+      totalAmount: order.totalAmount.toString(),
+      itemCount: order.items?.length || 0,
+      reason: finalReason,
+      updatedBy: 'Customer'
+    }).catch(err => console.error("Admin cancel in-app notification error (non-blocking):", err.message));
+    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+      .then(admins => {
+        for (const admin of admins) {
+          if (admin.email) {
+            sendAdminOrderStatusEmail(admin.email, admin.name, {
+              orderId, status: 'cancelled', updatedBy: 'Customer',
+              customerName: order.customerName || 'Customer',
+              totalAmount: order.totalAmount, reason: finalReason
+            }).catch(err => console.error("Admin cancel email error (non-blocking):", err.message));
+          }
+        }
+      }).catch(err => console.error("Admin lookup error for cancel email (non-blocking):", err.message));
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Email (only when email address is available) ──────────────────────

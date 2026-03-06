@@ -3,7 +3,8 @@ const {
   notifySellerProductStatusChange,
   notifySellerLowStock,
   notifyAdminNewProduct,
-  notifyAdminProductPending
+  notifyAdminProductPending,
+  notifyAdminLowStockDeactivation
 } = require("./notification");
 const { sendSellerLowStockEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
 const auditLogger = require("../utils/auditLogger");
@@ -185,6 +186,12 @@ exports.addProduct = async (request, reply) => {
 
       notifySellerLowStock(sellerId, product.id, product.title, stock)
         .catch(err => console.error("Low stock notification error (addProduct):", err.message));
+
+      notifyAdminLowStockDeactivation(product.id, {
+        productTitle: product.title,
+        sellerName:   seller.storeName || seller.businessName || 'Unknown',
+        stock
+      }).catch(err => console.error("Admin low stock deactivation notification error (addProduct):", err.message));
 
       if (sellerUser?.email) {
         sendSellerLowStockEmail(sellerUser.email, sellerUser.name || "Seller",
@@ -487,6 +494,19 @@ exports.updateProduct = async (request, reply) => {
       }
     }
 
+    // Build human-readable list of changed fields for admin notification
+    const changedFields = [];
+    if (title          !== undefined && title          !== '' && title          !== product.title)                        changedFields.push('Title');
+    if (description    !== undefined && description    !== '' && description    !== product.description)                  changedFields.push('Description');
+    if (price          !== undefined                          && parseFloat(price)  !== parseFloat(product.price))        changedFields.push(`Price (${product.price} → ${price})`);
+    if (stock          !== undefined                          && parseInt(stock)    !== product.stock)                    changedFields.push(`Stock (${product.stock} → ${stock})`);
+    if (category       !== undefined && category       !== '' && category       !== product.category)                    changedFields.push('Category');
+    if (finalArtistName !== undefined && finalArtistName !== '' && finalArtistName !== product.artistName)               changedFields.push('Artist Name');
+    if (parsedFeatured !== undefined && parsedFeatured !== product.featured)                                              changedFields.push('Featured');
+    if (parsedTags     !== undefined)                                                                                     changedFields.push('Tags');
+    if (featuredImageUrl !== undefined)                                                                                   changedFields.push('Featured Image');
+    if (hasGalleryUpdate)                                                                                                 changedFields.push('Gallery Images');
+
     // Determine if product needs re-approval after update
     let newStatus = product.status; // Keep current status by default
     let newIsActive = true; // Assume active for now
@@ -579,6 +599,12 @@ exports.updateProduct = async (request, reply) => {
         finalStock
       ).catch(err => console.error("Low stock notification error:", err.message));
 
+      notifyAdminLowStockDeactivation(request.params.id, {
+        productTitle: updatedProduct.title,
+        sellerName:   product.sellerName || 'Unknown',
+        stock:        finalStock
+      }).catch(err => console.error("Admin low stock deactivation notification error:", err.message));
+
       if (sellerUser?.email) {
         sendSellerLowStockEmail(
           sellerUser.email,
@@ -605,7 +631,8 @@ exports.updateProduct = async (request, reply) => {
         });
         const pendingDetails = {
           productTitle: title || product.title,
-          sellerName: sellerUser?.name || 'Unknown'
+          sellerName: sellerUser?.name || 'Unknown',
+          changedFields
         };
 
         // In-app notifications for all admins (failure must not block email)

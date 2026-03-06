@@ -111,6 +111,36 @@ const notifySellerLowStock = async (sellerId, productId, productTitle, currentSt
   );
 };
 
+const notifySellerOrderStatusChange = async (sellerId, orderId, status, orderDetails = {}) => {
+  const statusMessages = {
+    confirmed:      'has been confirmed',
+    processing:     'is now being processed',
+    shipped:        'has been shipped',
+    delivered:      'has been delivered',
+    cancelled:      'has been cancelled',
+    refund:         'has been refunded',
+    partial_refund: 'has been partially refunded'
+  };
+
+  const title = 'Order Status Updated by Admin';
+  const statusText = statusMessages[status] || `has been updated to ${status.toUpperCase()}`;
+  const message = `Order #${orderId.slice(-8).toUpperCase()} ${statusText}.${
+    orderDetails.reason ? ` Reason: ${orderDetails.reason}` : ''
+  }${
+    orderDetails.trackingNumber ? ` Tracking: ${orderDetails.trackingNumber}` : ''
+  }`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'ORDER_STATUS_CHANGED',
+    orderId,
+    'order',
+    { status, ...orderDetails }
+  );
+};
+
 // SELLER APPROVAL NOTIFICATIONS
 const notifySellerApproved = async (sellerId, sellerName = 'Seller') => {
   const title = '✅ Your Account Has Been Approved!';
@@ -252,10 +282,14 @@ const notifyAdminNewProduct = async (productId, productDetails = {}) => {
 };
 
 const notifyAdminProductPending = async (productId, productDetails = {}) => {
-  const { productTitle, sellerName } = productDetails;
+  const { productTitle, sellerName, changedFields } = productDetails;
+
+  const changesLine = changedFields && changedFields.length > 0
+    ? ` Changes made: ${changedFields.join(', ')}.`
+    : '';
 
   const title = 'Product Pending Review';
-  const message = `Seller ${sellerName || 'Unknown'} updated product "${productTitle || 'Untitled'}" — it requires your review and approval`;
+  const message = `Seller ${sellerName || 'Unknown'} updated product "${productTitle || 'Untitled'}" — it requires your review and approval.${changesLine}`;
 
   const admins = await prisma.user.findMany({
     where: { role: 'ADMIN' },
@@ -269,6 +303,34 @@ const notifyAdminProductPending = async (productId, productDetails = {}) => {
       title,
       message,
       'NEW_PRODUCT_SUBMITTED',
+      productId,
+      'product',
+      productDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
+const notifyAdminLowStockDeactivation = async (productId, productDetails = {}) => {
+  const { productTitle, sellerName, stock } = productDetails;
+
+  const title = 'Product Auto-Deactivated — Low Stock';
+  const message = `Product "${productTitle || 'Untitled'}" from seller ${sellerName || 'Unknown'} has been automatically deactivated because stock dropped to ${stock} (threshold: ≤ 2).`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'PRODUCT_LOW_STOCK_DEACTIVATED',
       productId,
       'product',
       productDetails
@@ -428,6 +490,7 @@ module.exports = {
   notifySellerNewOrder,
   notifySellerProductStatusChange,
   notifySellerLowStock,
+  notifySellerOrderStatusChange,
   notifySellerApproved,
   notifySellerApprovalRejected,
   notifySellerCulturalApproval,
@@ -435,5 +498,6 @@ module.exports = {
   notifyAdminNewOrder,
   notifyAdminNewProduct,
   notifyAdminProductPending,
-  notifyAdminOrderStatusChange
+  notifyAdminOrderStatusChange,
+  notifyAdminLowStockDeactivation
 };

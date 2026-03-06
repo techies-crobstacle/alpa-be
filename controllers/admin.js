@@ -1,12 +1,13 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
-const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail } = require("../utils/emailService");
+const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail } = require("../utils/emailService");
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
   notifySellerProductRecommendation,
   notifySellerProductStatusChange,
-  notifySellerLowStock
+  notifySellerLowStock,
+  notifyAdminLowStockDeactivation
 } = require("./notification");
 const { backfillOrderNotifications } = require("./orderNotification");
 const { getCommissionForSeller } = require("./commission");
@@ -56,6 +57,12 @@ exports.scanLowStockProducts = async (request, reply) => {
         Number(product.stock)
       ).catch(err => console.error("Low stock notification error:", err.message));
 
+      notifyAdminLowStockDeactivation(product.id, {
+        productTitle: product.title,
+        sellerName:   product.sellerName || 'Unknown',
+        stock:        Number(product.stock)
+      }).catch(err => console.error("Admin low stock deactivation notification error:", err.message));
+
       // Email (non-blocking)
       if (product.sellerEmail) {
         sendSellerLowStockEmail(
@@ -71,6 +78,21 @@ exports.scanLowStockProducts = async (request, reply) => {
       } else {
         console.warn(`⚠️  [Admin scan] No email for seller ${product.sellerId} — email skipped`);
       }
+
+      // Email all admins (non-blocking)
+      prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+        .then(admins => {
+          for (const admin of admins) {
+            if (admin.email) {
+              sendAdminLowStockDeactivationEmail(admin.email, admin.name || 'Admin', {
+                productTitle: product.title,
+                sellerName:   product.sellerName || 'Unknown',
+                stock:        Number(product.stock),
+                productId:    product.id
+              }).catch(err => console.error('Admin low stock deactivation email error:', err.message));
+            }
+          }
+        }).catch(err => console.error('Admin lookup error (low stock deactivation email):', err.message));
 
       results.push({ productId: product.id, title: product.title, stock: Number(product.stock) });
       console.log(`⚠️  [Admin scan] Deactivated "${product.title}" — stock: ${product.stock}`);
@@ -1676,6 +1698,17 @@ exports.activateProduct = async (request, reply) => {
     // Send notification to seller
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
+    // Email seller (non-blocking)
+    prisma.user.findUnique({ where: { id: product.sellerId }, select: { email: true, name: true } })
+      .then(sellerUser => {
+        if (sellerUser?.email) {
+          sendSellerProductActivatedEmail(sellerUser.email, sellerUser.name || 'Seller', {
+            productTitle: product.title,
+            productId
+          }).catch(err => console.error('Seller activated email error:', err.message));
+        }
+      }).catch(err => console.error('Seller lookup error (activate email):', err.message));
+
     reply.send({ success: true, message: 'Product activated successfully' });
   } catch (error) {
     console.error('Activate product error:', error);
@@ -1723,6 +1756,18 @@ exports.deactivateProduct = async (request, reply) => {
 
     // Send notification to seller
     await notifySellerProductStatusChange(product.sellerId, productId, "INACTIVE", product.title, reason);
+
+    // Email seller (non-blocking)
+    prisma.user.findUnique({ where: { id: product.sellerId }, select: { email: true, name: true } })
+      .then(sellerUser => {
+        if (sellerUser?.email) {
+          sendSellerProductDeactivatedEmail(sellerUser.email, sellerUser.name || 'Seller', {
+            productTitle: product.title,
+            reason,
+            productId
+          }).catch(err => console.error('Seller deactivated email error:', err.message));
+        }
+      }).catch(err => console.error('Seller lookup error (deactivate email):', err.message));
 
     reply.send({ success: true, message: 'Product deactivated successfully' });
   } catch (error) {
