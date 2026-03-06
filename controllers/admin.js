@@ -1487,13 +1487,36 @@ exports.approveProduct = async (request, reply) => {
 
     // Send notification to seller about product approval
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
+    console.log(`✅ [approveProduct] In-app notification sent to seller ${product.sellerId} for product "${product.title}"`);
 
     // Send email to seller about product approval
-    if (product.seller?.email) {
-      sendSellerProductApprovedEmail(product.seller.email, product.seller.name, {
-        productTitle: product.title,
-        productId
-      }).catch(e => console.error('Seller product approved email error:', e.message));
+    // Use included relation first; fall back to direct DB lookup so email is
+    // never silently skipped due to a missing Prisma include result.
+    let sellerForEmail = product.seller;
+    if (!sellerForEmail?.email) {
+      console.warn(`⚠️  [approveProduct] product.seller missing — fetching seller ${product.sellerId} directly`);
+      sellerForEmail = await prisma.user.findUnique({
+        where: { id: product.sellerId },
+        select: { id: true, name: true, email: true }
+      });
+    }
+    if (sellerForEmail?.email) {
+      console.log(`📧 [approveProduct] Sending approval email to seller ${sellerForEmail.email}`);
+      try {
+        const result = await sendSellerProductApprovedEmail(sellerForEmail.email, sellerForEmail.name, {
+          productTitle: product.title,
+          productId
+        });
+        if (result.success) {
+          console.log(`✅ [approveProduct] Approval email sent to ${sellerForEmail.email}`);
+        } else {
+          console.error(`❌ [approveProduct] Email failed for ${sellerForEmail.email}:`, result.error);
+        }
+      } catch (emailErr) {
+        console.error(`❌ [approveProduct] Email error for ${sellerForEmail.email}:`, emailErr.message);
+      }
+    } else {
+      console.error(`❌ [approveProduct] Seller email still not found for sellerId=${product.sellerId} — email skipped`);
     }
 
     // Fetch updated product with featuredImage via raw SQL
@@ -1576,14 +1599,36 @@ exports.rejectProduct = async (request, reply) => {
 
     // Send notification to seller about product rejection
     await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
+    console.log(`✅ [rejectProduct] In-app notification sent to seller ${product.sellerId} for product "${product.title}"`);
 
     // Send email to seller about product rejection
-    if (product.seller?.email) {
-      sendSellerProductRejectedEmail(product.seller.email, product.seller.name, {
-        productTitle: product.title,
-        reason: reason || 'No specific reason provided',
-        productId
-      }).catch(e => console.error('Seller product rejected email error:', e.message));
+    // Use included relation first; fall back to direct DB lookup.
+    let sellerForEmail = product.seller;
+    if (!sellerForEmail?.email) {
+      console.warn(`⚠️  [rejectProduct] product.seller missing — fetching seller ${product.sellerId} directly`);
+      sellerForEmail = await prisma.user.findUnique({
+        where: { id: product.sellerId },
+        select: { id: true, name: true, email: true }
+      });
+    }
+    if (sellerForEmail?.email) {
+      console.log(`📧 [rejectProduct] Sending rejection email to seller ${sellerForEmail.email}`);
+      try {
+        const result = await sendSellerProductRejectedEmail(sellerForEmail.email, sellerForEmail.name, {
+          productTitle: product.title,
+          reason: reason || 'No specific reason provided',
+          productId
+        });
+        if (result.success) {
+          console.log(`✅ [rejectProduct] Rejection email sent to ${sellerForEmail.email}`);
+        } else {
+          console.error(`❌ [rejectProduct] Email failed for ${sellerForEmail.email}:`, result.error);
+        }
+      } catch (emailErr) {
+        console.error(`❌ [rejectProduct] Email error for ${sellerForEmail.email}:`, emailErr.message);
+      }
+    } else {
+      console.error(`❌ [rejectProduct] Seller email still not found for sellerId=${product.sellerId} — email skipped`);
     }
 
     reply.send({

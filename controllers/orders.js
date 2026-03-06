@@ -4,6 +4,7 @@ const {
   sendOrderConfirmationEmail, 
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail,
+  sendAdminNewOrderEmail,
   sendSellerLowStockEmail
 } = require("../utils/emailService");
 const {
@@ -434,32 +435,41 @@ exports.createOrder = async (request, reply) => {
           } catch (pdfErr) {
             console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
           }
-          sendOrderConfirmationEmail(user.email, user.name, {
-            orderId: order.id,
-            totalAmount,
-            itemCount: order.items.length,
-            products: order.items.map(item => ({
-              title: item.product.title,
-              quantity: item.quantity,
-              price: item.price
-            })),
-            shippingAddress,
-            orderSummary: {
-              subtotal: cartCalculations.subtotal,
-              subtotalExGST: cartCalculations.subtotalExGST,
-              shippingCost: cartCalculations.shippingCost,
-              gstPercentage: cartCalculations.gstPercentage,
-              gstAmount: cartCalculations.gstAmount,
-              grandTotal: cartCalculations.grandTotal,
-              gstInclusive: true,
-              shippingMethod: {
-                name: shippingMethod.name,
-                cost: shippingMethod.cost,
-                estimatedDays: shippingMethod.estimatedDays
-              }
-            },
-            invoicePDFBuffer
-          }).catch(e => console.error("Customer email error:", e.message));
+          try {
+            const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
+              orderId: order.id,
+              totalAmount,
+              itemCount: order.items.length,
+              products: order.items.map(item => ({
+                title: item.product.title,
+                quantity: item.quantity,
+                price: item.price
+              })),
+              shippingAddress,
+              orderSummary: {
+                subtotal: cartCalculations.subtotal,
+                subtotalExGST: cartCalculations.subtotalExGST,
+                shippingCost: cartCalculations.shippingCost,
+                gstPercentage: cartCalculations.gstPercentage,
+                gstAmount: cartCalculations.gstAmount,
+                grandTotal: cartCalculations.grandTotal,
+                gstInclusive: true,
+                shippingMethod: {
+                  name: shippingMethod.name,
+                  cost: shippingMethod.cost,
+                  estimatedDays: shippingMethod.estimatedDays
+                }
+              },
+              invoicePDFBuffer
+            });
+            if (emailResult?.success) {
+              console.log(`✅ Order confirmation email sent to ${user.email} (PDF attached: ${!!invoicePDFBuffer})`);
+            } else {
+              console.error(`❌ Order confirmation email failed for ${user.email}:`, emailResult?.error);
+            }
+          } catch (emailErr) {
+            console.error(`❌ Order confirmation email error for ${user.email}:`, emailErr.message);
+          }
         }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
@@ -476,25 +486,74 @@ exports.createOrder = async (request, reply) => {
               }).catch(e => console.error("SLA notification error:", e.message));
               // In-app notification already fired before reply — only SLA + email needed here
             }
-            if (seller && seller.email && seller.sellerProfile) {
-              const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+            if (seller && seller.email) {
+              const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
-              sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                orderId: order.id,
-                productCount: sellerData.productCount,
-                totalAmount: sellerData.totalAmount,
-                products: sellerData.products,
-                shippingAddress,
-                paymentMethod,
-                customerName: user.name,
-                customerEmail: user.email,
-                customerPhone: user.phone
-              }).catch(e => console.error("Seller email error:", e.message));
+              try {
+                const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
+                  orderId: order.id,
+                  productCount: sellerData.productCount,
+                  totalAmount: sellerData.totalAmount,
+                  products: sellerData.products,
+                  shippingAddress,
+                  paymentMethod,
+                  customerName: user.name,
+                  customerEmail: user.email,
+                  customerPhone: user.phone
+                });
+                if (sellerEmailResult?.success) {
+                  console.log(`✅ Seller order email sent to ${seller.email}`);
+                } else {
+                  console.error(`❌ Seller order email failed for ${seller.email}:`, sellerEmailResult?.error);
+                }
+              } catch (emailErr) {
+                console.error(`❌ Seller order email error for ${seller.email}:`, emailErr.message);
+              }
+            } else {
+              console.warn(`⚠️  No email for seller ${sellerId} — order email skipped`);
             }
           } catch (err) {
             console.error(`Error notifying seller ${sellerId}:`, err.message);
           }
         }));
+
+        // 3. Admin order emails — notify all admins with full order details
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'ADMIN' },
+            select: { email: true, name: true }
+          });
+          const allItems = order.items.map(item => ({
+            title: item.product?.title || item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }));
+          for (const admin of admins) {
+            if (admin.email) {
+              try {
+                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
+                  orderId: order.id,
+                  customerName: user.name,
+                  customerEmail: user.email,
+                  customerPhone: user.phone,
+                  sellerNames: sellerNameList.join(', ') || 'Unknown',
+                  totalAmount,
+                  paymentMethod,
+                  items: allItems
+                });
+                if (adminEmailResult?.success) {
+                  console.log(`✅ Admin order email sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Admin order email failed for ${admin.email}:`, adminEmailResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Admin order email error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminEmailListErr) {
+          console.error('Error fetching admins for order email:', adminEmailListErr.message);
+        }
       } catch (bgErr) {
         console.error('Background notification error:', bgErr.message);
       }
@@ -1812,37 +1871,72 @@ exports.createGuestOrder = async (request, reply) => {
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
       try {
-        // 1. Guest customer confirmation email
+        // 1. Guest customer confirmation email (with PDF invoice attachment)
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
-        sendOrderConfirmationEmail(customerEmail, customerName, {
-          orderId: order.id,
-          totalAmount,
-          itemCount: order.items.length,
-          products: order.items.map(item => ({
-            title: item.product.title,
-            quantity: item.quantity,
-            price: item.price
-          })),
-          shippingAddress,
-          paymentMethod,
-          customerPhone,
-          isGuest: true,
-          orderSummary: {
-            subtotal: cartCalculations.subtotal,
-            subtotalExGST: cartCalculations.subtotalExGST,
-            shippingCost: cartCalculations.shippingCost,
-            gstPercentage: cartCalculations.gstPercentage,
-            gstAmount: cartCalculations.gstAmount,
-            grandTotal: cartCalculations.grandTotal,
-            couponCode: appliedCoupon ? appliedCoupon.code : null,
-            discountAmount: discountAmount > 0 ? discountAmount : null,
-            shippingMethod: {
-              name: shippingMethod.name,
-              cost: shippingMethod.cost,
-              estimatedDays: shippingMethod.estimatedDays
-            }
+        let guestInvoicePDFBuffer = null;
+        try {
+          guestInvoicePDFBuffer = await generateInvoiceBuffer({
+            id: order.id,
+            createdAt: order.createdAt,
+            status: order.status,
+            customerName: order.customerName || customerName,
+            customerEmail: order.customerEmail || customerEmail,
+            customerPhone: customerPhone,
+            shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
+            shippingCity: order.shippingCity,
+            shippingState: order.shippingState,
+            shippingZipCode: order.shippingZipCode,
+            shippingCountry: order.shippingCountry,
+            shippingPhone: customerPhone,
+            totalAmount: order.totalAmount,
+            discountAmount: order.discountAmount,
+            couponCode: order.couponCode,
+            paymentMethod,
+            items: order.items
+          });
+          console.log(`✅ Guest invoice PDF generated, size: ${guestInvoicePDFBuffer?.length || 0} bytes`);
+        } catch (pdfErr) {
+          console.error('❌ Guest invoice PDF generation error (non-fatal):', pdfErr.message);
+        }
+        try {
+          const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
+            orderId: order.id,
+            totalAmount,
+            itemCount: order.items.length,
+            products: order.items.map(item => ({
+              title: item.product.title,
+              quantity: item.quantity,
+              price: item.price
+            })),
+            shippingAddress,
+            paymentMethod,
+            customerPhone,
+            isGuest: true,
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
+              shippingCost: cartCalculations.shippingCost,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              couponCode: appliedCoupon ? appliedCoupon.code : null,
+              discountAmount: discountAmount > 0 ? discountAmount : null,
+              shippingMethod: {
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays
+              }
+            },
+            invoicePDFBuffer: guestInvoicePDFBuffer
+          });
+          if (guestEmailResult?.success) {
+            console.log(`✅ Guest order confirmation email sent to ${customerEmail} (PDF attached: ${!!guestInvoicePDFBuffer})`);
+          } else {
+            console.error(`❌ Guest order confirmation email failed for ${customerEmail}:`, guestEmailResult?.error);
           }
-        }).catch(e => console.error("Guest customer email error:", e.message));
+        } catch (emailErr) {
+          console.error(`❌ Guest order confirmation email error for ${customerEmail}:`, emailErr.message);
+        }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
         await Promise.all([...sellerNotifications.entries()].map(async ([sellerId, sellerData]) => {
@@ -1856,28 +1950,80 @@ exports.createGuestOrder = async (request, reply) => {
                 message: `New guest order received from ${customerName}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
-              // In-app notification already fired before reply — only SLA + email needed here
             }
-            if (seller && seller.email && seller.sellerProfile) {
-              const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+            if (seller && seller.email) {
+              const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
-              sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                orderId: order.id,
-                productCount: sellerData.productCount,
-                totalAmount: sellerData.totalAmount,
-                products: sellerData.products,
-                shippingAddress,
-                paymentMethod,
-                customerName,
-                customerEmail,
-                customerPhone,
-                isGuest: true
-              }).catch(e => console.error("Seller email error:", e.message));
+              try {
+                const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
+                  orderId: order.id,
+                  productCount: sellerData.productCount,
+                  totalAmount: sellerData.totalAmount,
+                  products: sellerData.products,
+                  shippingAddress,
+                  paymentMethod,
+                  customerName,
+                  customerEmail,
+                  customerPhone,
+                  isGuest: true
+                });
+                if (sellerEmailResult?.success) {
+                  console.log(`✅ Guest seller order email sent to ${seller.email}`);
+                } else {
+                  console.error(`❌ Guest seller order email failed for ${seller.email}:`, sellerEmailResult?.error);
+                }
+              } catch (emailErr) {
+                console.error(`❌ Guest seller order email error for ${seller.email}:`, emailErr.message);
+              }
+            } else {
+              console.warn(`⚠️  No email for seller ${sellerId} — guest order email skipped`);
             }
           } catch (err) {
             console.error(`Error notifying seller ${sellerId}:`, err.message);
           }
         }));
+
+        // 3. Admin order emails for guest orders
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'ADMIN' },
+            select: { email: true, name: true }
+          });
+          const guestSellerNames = [...sellerNotifications.keys()]
+            .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
+            .filter(Boolean)
+            .join(', ');
+          const allItems = order.items.map(item => ({
+            title: item.product?.title || item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }));
+          for (const admin of admins) {
+            if (admin.email) {
+              try {
+                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
+                  orderId: order.id,
+                  customerName,
+                  customerEmail,
+                  customerPhone,
+                  sellerNames: guestSellerNames || 'Unknown',
+                  totalAmount,
+                  paymentMethod,
+                  items: allItems
+                });
+                if (adminEmailResult?.success) {
+                  console.log(`✅ Admin guest order email sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Admin guest order email failed for ${admin.email}:`, adminEmailResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Admin guest order email error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminEmailListErr) {
+          console.error('Error fetching admins for guest order email:', adminEmailListErr.message);
+        }
       } catch (bgErr) {
         console.error('Background notification error (guest):', bgErr.message);
       }

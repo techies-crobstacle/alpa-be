@@ -199,6 +199,55 @@ exports.addProduct = async (request, reply) => {
       }
     }
 
+    // ── Notify all admins about new product pending review ───────────────────
+    if (userRole === "SELLER" && productStatus === "PENDING") {
+      try {
+        const sellerUserInfo = await prisma.user.findUnique({
+          where: { id: sellerId },
+          select: { name: true }
+        });
+        const pendingDetails = {
+          productTitle: title,
+          sellerName: sellerUserInfo?.name || seller.storeName || seller.businessName || 'Unknown'
+        };
+
+        // In-app notifications for all admins (failure must not block email)
+        try {
+          await notifyAdminNewProduct(product.id, pendingDetails);
+          console.log(`✅ [addProduct] In-app notifications sent to all admins for product "${title}"`);
+        } catch (inAppErr) {
+          console.error('❌ [addProduct] In-app notification error (non-fatal):', inAppErr.message);
+        }
+
+        // Email all admins — separate try/catch so notification failure never blocks email
+        try {
+          const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
+          console.log(`📧 [addProduct] Found ${admins.length} admin(s) to email — product "${title}"`);
+          for (const admin of admins) {
+            if (admin.email) {
+              const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
+                productTitle: title,
+                sellerName: pendingDetails.sellerName,
+                productId: product.id
+              });
+              if (result.success) {
+                console.log(`✅ [addProduct] Pending-review email sent to admin ${admin.email}`);
+              } else {
+                console.error(`❌ [addProduct] Failed to email admin ${admin.email}:`, result.error);
+              }
+            } else {
+              console.warn(`⚠️  [addProduct] Admin user has no email address — skipping`);
+            }
+          }
+        } catch (emailErr) {
+          console.error('❌ [addProduct] Admin email error:', emailErr.message);
+        }
+      } catch (notifyErr) {
+        console.error('❌ [addProduct] Admin notification/email block error:', notifyErr.message);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return reply.status(200).send({ 
       success: true, 
       message: "Product added successfully",
@@ -221,6 +270,9 @@ exports.addProduct = async (request, reply) => {
       note: userRole === "ADMIN" ? "Product is live" : "Product submitted for admin review - will be live after approval",
       totalProducts: seller.productCount + 1
     });
+
+    // ── [DEAD CODE REMOVED] Notification block was here but after return ──
+
   } catch (err) {
     console.error("Add product error:", err);
     return reply.status(500).send({ success: false, error: err.message });
@@ -490,6 +542,7 @@ exports.updateProduct = async (request, reply) => {
 
     // ── Low stock auto-deactivation ──────────────────────────────────────────
     // Work out the effective stock after this update
+    let lowStockTriggered = false;
     const finalStock = (stock !== undefined && stock !== '') ? stock : product.stock;
     if (finalStock <= LOW_STOCK_THRESHOLD) {
       // Force inactive regardless of role or status
@@ -499,6 +552,7 @@ exports.updateProduct = async (request, reply) => {
         WHERE id = ${request.params.id}
       `;
       newIsActive = false;
+      lowStockTriggered = true;
       console.log(`⚠️  Product "${updatedProduct.title}" auto-deactivated — stock: ${finalStock}`);
 
       // ── Audit log: auto-deactivated due to low stock ───────────────────────
@@ -543,32 +597,51 @@ exports.updateProduct = async (request, reply) => {
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Notify admin when seller edit sends product back to PENDING ───────
-    if (userRole === "SELLER" && newStatus === "PENDING") {
-      const sellerUser = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { name: true }
-      });
-      const pendingDetails = {
-        productTitle: title || product.title,
-        sellerName: sellerUser?.name || 'Unknown'
-      };
+    if (userRole === "SELLER" && newStatus === "PENDING" && !lowStockTriggered) {
+      try {
+        const sellerUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true }
+        });
+        const pendingDetails = {
+          productTitle: title || product.title,
+          sellerName: sellerUser?.name || 'Unknown'
+        };
 
-      notifyAdminProductPending(request.params.id, pendingDetails)
-        .catch(e => console.error('Admin product-pending notification error:', e.message));
+        // In-app notifications for all admins (failure must not block email)
+        try {
+          await notifyAdminProductPending(request.params.id, pendingDetails);
+          console.log(`✅ [updateProduct] In-app notifications sent to all admins for product "${pendingDetails.productTitle}"`);
+        } catch (inAppErr) {
+          console.error('❌ [updateProduct] In-app notification error (non-fatal):', inAppErr.message);
+        }
 
-      prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
-        .then(admins => {
+        // Email all admins — separate try/catch so notification failure never blocks email
+        try {
+          const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
+          console.log(`📧 [updateProduct] Found ${admins.length} admin(s) to email — product "${pendingDetails.productTitle}"`);
           for (const admin of admins) {
             if (admin.email) {
-              sendAdminProductPendingEmail(admin.email, admin.name, {
+              const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
                 productTitle: pendingDetails.productTitle,
                 sellerName: pendingDetails.sellerName,
                 productId: request.params.id
-              }).catch(e => console.error('Admin product-pending email error:', e.message));
+              });
+              if (result.success) {
+                console.log(`✅ [updateProduct] Pending-review email sent to admin ${admin.email}`);
+              } else {
+                console.error(`❌ [updateProduct] Failed to email admin ${admin.email}:`, result.error);
+              }
+            } else {
+              console.warn(`⚠️  [updateProduct] Admin user has no email address — skipping`);
             }
           }
-        })
-        .catch(e => console.error('Admin product-pending email lookup error:', e.message));
+        } catch (emailErr) {
+          console.error('❌ [updateProduct] Admin email error:', emailErr.message);
+        }
+      } catch (notifyErr) {
+        console.error('❌ [updateProduct] Admin notification/email block error:', notifyErr.message);
+      }
     }
     // ─────────────────────────────────────────────────────────────────────────
 
