@@ -300,9 +300,10 @@ exports.getNotifications = async (request, reply) => {
       take: parseInt(limit)
     });
 
-    const unreadCount = await prisma.notification.count({
-      where: { userId, isRead: false }
-    });
+    const [unreadCount, totalCount] = await Promise.all([
+      prisma.notification.count({ where: { userId, isRead: false } }),
+      prisma.notification.count({ where: whereClause })
+    ]);
 
     return reply.status(200).send({
       success: true,
@@ -311,7 +312,7 @@ exports.getNotifications = async (request, reply) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: notifications.length
+        total: totalCount
       }
     });
 

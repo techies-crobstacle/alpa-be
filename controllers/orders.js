@@ -381,6 +381,18 @@ exports.createOrder = async (request, reply) => {
       console.error("Admin notification error (non-blocking):", error.message);
     });
 
+    // Notify each seller about the new order (fired before reply — guaranteed delivery)
+    for (const [sellerId, sellerData] of sellerNotifications) {
+      notifySellerNewOrder(sellerId, order.id, {
+        customerName: user.name,
+        totalAmount: sellerData.totalAmount.toFixed(2),
+        itemCount: sellerData.productCount,
+        productNames: sellerData.products.map(p => p.title).filter(Boolean)
+      }).catch(error => {
+        console.error(`Seller order notification error (sellerId=${sellerId}):`, error.message);
+      });
+    }
+
     // ── Fire all emails & notifications in background (non-blocking) ────────
     // Reply is sent immediately below; PDF generation + all outbound calls
     // run in the background so they never delay the API response.
@@ -453,13 +465,7 @@ exports.createOrder = async (request, reply) => {
                 message: `New order received from ${user.name}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
-              // In-app notification — always fires regardless of sellerProfile
-              notifySellerNewOrder(sellerId, order.id, {
-                customerName: user.name,
-                totalAmount: sellerData.totalAmount.toFixed(2),
-                itemCount: sellerData.productCount,
-                productNames: sellerData.products.map(p => p.title).filter(Boolean)
-              }).catch(e => console.error("Seller notification error:", e.message));
+              // In-app notification already fired before reply — only SLA + email needed here
             }
             if (seller && seller.email && seller.sellerProfile) {
               const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
@@ -572,7 +578,7 @@ exports.cancelOrder = async (request, reply) => {
       include: {
         items: {
           include: {
-            product: { select: { id: true, title: true, price: true } }
+            product: { select: { id: true, title: true, price: true, sellerId: true } }
           }
         }
       }
@@ -681,6 +687,33 @@ exports.cancelOrder = async (request, reply) => {
       }).catch(error => {
         console.error("Customer notification error (non-blocking):", error.message);
       });
+
+      // Notify all sellers whose products are in this cancelled order
+      const cancelledSellerIds = [...new Set(
+        order.items.map(item => item.product?.sellerId).filter(Boolean)
+      )];
+      const readableOrderId = orderId.slice(-8).toUpperCase();
+      for (const sellerId of cancelledSellerIds) {
+        const sellerProducts = order.items
+          .filter(item => item.product?.sellerId === sellerId)
+          .map(item => item.product?.title || 'Product');
+        prisma.notification.create({
+          data: {
+            userId: sellerId,
+            title: 'Order Cancelled by Customer',
+            message: `Customer ${order.customerName || 'Customer'} cancelled order #${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
+            type: 'ORDER_CANCELLED',
+            relatedId: orderId,
+            relatedType: 'order',
+            metadata: {
+              orderId,
+              reason: finalReason,
+              customerName: order.customerName,
+              cancelledProducts: sellerProducts
+            }
+          }
+        }).catch(err => console.error(`Seller cancel notification error (sellerId=${sellerId}):`, err.message));
+      }
     }
 
     return reply.status(200).send({ success: true, message: "Order cancelled successfully. Email notification sent." });
@@ -1749,6 +1782,18 @@ exports.createGuestOrder = async (request, reply) => {
       console.error("Admin notification error (non-blocking):", error.message);
     });
 
+    // Notify each seller about the new guest order (fired before reply — guaranteed delivery)
+    for (const [sellerId, sellerData] of sellerNotifications) {
+      notifySellerNewOrder(sellerId, order.id, {
+        customerName,
+        totalAmount: sellerData.totalAmount.toFixed(2),
+        itemCount: sellerData.productCount,
+        productNames: sellerData.products.map(p => p.title).filter(Boolean)
+      }).catch(error => {
+        console.error(`Seller order notification error (sellerId=${sellerId}):`, error.message);
+      });
+    }
+
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
       try {
@@ -1796,13 +1841,7 @@ exports.createGuestOrder = async (request, reply) => {
                 message: `New guest order received from ${customerName}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
-              // In-app notification — always fires regardless of sellerProfile
-              notifySellerNewOrder(sellerId, order.id, {
-                customerName,
-                totalAmount: sellerData.totalAmount.toFixed(2),
-                itemCount: sellerData.productCount,
-                productNames: sellerData.products.map(p => p.title).filter(Boolean)
-              }).catch(e => console.error("Seller notification error:", e.message));
+              // In-app notification already fired before reply — only SLA + email needed here
             }
             if (seller && seller.email && seller.sellerProfile) {
               const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
