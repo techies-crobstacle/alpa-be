@@ -1906,28 +1906,80 @@ exports.createGuestOrder = async (request, reply) => {
                 message: `New guest order received from ${customerName}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
-              // In-app notification already fired before reply — only SLA + email needed here
             }
-            if (seller && seller.email && seller.sellerProfile) {
-              const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+            if (seller && seller.email) {
+              const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
-              sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                orderId: order.id,
-                productCount: sellerData.productCount,
-                totalAmount: sellerData.totalAmount,
-                products: sellerData.products,
-                shippingAddress,
-                paymentMethod,
-                customerName,
-                customerEmail,
-                customerPhone,
-                isGuest: true
-              }).catch(e => console.error("Seller email error:", e.message));
+              try {
+                const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
+                  orderId: order.id,
+                  productCount: sellerData.productCount,
+                  totalAmount: sellerData.totalAmount,
+                  products: sellerData.products,
+                  shippingAddress,
+                  paymentMethod,
+                  customerName,
+                  customerEmail,
+                  customerPhone,
+                  isGuest: true
+                });
+                if (sellerEmailResult?.success) {
+                  console.log(`✅ Guest seller order email sent to ${seller.email}`);
+                } else {
+                  console.error(`❌ Guest seller order email failed for ${seller.email}:`, sellerEmailResult?.error);
+                }
+              } catch (emailErr) {
+                console.error(`❌ Guest seller order email error for ${seller.email}:`, emailErr.message);
+              }
+            } else {
+              console.warn(`⚠️  No email for seller ${sellerId} — guest order email skipped`);
             }
           } catch (err) {
             console.error(`Error notifying seller ${sellerId}:`, err.message);
           }
         }));
+
+        // 3. Admin order emails for guest orders
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'ADMIN' },
+            select: { email: true, name: true }
+          });
+          const guestSellerNames = [...sellerNotifications.keys()]
+            .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
+            .filter(Boolean)
+            .join(', ');
+          const allItems = order.items.map(item => ({
+            title: item.product?.title || item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }));
+          for (const admin of admins) {
+            if (admin.email) {
+              try {
+                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
+                  orderId: order.id,
+                  customerName,
+                  customerEmail,
+                  customerPhone,
+                  sellerNames: guestSellerNames || 'Unknown',
+                  totalAmount,
+                  paymentMethod,
+                  items: allItems
+                });
+                if (adminEmailResult?.success) {
+                  console.log(`✅ Admin guest order email sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Admin guest order email failed for ${admin.email}:`, adminEmailResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Admin guest order email error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminEmailListErr) {
+          console.error('Error fetching admins for guest order email:', adminEmailListErr.message);
+        }
       } catch (bgErr) {
         console.error('Background notification error (guest):', bgErr.message);
       }
