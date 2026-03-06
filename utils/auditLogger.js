@@ -36,6 +36,10 @@ const AUDIT_ACTIONS = {
   PRODUCT_ACTIVATED:     'PRODUCT_ACTIVATED',
   PRODUCT_DEACTIVATED:   'PRODUCT_DEACTIVATED',
 
+  // ── Recycle bin ───────────────────────────────────────────────────────────
+  PRODUCT_RESTORED:                   'PRODUCT_RESTORED',
+  PRODUCT_PERMANENTLY_DELETED:        'PRODUCT_PERMANENTLY_DELETED',
+
   // ── Automated / system actions ─────────────────────────────────────────────
   PRODUCT_AUTO_DEACTIVATED_LOW_STOCK: 'PRODUCT_AUTO_DEACTIVATED_LOW_STOCK',
 

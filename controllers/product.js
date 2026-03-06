@@ -238,6 +238,7 @@ exports.getMyProducts = async (request, reply) => {
              "rejectionReason", "createdAt", "updatedAt"
       FROM "products"
       WHERE "sellerId" = ${sellerId}
+        AND "deletedAt" IS NULL
       ORDER BY "createdAt" DESC
     `;
 
@@ -266,6 +267,7 @@ exports.getProductById = async (request, reply) => {
       FROM "products" p
       JOIN "users" u ON p."sellerId" = u.id
       WHERE p.id = ${id}
+        AND p."deletedAt" IS NULL
     `;
 
     if (!rows.length) {
@@ -298,7 +300,7 @@ exports.updateProduct = async (request, reply) => {
       where: { id: request.params.id }
     });
 
-    if (!product) {
+    if (!product || product.deletedAt) {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
@@ -561,62 +563,167 @@ exports.updateProduct = async (request, reply) => {
   }
 };
 
-// DELETE PRODUCT (Seller only)
+// DELETE PRODUCT — soft delete (moves to Recycle Bin)
 exports.deleteProduct = async (request, reply) => {
   try {
-    const userId = request.user.userId; // From auth middleware
-    const userRole = request.user.role; // From auth middleware
-    
+    const userId   = request.user.userId;
+    const userRole = request.user.role;
+
     const product = await prisma.product.findUnique({
       where: { id: request.params.id }
     });
 
-    if (!product) {
+    if (!product || product.deletedAt) {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    // Check authorization: only seller (owner) or admin can delete
+    // Only the owning seller or an admin may delete
     if (userRole !== "ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
     }
 
-    // ── Audit log: product deleted (capture snapshot BEFORE deletion) ─────────
+    const now = new Date();
+
+    // Soft delete — mark deleted, deactivate, keep the row
+    await prisma.$executeRaw`
+      UPDATE "products"
+      SET "deletedAt"     = ${now},
+          "deletedBy"     = ${userId},
+          "deletedByRole" = ${userRole},
+          "isActive"      = false,
+          status          = 'INACTIVE'
+      WHERE id = ${request.params.id}
+    `;
+
+    // Audit log
     auditLog({
       entityType:   ENTITY_TYPES.PRODUCT,
       entityId:     request.params.id,
       action:       AUDIT_ACTIONS.PRODUCT_DELETED,
       previousData: product,
+      newData:      { ...product, deletedAt: now, deletedBy: userId, deletedByRole: userRole, isActive: false, status: 'INACTIVE' },
       reason:       request.body?.reason ?? null,
       ...extractRequestMeta(request),
     });
 
-    await prisma.product.delete({
-      where: { id: request.params.id }
-    });
-
-    // Update seller product count (only for seller actions, not admin)
+    // Update seller product count
+    let newCount = null;
     if (userRole === "SELLER") {
-      const seller = await prisma.sellerProfile.findUnique({
-        where: { userId }
-      });
-
-      const newCount = Math.max(0, (seller?.productCount || 1) - 1);
+      const seller = await prisma.sellerProfile.findUnique({ where: { userId } });
+      newCount = Math.max(0, (seller?.productCount || 1) - 1);
       await prisma.sellerProfile.update({
         where: { userId },
-        data: {
-          productCount: newCount,
-          minimumProductsUploaded: newCount >= 1
-        }
+        data:  { productCount: newCount, minimumProductsUploaded: newCount >= 1 }
       });
     }
 
-    return reply.status(200).send({ 
-      success: true, 
-      message: "Product deleted successfully",
-      totalProducts: newCount
+    return reply.status(200).send({
+      success: true,
+      message: "Product moved to Recycle Bin. It can be restored from there.",
+      ...(newCount !== null && { totalProducts: newCount })
     });
   } catch (err) {
     console.error("Delete product error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// GET RECYCLE BIN — seller sees their own deleted products
+exports.getRecycleBin = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+
+    const products = await prisma.$queryRaw`
+      SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
+             "artistName", status, featured, tags,
+             "featuredImage", images AS "galleryImages",
+             "rejectionReason", "deletedAt", "deletedBy", "deletedByRole",
+             "createdAt", "updatedAt"
+      FROM "products"
+      WHERE "sellerId" = ${sellerId}
+        AND "deletedAt" IS NOT NULL
+      ORDER BY "deletedAt" DESC
+    `;
+
+    return reply.status(200).send({ success: true, products, count: products.length });
+  } catch (err) {
+    console.error("Get recycle bin error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// RESTORE PRODUCT from Recycle Bin
+exports.restoreProduct = async (request, reply) => {
+  try {
+    const userId   = request.user.userId;
+    const userRole = request.user.role;
+
+    // Support both :id (seller routes) and :productId (admin routes)
+    const productId = request.params.id || request.params.productId;
+
+    // Fetch including soft-deleted rows
+    const rows = await prisma.$queryRaw`
+      SELECT * FROM "products" WHERE id = ${productId}
+    `;
+    const product = rows[0];
+
+    if (!product) {
+      return reply.status(404).send({ success: false, message: "Product not found" });
+    }
+
+    if (!product.deletedAt) {
+      return reply.status(400).send({ success: false, message: "Product is not in the Recycle Bin" });
+    }
+
+    // Ownership check for sellers
+    if (userRole !== "ADMIN" && product.sellerId !== userId) {
+      return reply.status(403).send({ success: false, message: "You are not authorized to restore this product" });
+    }
+
+    // Sellers restore to PENDING (re-approval required); Admins restore to INACTIVE (can activate manually)
+    const restoredStatus = userRole === "ADMIN" ? "INACTIVE" : "PENDING";
+
+    await prisma.$executeRaw`
+      UPDATE "products"
+      SET "deletedAt"     = NULL,
+          "deletedBy"     = NULL,
+          "deletedByRole" = NULL,
+          "isActive"      = false,
+          status          = ${restoredStatus}
+      WHERE id = ${productId}
+    `;
+
+    // Audit log
+    auditLog({
+      entityType:   ENTITY_TYPES.PRODUCT,
+      entityId:     productId,
+      action:       AUDIT_ACTIONS.PRODUCT_RESTORED,
+      previousData: product,
+      newData:      { ...product, deletedAt: null, deletedBy: null, deletedByRole: null, isActive: false, status: restoredStatus },
+      reason:       `Restored by ${userRole}. Status set to ${restoredStatus} — ${userRole === 'SELLER' ? 'awaiting admin approval' : 'activate when ready'}.`,
+      ...extractRequestMeta(request),
+    });
+
+    // Update seller product count back up
+    const sellerIdToUpdate = userRole === "SELLER" ? userId : product.sellerId;
+    const seller = await prisma.sellerProfile.findUnique({ where: { userId: sellerIdToUpdate } });
+    if (seller) {
+      const newCount = (seller.productCount || 0) + 1;
+      await prisma.sellerProfile.update({
+        where: { userId: sellerIdToUpdate },
+        data:  { productCount: newCount, minimumProductsUploaded: newCount >= 1 }
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: userRole === "ADMIN"
+        ? "Product restored. Set it to Active when ready."
+        : "Product restored and submitted for admin review.",
+      restoredStatus
+    });
+  } catch (err) {
+    console.error("Restore product error:", err);
     return reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -630,6 +737,7 @@ exports.getProductStock = async (request, reply) => {
       SELECT id, stock, "isActive", status
       FROM "products"
       WHERE id = ${id}
+        AND "deletedAt" IS NULL
     `;
 
     if (!rows.length) {
@@ -663,7 +771,7 @@ exports.getBulkStock = async (request, reply) => {
     const ids = productIds.slice(0, 100);
 
     const products = await prisma.product.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, deletedAt: null },
       select: { id: true, stock: true, isActive: true }
     });
 
@@ -708,6 +816,7 @@ exports.getAllProducts = async (request, reply) => {
       JOIN "seller_profiles" sp ON u.id = sp."userId"
       LEFT JOIN "ratings" r ON r."productId" = p.id
       WHERE p."isActive" = true AND sp.status = 'ACTIVE'
+        AND p."deletedAt" IS NULL
       GROUP BY p.id, u.name
       ORDER BY p."createdAt" DESC
     `;

@@ -2,6 +2,7 @@ const { isAdmin } = require("../middlewares/authMiddleware");
 const authMiddleware = require("../middlewares/auth");
 const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
+const productController = require("../controllers/product");
 const feedbackController = require("../controllers/feedback");
 const commissionController = require("../controllers/commission");
 
@@ -67,6 +68,14 @@ async function adminRoutes(fastify, options) {
   // Activate / Deactivate a product
   fastify.put("/products/activate/:productId", { preHandler: adminAuth }, adminController.activateProduct);
   fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
+
+  // ── Recycle Bin (admin) ────────────────────────────────────────────────────
+  // GET  /admin/products/recycle-bin?sellerId=xxx   — all deleted products
+  fastify.get("/products/recycle-bin", { preHandler: adminAuth }, adminController.getAdminRecycleBin);
+  // POST /admin/products/:productId/restore         — restore to INACTIVE
+  fastify.post("/products/:productId/restore", { preHandler: adminAuth }, productController.restoreProduct);
+  // DELETE /admin/products/:productId/permanent     — hard delete from recycle bin
+  fastify.delete("/products/:productId/permanent", { preHandler: adminAuth }, adminController.permanentlyDeleteProduct);
 
   // Scan & deactivate all low-stock active products and notify sellers
   fastify.post("/products/scan-low-stock", { preHandler: adminAuth }, adminController.scanLowStockProducts);
