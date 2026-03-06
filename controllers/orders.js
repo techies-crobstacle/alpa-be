@@ -4,6 +4,7 @@ const {
   sendOrderConfirmationEmail, 
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail,
+  sendAdminNewOrderEmail,
   sendSellerLowStockEmail
 } = require("../utils/emailService");
 const {
@@ -476,25 +477,74 @@ exports.createOrder = async (request, reply) => {
               }).catch(e => console.error("SLA notification error:", e.message));
               // In-app notification already fired before reply — only SLA + email needed here
             }
-            if (seller && seller.email && seller.sellerProfile) {
-              const sellerName = seller.sellerProfile.storeName || seller.sellerProfile.businessName || 'Seller';
+            if (seller && seller.email) {
+              const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
-              sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                orderId: order.id,
-                productCount: sellerData.productCount,
-                totalAmount: sellerData.totalAmount,
-                products: sellerData.products,
-                shippingAddress,
-                paymentMethod,
-                customerName: user.name,
-                customerEmail: user.email,
-                customerPhone: user.phone
-              }).catch(e => console.error("Seller email error:", e.message));
+              try {
+                const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
+                  orderId: order.id,
+                  productCount: sellerData.productCount,
+                  totalAmount: sellerData.totalAmount,
+                  products: sellerData.products,
+                  shippingAddress,
+                  paymentMethod,
+                  customerName: user.name,
+                  customerEmail: user.email,
+                  customerPhone: user.phone
+                });
+                if (sellerEmailResult?.success) {
+                  console.log(`✅ Seller order email sent to ${seller.email}`);
+                } else {
+                  console.error(`❌ Seller order email failed for ${seller.email}:`, sellerEmailResult?.error);
+                }
+              } catch (emailErr) {
+                console.error(`❌ Seller order email error for ${seller.email}:`, emailErr.message);
+              }
+            } else {
+              console.warn(`⚠️  No email for seller ${sellerId} — order email skipped`);
             }
           } catch (err) {
             console.error(`Error notifying seller ${sellerId}:`, err.message);
           }
         }));
+
+        // 3. Admin order emails — notify all admins with full order details
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'ADMIN' },
+            select: { email: true, name: true }
+          });
+          const allItems = order.items.map(item => ({
+            title: item.product?.title || item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }));
+          for (const admin of admins) {
+            if (admin.email) {
+              try {
+                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
+                  orderId: order.id,
+                  customerName: user.name,
+                  customerEmail: user.email,
+                  customerPhone: user.phone,
+                  sellerNames: sellerNameList.join(', ') || 'Unknown',
+                  totalAmount,
+                  paymentMethod,
+                  items: allItems
+                });
+                if (adminEmailResult?.success) {
+                  console.log(`✅ Admin order email sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Admin order email failed for ${admin.email}:`, adminEmailResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Admin order email error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminEmailListErr) {
+          console.error('Error fetching admins for order email:', adminEmailListErr.message);
+        }
       } catch (bgErr) {
         console.error('Background notification error:', bgErr.message);
       }
