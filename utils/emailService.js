@@ -202,8 +202,12 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
 
   // Build guest-aware tracking URL
   const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-back.onrender.com';
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
+    : `${baseUrl}/orders/${orderDetails.orderId}`;
+  const invoiceUrl = orderDetails.isGuest
+    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
 
   // Build message with optional PDF attachment
@@ -366,7 +370,14 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;letter-spacing:0.5px;">Track Your Order</a>
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                    <td style="padding-right:8px;text-align:right;">
+                      <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;">&#128230; Track Order</a>
+                    </td>
+                    <td style="padding-left:8px;text-align:left;">
+                      <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;">&#128196; Download Invoice</a>
+                    </td>
+                  </tr></table>
                 </td>
               </tr>
               <!-- Footer -->
@@ -477,8 +488,12 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 
   // Build guest-aware tracking URL
   const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-back.onrender.com';
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
+    : `${baseUrl}/orders/${orderDetails.orderId}`;
+  const invoiceUrl = orderDetails.isGuest
+    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
 
   const msg = {
@@ -589,7 +604,14 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:10px 40px 36px;text-align:center;">
-                  <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Track Your Order</a>
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                    <td style="padding-right:8px;text-align:right;">
+                      <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">&#128230; Track Order</a>
+                    </td>
+                    <td style="padding-left:8px;text-align:left;">
+                      <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">&#128196; Download Invoice</a>
+                    </td>
+                  </tr></table>
                 </td>
               </tr>
 
@@ -732,7 +754,14 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Dashboard</a>
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                    <td style="padding-right:8px;text-align:right;">
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">&#128717; View in Dashboard</a>
+                    </td>
+                    <td style="padding-left:8px;text-align:left;">
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">&#128196; Download Invoice</a>
+                    </td>
+                  </tr></table>
                 </td>
               </tr>
               <!-- Footer -->
@@ -1877,7 +1906,14 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                    <td style="padding-right:8px;text-align:right;">
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">&#128717; View in Admin Panel</a>
+                    </td>
+                    <td style="padding-left:8px;text-align:left;">
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">&#128196; Download Invoice</a>
+                    </td>
+                  </tr></table>
                 </td>
               </tr>
               <!-- Footer -->

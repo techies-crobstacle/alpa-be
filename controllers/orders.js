@@ -408,33 +408,9 @@ exports.createOrder = async (request, reply) => {
     // run in the background so they never delay the API response.
     ;(async () => {
       try {
-        // 1. Customer confirmation email (with PDF attachment)
+        // 1. Customer confirmation email (invoice download link is in the email)
         if (user.email) {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
-          let invoicePDFBuffer = null;
-          try {
-            invoicePDFBuffer = await generateInvoiceBuffer({
-              id: order.id,
-              createdAt: order.createdAt,
-              status: order.status,
-              customerName: order.customerName,
-              customerEmail: order.customerEmail,
-              customerPhone: order.customerPhone,
-              shippingAddressLine: order.shippingAddressLine,
-              shippingCity: city,
-              shippingState: state,
-              shippingZipCode: zipCode,
-              shippingCountry: country,
-              shippingPhone: mobileNumber,
-              totalAmount: order.totalAmount,
-              discountAmount: order.discountAmount,
-              couponCode: order.couponCode,
-              paymentMethod,
-              items: order.items
-            });
-          } catch (pdfErr) {
-            console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
-          }
           try {
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
               orderId: order.id,
@@ -446,6 +422,7 @@ exports.createOrder = async (request, reply) => {
                 price: item.price
               })),
               shippingAddress,
+              customerPhone: order.customerPhone || mobileNumber,
               orderSummary: {
                 subtotal: cartCalculations.subtotal,
                 subtotalExGST: cartCalculations.subtotalExGST,
@@ -459,11 +436,10 @@ exports.createOrder = async (request, reply) => {
                   cost: shippingMethod.cost,
                   estimatedDays: shippingMethod.estimatedDays
                 }
-              },
-              invoicePDFBuffer
+              }
             });
             if (emailResult?.success) {
-              console.log(`✅ Order confirmation email sent to ${user.email} (PDF attached: ${!!invoicePDFBuffer})`);
+              console.log(`✅ Order confirmation email sent to ${user.email}`);
             } else {
               console.error(`❌ Order confirmation email failed for ${user.email}:`, emailResult?.error);
             }
@@ -737,32 +713,6 @@ exports.cancelOrder = async (request, reply) => {
     if (user && user.email) {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
 
-      // Generate invoice PDF for cancellation email
-      let cancelInvoicePDF = null;
-      try {
-        cancelInvoicePDF = await generateInvoiceBuffer({
-          id: orderId,
-          createdAt: order.createdAt,
-          status: 'CANCELLED',
-          customerName: order.customerName,
-          customerEmail: user.email,
-          customerPhone: order.customerPhone,
-          shippingAddressLine: order.shippingAddressLine,
-          shippingCity: order.shippingCity,
-          shippingState: order.shippingState,
-          shippingZipCode: order.shippingZipCode,
-          shippingCountry: order.shippingCountry,
-          shippingPhone: order.shippingPhone,
-          totalAmount: order.totalAmount,
-          discountAmount: order.discountAmount,
-          couponCode: order.couponCode,
-          paymentMethod: order.paymentMethod,
-          items: order.items
-        });
-      } catch (pdfErr) {
-        console.error('Invoice PDF generation error (non-fatal):', pdfErr.message);
-      }
-
       sendOrderStatusEmail(user.email, user.name, {
         orderId,
         status: "cancelled",
@@ -777,12 +727,12 @@ exports.cancelOrder = async (request, reply) => {
         shippingZipCode: order.shippingZipCode,
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
+        isGuest: false,
         products: order.items?.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
           price: parseFloat(item.price)
-        })),
-        invoicePDFBuffer: cancelInvoicePDF
+        }))
       }).catch(error => {
         console.error("Email error (non-blocking):", error.message);
       });
@@ -1871,33 +1821,8 @@ exports.createGuestOrder = async (request, reply) => {
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
       try {
-        // 1. Guest customer confirmation email (with PDF invoice attachment)
+        // 1. Guest customer confirmation email (invoice download button is in the email)
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
-        let guestInvoicePDFBuffer = null;
-        try {
-          guestInvoicePDFBuffer = await generateInvoiceBuffer({
-            id: order.id,
-            createdAt: order.createdAt,
-            status: order.status,
-            customerName: order.customerName || customerName,
-            customerEmail: order.customerEmail || customerEmail,
-            customerPhone: customerPhone,
-            shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
-            shippingCity: order.shippingCity,
-            shippingState: order.shippingState,
-            shippingZipCode: order.shippingZipCode,
-            shippingCountry: order.shippingCountry,
-            shippingPhone: customerPhone,
-            totalAmount: order.totalAmount,
-            discountAmount: order.discountAmount,
-            couponCode: order.couponCode,
-            paymentMethod,
-            items: order.items
-          });
-          console.log(`✅ Guest invoice PDF generated, size: ${guestInvoicePDFBuffer?.length || 0} bytes`);
-        } catch (pdfErr) {
-          console.error('❌ Guest invoice PDF generation error (non-fatal):', pdfErr.message);
-        }
         try {
           const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
             orderId: order.id,
@@ -1926,11 +1851,10 @@ exports.createGuestOrder = async (request, reply) => {
                 cost: shippingMethod.cost,
                 estimatedDays: shippingMethod.estimatedDays
               }
-            },
-            invoicePDFBuffer: guestInvoicePDFBuffer
+            }
           });
           if (guestEmailResult?.success) {
-            console.log(`✅ Guest order confirmation email sent to ${customerEmail} (PDF attached: ${!!guestInvoicePDFBuffer})`);
+            console.log(`✅ Guest order confirmation email sent to ${customerEmail}`);
           } else {
             console.error(`❌ Guest order confirmation email failed for ${customerEmail}:`, guestEmailResult?.error);
           }
@@ -2330,11 +2254,11 @@ exports.downloadGuestInvoice = async (request, reply) => {
       });
     }
 
-    // Check if order status is DELIVERED
-    if (order.status !== 'DELIVERED') {
+    // Allow invoice download for all active order statuses (not cancelled/refunded)
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
       return reply.status(400).send({ 
         success: false, 
-        message: `Invoice can only be downloaded when order status is DELIVERED. Current status: ${order.status}` 
+        message: `Invoice is not available for orders with status: ${order.status}` 
       });
     }
 

@@ -174,6 +174,7 @@ exports.updateOrderStatus = async (request, reply) => {
         shippingZipCode: order.shippingZipCode,
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
+        isGuest: !order.userId,
         products: order.items?.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
@@ -304,6 +305,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         shippingZipCode: order.shippingZipCode,
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
+        isGuest: !order.userId,
         products: order.items?.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
