@@ -4,19 +4,9 @@ const {
   notifySellerLowStock,
   notifyAdminNewProduct,
   notifyAdminProductPending,
-  notifyAdminLowStockDeactivation,
-  notifySellerAdminProductEdit,
-  notifyAdminProductSubmitReview,
-  notifyAdminProductSellerDeactivated
+  notifyAdminLowStockDeactivation
 } = require("./notification");
-const {
-  sendSellerLowStockEmail,
-  sendAdminProductPendingEmail,
-  sendSellerAdminProductEditEmail,
-  sendAdminProductSubmitReviewEmail,
-  sendSellerProductSelfDeactivatedEmail,
-  sendSellerProductSubmitReviewConfirmEmail
-} = require("../utils/emailService");
+const { sendSellerLowStockEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
 const auditLogger = require("../utils/auditLogger");
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
 
@@ -679,30 +669,6 @@ exports.updateProduct = async (request, reply) => {
       } catch (notifyErr) {
         console.error('❌ [updateProduct] Admin notification/email block error:', notifyErr.message);
       }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
-    // ── Notify seller when admin edits their product ─────────────────────────
-    if (userRole === "ADMIN" && changedFields.length > 0 && !lowStockTriggered) {
-      // In-app notification (non-blocking)
-      notifySellerAdminProductEdit(
-        product.sellerId,
-        request.params.id,
-        updatedProduct.title,
-        changedFields
-      ).catch(err => console.error('Seller admin-edit notification error:', err.message));
-
-      // Email seller (non-blocking)
-      prisma.user.findUnique({ where: { id: product.sellerId }, select: { email: true, name: true } })
-        .then(sellerUser => {
-          if (sellerUser?.email) {
-            sendSellerAdminProductEditEmail(sellerUser.email, sellerUser.name || 'Seller', {
-              productTitle: updatedProduct.title,
-              productId:    request.params.id,
-              changedFields
-            }).catch(err => console.error('Seller admin-edit email error:', err.message));
-          }
-        }).catch(err => console.error('Seller lookup error (admin edit):', err.message));
     }
     // ─────────────────────────────────────────────────────────────────────────
 
