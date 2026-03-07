@@ -1661,8 +1661,9 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
     console.log(`✅ Seller product approved email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
-    console.error("❌ Seller product approved email error:", error.response?.body || error.message);
-    return { success: false, error: error.message };
+    const detail = error.response?.body?.errors?.[0]?.message || error.response?.body || error.message;
+    console.error("❌ Seller product approved email error:", detail);
+    return { success: false, error: typeof detail === 'string' ? detail : JSON.stringify(detail) };
   }
 };
 
