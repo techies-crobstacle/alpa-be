@@ -60,6 +60,14 @@ const buildMsg = (msg) => {
     text,
     // SendGrid requires replyTo as a dedicated field — NOT inside headers
     replyTo: { email: replyToEmail, name: senderName },
+    // Bypass suppression lists (global unsubscribes, bounce lists, etc.) so
+    // transactional notifications (product approved, order update, etc.) are
+    // always delivered even if the recipient previously unsubscribed from a
+    // marketing email or was auto-added to a suppression group.
+    mail_settings: {
+      bypass_list_management: { enable: true },
+      ...(msg.mail_settings || {}),
+    },
     headers: {
       // List-Unsubscribe is allowed as a custom header
       'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>`,
@@ -1941,6 +1949,552 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   }
 };
 
+// ── Seller Order Status Update Email ─────────────────────────────────────────
+// Sent to the seller when an admin (or system) updates the status of their order.
+// orderDetails: { orderId, status, customerName, totalAmount, reason?, trackingNumber?, estimatedDelivery? }
+const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Order Status Update");
+    console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.orderId} | Status: ${orderDetails.status}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const statusColors = {
+    confirmed: '#4CAF50', processing: '#B05E2A', shipped: '#6B4C9A',
+    delivered: '#C4963A', cancelled: '#A03020', refund: '#2E7D32', partial_refund: '#6B4C9A'
+  };
+  const statusLabels = {
+    confirmed: 'Confirmed', processing: 'Processing', shipped: 'Shipped',
+    delivered: 'Delivered', cancelled: 'Cancelled', refund: 'Refunded', partial_refund: 'Partially Refunded'
+  };
+
+  const st = (orderDetails.status || '').toLowerCase();
+  const statusColor = statusColors[st] || '#C4603A';
+  const statusLabel = statusLabels[st] || (orderDetails.status || '').toUpperCase();
+  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+
+  const msg = {
+    to: email,
+    from: { name: senderName, email: senderEmail },
+    subject: `Order Status Updated: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr><td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
+                <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
+              </td></tr>
+              <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${(orderDetails.orderId || '').slice(-8).toUpperCase()} is now <strong>${statusLabel}</strong></p>
+              </td></tr>
+              <tr><td style="padding:28px 40px 20px;">
+                <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${sellerName}</strong>,</p>
+                <p style="color:#666;font-size:14px;line-height:1.7;margin:0;">Admin has updated the status of one of your orders. Please review the details below.</p>
+              </td></tr>
+              <tr><td style="padding:0 40px 20px;">
+                <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.orderId}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${statusLabel.toUpperCase()}</span></td></tr>
+                    ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
+                    ${orderDetails.reason ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Reason</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.reason}</td></tr>` : ''}
+                    ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking #</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
+                  </table>
+                </div>
+              </td></tr>
+              <tr><td style="padding:0 40px 36px;text-align:center;">
+                <a href="${baseUrl}/seller/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
+              </td></tr>
+              <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body></html>
+    `
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller order status email sent to ${email} for order ${orderDetails.orderId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller order status email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Admin Order Status Update Email ──────────────────────────────────────────
+// Sent to all admins when a seller or customer updates an order status.
+// orderDetails: { orderId, status, sellerName?, customerName, totalAmount, updatedBy, reason?, trackingNumber? }
+const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Admin Order Status Update");
+    console.log(`To: ${adminEmail} | Order: ${orderDetails.orderId} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const statusColors = {
+    confirmed: '#4CAF50', processing: '#B05E2A', shipped: '#6B4C9A',
+    delivered: '#C4963A', cancelled: '#A03020', refund: '#2E7D32', partial_refund: '#6B4C9A'
+  };
+
+  const st = (orderDetails.status || '').toLowerCase();
+  const statusColor = statusColors[st] || '#C4603A';
+  const updatedBy = orderDetails.updatedBy || 'Seller';
+  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+
+  const msg = {
+    to: adminEmail,
+    from: { name: senderName, email: senderEmail },
+    subject: `Order Status Updated by ${updatedBy}: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr><td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Admin Panel</p>
+                <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
+              </td></tr>
+              <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${(orderDetails.orderId || '').slice(-8).toUpperCase()} → <strong>${st.toUpperCase()}</strong></p>
+              </td></tr>
+              <tr><td style="padding:28px 40px 20px;">
+                <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                <p style="color:#666;font-size:14px;line-height:1.7;margin:0;">An order status has been updated by <strong>${updatedBy}${orderDetails.sellerName ? ` (${orderDetails.sellerName})` : ''}</strong>.</p>
+              </td></tr>
+              <tr><td style="padding:0 40px 20px;">
+                <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.orderId}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` — ${orderDetails.sellerName}` : ''}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${st.toUpperCase()}</span></td></tr>
+                    ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
+                    ${orderDetails.reason ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Reason</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.reason}</td></tr>` : ''}
+                    ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking #</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
+                  </table>
+                </div>
+              </td></tr>
+              <tr><td style="padding:0 40px 36px;text-align:center;">
+                <a href="${baseUrl}/admin/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
+              </td></tr>
+              <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </body></html>
+    `
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Admin order status email sent to ${adminEmail} for order ${orderDetails.orderId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Admin order status email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Seller Product Activated Email ──────────────────────────────────────────
+// Sent to seller when an admin manually activates their product.
+// productDetails: { productTitle, productId }
+const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { productTitle, productId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Activated");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const productUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products/${productId}`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Great News! Your Product "${productTitle}" Is Now Live — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#F3F8F5;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F8F5;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(18,90,40,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Activated</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your listing is now live on the marketplace</p>
+                </td>
+              </tr>
+              <!-- Activated banner -->
+              <tr>
+                <td style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10003; Product Activated — Now Visible to Buyers</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! An admin has manually activated your product listing. It is now live and visible to buyers on the MIA Marketplace.</p>
+                  <!-- Product box -->
+                  <div style="background:#F0FBF2;border-radius:8px;padding:22px;border-top:3px solid #2E7D32;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#1B5E20;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Activated Product</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+                  <div style="background:#F3F8F5;border-left:4px solid #2E7D32;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#1B5E20;font-weight:700;font-size:14px;">&#128161; What Happens Now?</p>
+                    <p style="margin:0;color:#555;font-size:13px;line-height:1.6;">Your product is now visible to all buyers. Keep your stock levels up to date to avoid automatic deactivation. You can manage your listing from your seller dashboard at any time.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Product</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller product activated email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller product activated email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Seller Product Deactivated Email ────────────────────────────────────────
+// Sent to seller when an admin manually deactivates their product.
+// productDetails: { productTitle, reason, productId }
+const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { productTitle, reason, productId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Deactivated");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Reason: ${reason}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Product Deactivated: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your listing has been taken offline by an admin</p>
+                </td>
+              </tr>
+              <!-- Deactivated banner -->
+              <tr>
+                <td style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#8212; Product Deactivated — No Longer Visible to Buyers</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">We're letting you know that an admin has deactivated your product listing. It is no longer visible to buyers on the marketplace. Please review the information below.</p>
+                  <!-- Product box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #B71C1C;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Deactivated Product</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+                  ${reason ? `
+                  <!-- Reason box -->
+                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #B71C1C;margin-bottom:24px;">
+                    <p style="margin:0 0 10px;color:#B71C1C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">&#128221; Reason</p>
+                    <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${reason}</p>
+                  </div>
+                  ` : ''}
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; What Can You Do?</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you believe this was done in error or would like further clarification, please contact our support team. To have your product reinstated, make any required changes and contact support or wait for admin review.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Products</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller product deactivated email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller product deactivated email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Admin Low-Stock Deactivation Email ──────────────────────────────────────
+// Sent to every admin when a product is auto-deactivated due to low/zero stock.
+// productDetails: { productTitle, sellerName, stock, productId }
+const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { productTitle, sellerName, stock, productId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Admin Low Stock Deactivation");
+    console.log("=".repeat(50));
+    console.log(`To: ${adminEmail} | Admin: ${adminName} | Product: ${productTitle} | Seller: ${sellerName} | Stock: ${stock}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const productUrl = `${process.env.ADMIN_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/products/${productId}`;
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `[Low Stock] Product Auto-Deactivated: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FFF8F0;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFF8F0;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(180,80,0,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin Alert</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Low Stock Auto-Deactivation</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A product has been automatically taken offline</p>
+                </td>
+              </tr>
+              <!-- Warning banner -->
+              <tr>
+                <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#9888; Auto-Deactivated Due to Low / Zero Stock</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">The automated stock scanner has deactivated a product because its stock has dropped to or below the low-stock threshold. Please review the details below.</p>
+                  <!-- Product details box -->
+                  <div style="background:#FFF3E0;border-radius:8px;padding:22px;border-top:3px solid #E65100;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#BF360C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;width:120px;">Product</td>
+                        <td style="padding:6px 0;color:#333;font-size:14px;font-weight:600;">${productTitle || 'N/A'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;">Seller</td>
+                        <td style="padding:6px 0;color:#333;font-size:14px;">${sellerName || 'Unknown'}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;">Stock Left</td>
+                        <td style="padding:6px 0;color:#B71C1C;font-size:14px;font-weight:700;">${stock ?? 0} unit(s)</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px 0;color:#777;font-size:13px;">Status</td>
+                        <td style="padding:6px 0;color:#B71C1C;font-size:14px;font-weight:600;">INACTIVE (auto-deactivated)</td>
+                      </tr>
+                    </table>
+                  </div>
+                  <div style="background:#FFF8F0;border-left:4px solid #E65100;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#BF360C;font-weight:700;font-size:14px;">&#128161; Recommended Action</p>
+                    <p style="margin:0;color:#555;font-size:13px;line-height:1.6;">Contact the seller to request a stock top-up. Once restocked, you can manually reactivate the product from the admin dashboard, or it will be reactivated automatically when the seller updates their stock.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Product</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Admin Notifications &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Admin low-stock deactivation email sent to ${adminEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Admin low-stock deactivation email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Seller Product Edited by Admin Email ────────────────────────────────────
+// Sent to seller when an admin directly edits their product details.
+// productDetails: { productTitle, productId, changedFields[] }
+const sendSellerAdminProductEditEmail = async (sellerEmail, sellerName, { productTitle, productId, changedFields = [] } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Edited by Admin");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Changes: ${changedFields.join(', ')}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const productUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products/${productId}`;
+
+  const changesHtml = changedFields.length > 0
+    ? changedFields.map(f => `<li style="padding:4px 0;color:#555;font-size:14px;">${f}</li>`).join('')
+    : '<li style="padding:4px 0;color:#555;font-size:14px;">General update</li>';
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Your Product Has Been Updated by Admin: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#F5F7FA;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F7FA;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Updated</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">An admin has made changes to your listing</p>
+                </td>
+              </tr>
+              <!-- Info banner -->
+              <tr>
+                <td style="background-color:#1565C0;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#9998; Product Details Updated by Admin</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">We're letting you know that an admin has updated your product listing. Your product remains active on the marketplace — no action is required from you. Please review the changes below.</p>
+                  <!-- Product box -->
+                  <div style="background:#EEF4FF;border-radius:8px;padding:22px;border-top:3px solid #1565C0;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#0D47A1;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Updated Product</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+                  <!-- Changes list -->
+                  <div style="background:#F5F7FA;border-radius:8px;padding:22px;border-left:4px solid #1565C0;margin-bottom:24px;">
+                    <p style="margin:0 0 14px;color:#0D47A1;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">&#128221; Fields Updated</p>
+                    <ul style="margin:0;padding-left:20px;">
+                      ${changesHtml}
+                    </ul>
+                  </div>
+                  <div style="background:#EEF4FF;border-left:4px solid #1565C0;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#0D47A1;font-weight:700;font-size:14px;">&#128161; Note</p>
+                    <p style="margin:0;color:#555;font-size:13px;line-height:1.6;">Your product's approval status has not changed. If you have questions about these changes, please contact our support team.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Product</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller admin-edit email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller admin-edit email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
@@ -1968,7 +2522,13 @@ module.exports = {
   sendSellerLowStockEmail,
   sendAdminProductPendingEmail,
   sendSellerProductApprovedEmail,
-  sendSellerProductRejectedEmail
+  sendSellerProductRejectedEmail,
+  sendSellerProductActivatedEmail,
+  sendSellerProductDeactivatedEmail,
+  sendAdminLowStockDeactivationEmail,
+  sendSellerAdminProductEditEmail,
+  sendSellerOrderStatusEmail,
+  sendAdminOrderStatusEmail
 };
 
 

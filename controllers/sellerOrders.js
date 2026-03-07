@@ -1,6 +1,6 @@
 const prisma = require("../config/prisma");
-const { sendOrderStatusEmail } = require("../utils/emailService");
-const { notifyCustomerOrderStatusChange, notifyAdminOrderStatusChange } = require("./notification");
+const { sendOrderStatusEmail, sendSellerOrderStatusEmail, sendAdminOrderStatusEmail } = require("../utils/emailService");
+const { notifyCustomerOrderStatusChange, notifyAdminOrderStatusChange, notifySellerOrderStatusChange } = require("./notification");
 const {
   normalizeOrderStatus,
   validateStatusTransition,
@@ -184,7 +184,7 @@ exports.updateOrderStatus = async (request, reply) => {
         console.error("Email error (non-blocking):", error.message);
       });
 
-      // Create notification for customer (only for logged-in users)
+      // Create in-app notification for customer (only for logged-in users, not guests)
       if (order.user?.id) {
         console.log(`🔔 Creating status change notification for customer ${order.user.id}: ${status}`);
         notifyCustomerOrderStatusChange(order.user.id, orderId, normalizedStatus.toLowerCase(), {
@@ -198,24 +198,60 @@ exports.updateOrderStatus = async (request, reply) => {
         });
       }
 
-      // Notify admins about status change (only if user is seller, not admin)
+      // When SELLER updates → in-app + email to ALL admins
       if (userRole === "SELLER") {
-        const seller = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { name: true }
-        });
-        
-        notifyAdminOrderStatusChange(orderId, normalizedStatus.toLowerCase(), {
-          customerName: customerName,
+        const seller = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+        const adminDetails = {
+          customerName,
           sellerName: seller?.name || 'Unknown',
           totalAmount: order.totalAmount.toString(),
           itemCount: order.items.length,
           reason: finalReason || undefined,
           trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined,
           estimatedDelivery: normalizedStatus === 'SHIPPED' ? estimatedDelivery : undefined
-        }).catch(error => {
-          console.error("Admin notification error (non-blocking):", error.message);
-        });
+        };
+        // In-app to all admins
+        notifyAdminOrderStatusChange(orderId, normalizedStatus.toLowerCase(), adminDetails)
+          .catch(err => console.error("Admin in-app notification error (non-blocking):", err.message));
+        // Email all admins
+        prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+          .then(admins => {
+            for (const admin of admins) {
+              if (admin.email) {
+                sendAdminOrderStatusEmail(admin.email, admin.name, {
+                  orderId, status: normalizedStatus.toLowerCase(),
+                  sellerName: seller?.name || 'Unknown', updatedBy: 'Seller',
+                  customerName, totalAmount: order.totalAmount,
+                  reason: finalReason || undefined,
+                  trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined
+                }).catch(err => console.error("Admin order status email error (non-blocking):", err.message));
+              }
+            }
+          }).catch(err => console.error("Admin email lookup error (non-blocking):", err.message));
+      }
+
+      // When ADMIN updates → in-app + email to seller(s) whose products are in this order
+      if (userRole === "ADMIN") {
+        const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
+        for (const sellerId of sellerIds) {
+          notifySellerOrderStatusChange(sellerId, orderId, normalizedStatus.toLowerCase(), {
+            customerName, totalAmount: order.totalAmount.toString(),
+            reason: finalReason || undefined,
+            trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined
+          }).catch(err => console.error("Seller in-app notification error (non-blocking):", err.message));
+          prisma.user.findUnique({ where: { id: sellerId }, select: { email: true, name: true } })
+            .then(sellerUser => {
+              if (sellerUser?.email) {
+                sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
+                  orderId, status: normalizedStatus.toLowerCase(),
+                  customerName, totalAmount: order.totalAmount,
+                  reason: finalReason || undefined,
+                  trackingNumber: normalizedStatus === 'SHIPPED' ? trackingNumber : undefined,
+                  estimatedDelivery: normalizedStatus === 'SHIPPED' ? estimatedDelivery : undefined
+                }).catch(err => console.error("Seller order status email error (non-blocking):", err.message));
+              }
+            }).catch(err => console.error("Seller email lookup error (non-blocking):", err.message));
+        }
       }
     }
 
@@ -315,7 +351,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         console.error("Email error (non-blocking):", error.message);
       });
 
-      // Create notification for customer about shipped status (only for logged-in users)
+      // Create in-app notification for customer about shipped status (only for logged-in users)
       if (order.user?.id) {
         console.log(`🔔 Creating shipped notification for customer ${order.user.id}`);
         notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
@@ -327,22 +363,44 @@ exports.updateTrackingInfo = async (request, reply) => {
         });
       }
 
-      // Notify admins about shipped status (only if user is seller, not admin)
+      // When SELLER updates tracking → in-app + email to ALL admins
       if (userRole === "SELLER") {
-        const seller = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { name: true }
-        });
-        
+        const seller = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
         notifyAdminOrderStatusChange(orderId, "shipped", {
-          customerName: customerName,
-          sellerName: seller?.name || 'Unknown',
-          totalAmount: order.totalAmount.toString(),
-          itemCount: order.items.length,
-          trackingNumber
-        }).catch(error => {
-          console.error("Admin notification error (non-blocking):", error.message);
-        });
+          customerName, sellerName: seller?.name || 'Unknown',
+          totalAmount: order.totalAmount.toString(), itemCount: order.items.length, trackingNumber
+        }).catch(err => console.error("Admin in-app notification error (non-blocking):", err.message));
+        prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+          .then(admins => {
+            for (const admin of admins) {
+              if (admin.email) {
+                sendAdminOrderStatusEmail(admin.email, admin.name, {
+                  orderId, status: 'shipped',
+                  sellerName: seller?.name || 'Unknown', updatedBy: 'Seller',
+                  customerName, totalAmount: order.totalAmount, trackingNumber
+                }).catch(err => console.error("Admin order status email error (non-blocking):", err.message));
+              }
+            }
+          }).catch(err => console.error("Admin email lookup error (non-blocking):", err.message));
+      }
+
+      // When ADMIN updates tracking → in-app + email to seller(s)
+      if (userRole === "ADMIN") {
+        const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
+        for (const sellerId of sellerIds) {
+          notifySellerOrderStatusChange(sellerId, orderId, "shipped", {
+            customerName, totalAmount: order.totalAmount.toString(), trackingNumber
+          }).catch(err => console.error("Seller in-app notification error (non-blocking):", err.message));
+          prisma.user.findUnique({ where: { id: sellerId }, select: { email: true, name: true } })
+            .then(sellerUser => {
+              if (sellerUser?.email) {
+                sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
+                  orderId, status: 'shipped', customerName,
+                  totalAmount: order.totalAmount, trackingNumber
+                }).catch(err => console.error("Seller order status email error (non-blocking):", err.message));
+              }
+            }).catch(err => console.error("Seller email lookup error (non-blocking):", err.message));
+        }
       }
     }
 

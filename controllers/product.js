@@ -3,9 +3,11 @@ const {
   notifySellerProductStatusChange,
   notifySellerLowStock,
   notifyAdminNewProduct,
-  notifyAdminProductPending
+  notifyAdminProductPending,
+  notifyAdminLowStockDeactivation,
+  notifySellerAdminProductEdit
 } = require("./notification");
-const { sendSellerLowStockEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
+const { sendSellerLowStockEmail, sendAdminProductPendingEmail, sendSellerAdminProductEditEmail } = require("../utils/emailService");
 const auditLogger = require("../utils/auditLogger");
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
 
@@ -185,6 +187,12 @@ exports.addProduct = async (request, reply) => {
 
       notifySellerLowStock(sellerId, product.id, product.title, stock)
         .catch(err => console.error("Low stock notification error (addProduct):", err.message));
+
+      notifyAdminLowStockDeactivation(product.id, {
+        productTitle: product.title,
+        sellerName:   seller.storeName || seller.businessName || 'Unknown',
+        stock
+      }).catch(err => console.error("Admin low stock deactivation notification error (addProduct):", err.message));
 
       if (sellerUser?.email) {
         sendSellerLowStockEmail(sellerUser.email, sellerUser.name || "Seller",
@@ -487,6 +495,19 @@ exports.updateProduct = async (request, reply) => {
       }
     }
 
+    // Build human-readable list of changed fields for admin notification
+    const changedFields = [];
+    if (title          !== undefined && title          !== '' && title          !== product.title)                        changedFields.push('Title');
+    if (description    !== undefined && description    !== '' && description    !== product.description)                  changedFields.push('Description');
+    if (price          !== undefined                          && parseFloat(price)  !== parseFloat(product.price))        changedFields.push(`Price (${product.price} → ${price})`);
+    if (stock          !== undefined                          && parseInt(stock)    !== product.stock)                    changedFields.push(`Stock (${product.stock} → ${stock})`);
+    if (category       !== undefined && category       !== '' && category       !== product.category)                    changedFields.push('Category');
+    if (finalArtistName !== undefined && finalArtistName !== '' && finalArtistName !== product.artistName)               changedFields.push('Artist Name');
+    if (parsedFeatured !== undefined && parsedFeatured !== product.featured)                                              changedFields.push('Featured');
+    if (parsedTags     !== undefined)                                                                                     changedFields.push('Tags');
+    if (featuredImageUrl !== undefined)                                                                                   changedFields.push('Featured Image');
+    if (hasGalleryUpdate)                                                                                                 changedFields.push('Gallery Images');
+
     // Determine if product needs re-approval after update
     let newStatus = product.status; // Keep current status by default
     let newIsActive = true; // Assume active for now
@@ -579,6 +600,12 @@ exports.updateProduct = async (request, reply) => {
         finalStock
       ).catch(err => console.error("Low stock notification error:", err.message));
 
+      notifyAdminLowStockDeactivation(request.params.id, {
+        productTitle: updatedProduct.title,
+        sellerName:   product.sellerName || 'Unknown',
+        stock:        finalStock
+      }).catch(err => console.error("Admin low stock deactivation notification error:", err.message));
+
       if (sellerUser?.email) {
         sendSellerLowStockEmail(
           sellerUser.email,
@@ -605,7 +632,8 @@ exports.updateProduct = async (request, reply) => {
         });
         const pendingDetails = {
           productTitle: title || product.title,
-          sellerName: sellerUser?.name || 'Unknown'
+          sellerName: sellerUser?.name || 'Unknown',
+          changedFields
         };
 
         // In-app notifications for all admins (failure must not block email)
@@ -642,6 +670,30 @@ exports.updateProduct = async (request, reply) => {
       } catch (notifyErr) {
         console.error('❌ [updateProduct] Admin notification/email block error:', notifyErr.message);
       }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Notify seller when admin edits their product ─────────────────────────
+    if (userRole === "ADMIN" && changedFields.length > 0 && !lowStockTriggered) {
+      // In-app notification (non-blocking)
+      notifySellerAdminProductEdit(
+        product.sellerId,
+        request.params.id,
+        updatedProduct.title,
+        changedFields
+      ).catch(err => console.error('Seller admin-edit notification error:', err.message));
+
+      // Email seller (non-blocking)
+      prisma.user.findUnique({ where: { id: product.sellerId }, select: { email: true, name: true } })
+        .then(sellerUser => {
+          if (sellerUser?.email) {
+            sendSellerAdminProductEditEmail(sellerUser.email, sellerUser.name || 'Seller', {
+              productTitle: updatedProduct.title,
+              productId:    request.params.id,
+              changedFields
+            }).catch(err => console.error('Seller admin-edit email error:', err.message));
+          }
+        }).catch(err => console.error('Seller lookup error (admin edit):', err.message));
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -695,7 +747,7 @@ exports.deleteProduct = async (request, reply) => {
           "deletedBy"     = ${userId},
           "deletedByRole" = ${userRole},
           "isActive"      = false,
-          status          = 'INACTIVE'
+          status          = 'INACTIVE'::"ProductStatus"
       WHERE id = ${request.params.id}
     `;
 
@@ -793,7 +845,7 @@ exports.restoreProduct = async (request, reply) => {
           "deletedBy"     = NULL,
           "deletedByRole" = NULL,
           "isActive"      = false,
-          status          = ${restoredStatus}
+          status          = ${restoredStatus}::"ProductStatus"
       WHERE id = ${productId}
     `;
 
