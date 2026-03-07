@@ -482,23 +482,6 @@ exports.deleteNotification = async (request, reply) => {
   }
 };
 
-// Sent to seller when an admin directly edits their product details.
-const notifySellerAdminProductEdit = async (sellerId, productId, productTitle, changedFields = []) => {
-  const changesText = changedFields.length > 0 ? ` Changes: ${changedFields.join(', ')}.` : '';
-  const title = 'Product Updated by Admin';
-  const message = `An admin has updated your product "${productTitle}".${changesText}`;
-
-  return await createNotification(
-    sellerId,
-    title,
-    message,
-    'GENERAL',
-    productId,
-    'product',
-    { productTitle, changedFields }
-  );
-};
-
 // Export helper functions for use in other controllers
 module.exports = {
   ...module.exports,
@@ -516,6 +499,5 @@ module.exports = {
   notifyAdminNewProduct,
   notifyAdminProductPending,
   notifyAdminOrderStatusChange,
-  notifyAdminLowStockDeactivation,
-  notifySellerAdminProductEdit
+  notifyAdminLowStockDeactivation
 };
