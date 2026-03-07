@@ -83,6 +83,29 @@ exports.saveAddress = async (request, reply) => {
       });
     }
 
+    // ── Duplicate check: all fields must match (case-insensitive, trimmed) ──
+    const duplicate = await prisma.userAddress.findFirst({
+      where: {
+        userId,
+        shippingAddress: { equals: shippingAddress.trim(), mode: 'insensitive' },
+        city:            { equals: city.trim(),            mode: 'insensitive' },
+        state:           { equals: state.trim(),           mode: 'insensitive' },
+        country:         { equals: country.trim(),         mode: 'insensitive' },
+        zipCode:         { equals: zipCode.trim(),         mode: 'insensitive' },
+        mobileNumber:    mobileNumber
+          ? { equals: mobileNumber.trim(), mode: 'insensitive' }
+          : null
+      }
+    });
+
+    if (duplicate) {
+      return reply.status(409).send({
+        success: false,
+        message: 'You have already saved this address',
+        data: duplicate
+      });
+    }
+
     // If this address is set as default, unset all others first
     if (isDefault) {
       await prisma.userAddress.updateMany({
@@ -97,13 +120,13 @@ exports.saveAddress = async (request, reply) => {
     const address = await prisma.userAddress.create({
       data: {
         userId,
-        shippingAddress,
-        city,
-        state,
-        country,
-        zipCode,
-        mobileNumber: mobileNumber || null,
-        isDefault: isDefault || existingCount === 0
+        shippingAddress: shippingAddress.trim(),
+        city:            city.trim(),
+        state:           state.trim(),
+        country:         country.trim(),
+        zipCode:         zipCode.trim(),
+        mobileNumber:    mobileNumber ? mobileNumber.trim() : null,
+        isDefault:       isDefault || existingCount === 0
       }
     });
 

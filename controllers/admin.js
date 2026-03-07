@@ -1728,6 +1728,13 @@ exports.deactivateProduct = async (request, reply) => {
     const query = request.query || {};
     const reason = body.reason || body.rejectionReason || query.reason || query.rejectionReason;
 
+    if (!reason || !reason.trim()) {
+      return reply.status(400).send({
+        success: false,
+        message: 'A reason is required when deactivating a product. The seller will be notified with this reason.'
+      });
+    }
+
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
       return reply.status(404).send({ success: false, message: 'Product not found' });

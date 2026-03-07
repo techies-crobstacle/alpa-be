@@ -166,7 +166,9 @@ model Product {
   artistName  String?       // Optional artist name field
   status      ProductStatus @default(PENDING)
   isActive    Boolean       @default(false)  // Product approval status
-  rejectionReason String?    // Reason for product rejection
+  rejectionReason String?    // Reason for product rejection (admin → seller)
+  sellerInactiveReason String?  // Reason seller gave when they deactivated the product (seller → admin context)
+  reviewNote  String?        // Note from seller when submitting product for admin review
   featured    Boolean       @default(false)
   tags        String[]      @default([])
   // Soft delete — rows are never hard-deleted; recycle bin uses these fields

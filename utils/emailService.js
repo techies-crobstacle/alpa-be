@@ -2496,6 +2496,262 @@ const sendSellerAdminProductEditEmail = async (sellerEmail, sellerName, { produc
   }
 };
 
+// ── Admin: Seller Submitted Product for Review ──────────────────────────────
+// Sent to all admins when a seller submits an inactive/rejected product for review.
+// details: { productTitle, productId, sellerName, reviewNote }
+const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { productTitle, productId, sellerName, reviewNote } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Admin: Product Submit for Review");
+    console.log("=".repeat(50));
+    console.log(`To: ${adminEmail} | Product: ${productTitle} | Seller: ${sellerName} | Note: ${reviewNote}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const adminDashboardUrl = `${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/products`;
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Product Submitted for Review: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Submitted for Review</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has requested product re-activation</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#128203; Action Required — Review & Approve or Reject</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Seller <strong>${sellerName || 'Unknown'}</strong> has submitted a product for admin review. It is currently in <strong>Pending</strong> state and awaiting your approval or rejection.</p>
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #E65100;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
+                    <p style="margin:0 0 6px;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Untitled Product'}</p>
+                    <p style="margin:0;color:#777;font-size:13px;">Seller: ${sellerName || 'Unknown'}</p>
+                  </div>
+                  ${reviewNote ? `
+                  <div style="background:#FFF8F0;border-radius:8px;padding:22px;border-left:4px solid #E65100;margin-bottom:24px;">
+                    <p style="margin:0 0 10px;color:#E65100;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">&#128172; Seller's Note</p>
+                    <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${reviewNote}</p>
+                  </div>
+                  ` : ''}
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Please review this product and either <strong>Approve</strong> it to make it live, or <strong>Reject</strong> it with a reason.</p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${adminDashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Review Product in Admin Dashboard</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Admin product-submit-review email sent to ${adminEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Admin product-submit-review email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Seller: Product Deactivated by Seller Confirmation ──────────────────────
+// Sent to seller confirming they deactivated their own product.
+// details: { productTitle, productId, inactiveReason }
+const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { productTitle, productId, inactiveReason } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Self-Deactivated Product");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Product: ${productTitle} | Reason: ${inactiveReason}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Product Deactivated: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product is no longer visible to buyers</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your product has been deactivated as requested. It is no longer visible to buyers.</p>
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C4603A;margin-bottom:24px;">
+                    <p style="margin:0 0 8px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Deactivated Product</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+                  ${inactiveReason ? `
+                  <div style="background:#FFF8F0;border-radius:8px;padding:22px;border-left:4px solid #C4603A;margin-bottom:24px;">
+                    <p style="margin:0 0 8px;color:#C4603A;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Reason</p>
+                    <p style="margin:0;color:#555;font-size:15px;line-height:1.7;">${inactiveReason}</p>
+                  </div>
+                  ` : ''}
+                  <div style="background:#F9EDE9;border-left:4px solid #5A1E12;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; Want to reactivate?</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">When you're ready, go to your product dashboard and click <strong>"Submit for Review"</strong>. An admin will then review and activate your product.</p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to My Products</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller self-deactivation email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller self-deactivation email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Seller: Submit for Review Confirmation ──────────────────────────────────
+// Sent to seller confirming their product has been submitted for admin review.
+// details: { productTitle, productId, reviewNote }
+const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName, { productTitle, productId, reviewNote } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Submit Review Confirmation");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Product: ${productTitle}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Product Submitted for Review: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Submitted for Review</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product is awaiting admin approval</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10003; Review Request Submitted Successfully</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your product has been submitted for admin review. Once approved, it will be live and visible to buyers on the marketplace.</p>
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                    <p style="margin:0 0 8px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Under Review</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Untitled Product'}</p>
+                    <p style="margin:6px 0 0;color:#777;font-size:13px;">Status: <strong>Pending Review</strong></p>
+                  </div>
+                  ${reviewNote ? `
+                  <div style="background:#FFF8F0;border-radius:8px;padding:22px;border-left:4px solid #C4603A;margin-bottom:24px;">
+                    <p style="margin:0 0 8px;color:#C4603A;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Note to Admin</p>
+                    <p style="margin:0;color:#555;font-size:15px;line-height:1.7;">${reviewNote}</p>
+                  </div>
+                  ` : ''}
+                  <div style="background:#F9EDE9;border-left:4px solid #5A1E12;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">An admin will review your product shortly. You will receive another email once a decision has been made.</p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to My Products</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller submit-review confirmation email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller submit-review confirmation email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
@@ -2528,6 +2784,9 @@ module.exports = {
   sendSellerProductDeactivatedEmail,
   sendAdminLowStockDeactivationEmail,
   sendSellerAdminProductEditEmail,
+  sendAdminProductSubmitReviewEmail,
+  sendSellerProductSelfDeactivatedEmail,
+  sendSellerProductSubmitReviewConfirmEmail,
   sendSellerOrderStatusEmail,
   sendAdminOrderStatusEmail
 };
