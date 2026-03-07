@@ -1,4 +1,5 @@
 const Stripe = require("stripe");
+const jwt = require("jsonwebtoken");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
 const {
@@ -412,8 +413,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
     const storedSummary =
       typeof order.shippingAddress === 'object' ? order.shippingAddress?.orderSummary : null;
 
+    // Generate a signed token for authenticated orders so the email
+    // "Download Invoice" button directly downloads the PDF (no login needed).
+    const invoiceToken = order.userId
+      ? jwt.sign(
+          { orderId: order.id, userId: order.userId, purpose: 'invoice' },
+          process.env.JWT_SECRET,
+          { expiresIn: '30d' }
+        )
+      : undefined;
+
     sendOrderConfirmationEmail(toEmail, toName, {
       orderId:       order.id,
+      invoiceToken,
       totalAmount:   Number(order.totalAmount),
       itemCount:     order.items.length,
       products:      order.items.map((item) => ({

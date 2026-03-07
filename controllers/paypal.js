@@ -20,6 +20,7 @@
  */
 
 const axios = require("axios");
+const jwt = require("jsonwebtoken");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
 const { sendOrderConfirmationEmail } = require("../utils/emailService");
@@ -388,8 +389,19 @@ exports.captureOrder = async (request, reply) => {
 
     // Send confirmation email (non-blocking)
     if (user?.email) {
+      // Generate signed token so the "Download Invoice" button in the email
+      // directly downloads the PDF without requiring a bearer token.
+      const invoiceToken = order.userId
+        ? jwt.sign(
+            { orderId: order.id, userId: order.userId, purpose: 'invoice' },
+            process.env.JWT_SECRET,
+            { expiresIn: '30d' }
+          )
+        : undefined;
+
       sendOrderConfirmationEmail(user.email, user.name, {
         orderId: order.id,
+        invoiceToken,
         totalAmount: Number(order.totalAmount),
         itemCount: order.items.length,
         products: order.items.map((item) => ({
