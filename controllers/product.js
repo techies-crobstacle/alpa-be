@@ -972,7 +972,7 @@ exports.getAllProducts = async (request, reply) => {
 // Product moves to INACTIVE status. Admin is notified with the reason.
 exports.deactivateMyProduct = async (request, reply) => {
   try {
-    const sellerId = request.user?.id;
+    const sellerId = request.user.userId;
     const { id: productId } = request.params;
     const body = request.body || {};
     const inactiveReason = body.reason || body.inactiveReason;
@@ -1065,7 +1065,7 @@ exports.deactivateMyProduct = async (request, reply) => {
 // Seller CANNOT make a product directly ACTIVE — only admin can approve it.
 exports.submitProductForReview = async (request, reply) => {
   try {
-    const sellerId = request.user?.id;
+    const sellerId = request.user.userId;
     const { id: productId } = request.params;
     const body = request.body || {};
     const reviewNote = body.reviewNote || body.note || body.reason || '';
