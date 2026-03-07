@@ -359,8 +359,15 @@ model CategoryRequest {
   rejectedAt        DateTime?
   updatedAt         DateTime            @updatedAt
 
+  // Soft delete — row is kept for log continuity; only gone when hard deleted
+  softDeletedAt     DateTime?           // null = active; set = soft deleted
+  softDeletedBy     String?             // userId who soft deleted it
+  restoredAt        DateTime?           // last restore timestamp
+  restoredBy        String?             // userId who restored it
+
   @@index([status])
   @@index([requestedAt])
+  @@index([softDeletedAt])
   @@map("category_requests")
 }
 

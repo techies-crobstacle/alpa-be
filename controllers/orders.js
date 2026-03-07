@@ -686,14 +686,29 @@ exports.cancelOrder = async (request, reply) => {
     });
 
     // Notify all sellers whose products are in this cancelled order (in-app + email)
+    // Also collect seller names so the admin notification can include them.
     const cancelledSellerIds = [...new Set(
       order.items.map(item => item.product?.sellerId).filter(Boolean)
     )];
     const readableOrderId = orderId.slice(-8).toUpperCase();
-    for (const sellerId of cancelledSellerIds) {
+    const cancelledSellerNames = [];
+    await Promise.all(cancelledSellerIds.map(async (sellerId) => {
       const sellerProducts = order.items
         .filter(item => item.product?.sellerId === sellerId)
         .map(item => item.product?.title || 'Product');
+
+      // Fetch seller once — used for both the name and email
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { email: true, name: true, sellerProfile: { select: { storeName: true, businessName: true } } }
+      }).catch(() => null);
+
+      const resolvedSellerName = sellerUser?.sellerProfile?.storeName
+        || sellerUser?.sellerProfile?.businessName
+        || sellerUser?.name
+        || 'Unknown';
+      cancelledSellerNames.push(resolvedSellerName);
+
       prisma.notification.create({
         data: {
           userId: sellerId,
@@ -710,22 +725,22 @@ exports.cancelOrder = async (request, reply) => {
           }
         }
       }).catch(err => console.error(`Seller cancel notification error (sellerId=${sellerId}):`, err.message));
-      // Email the seller
-      prisma.user.findUnique({ where: { id: sellerId }, select: { email: true, name: true } })
-        .then(sellerUser => {
-          if (sellerUser?.email) {
-            sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
-              orderId, status: 'cancelled', updatedBy: 'Customer',
-              customerName: order.customerName || 'Customer',
-              totalAmount: order.totalAmount, reason: finalReason
-            }).catch(err => console.error(`Seller cancel email error (sellerId=${sellerId}):`, err.message));
-          }
-        }).catch(err => console.error(`Seller lookup error for cancel email (sellerId=${sellerId}):`, err.message));
-    }
 
-    // Notify all admins (in-app + email)
+      if (sellerUser?.email) {
+        sendSellerOrderStatusEmail(sellerUser.email, resolvedSellerName, {
+          orderId, status: 'cancelled', updatedBy: 'Customer',
+          customerName: order.customerName || 'Customer',
+          totalAmount: order.totalAmount, reason: finalReason
+        }).catch(err => console.error(`Seller cancel email error (sellerId=${sellerId}):`, err.message));
+      }
+    }));
+
+    const cancelledSellerNameStr = cancelledSellerNames.join(', ') || 'Unknown';
+
+    // Notify all admins (in-app + email) — now includes seller name(s)
     notifyAdminOrderStatusChange(orderId, 'cancelled', {
       customerName: order.customerName || 'Customer',
+      sellerName: cancelledSellerNameStr,
       totalAmount: order.totalAmount.toString(),
       itemCount: order.items?.length || 0,
       reason: finalReason,
@@ -738,6 +753,7 @@ exports.cancelOrder = async (request, reply) => {
             sendAdminOrderStatusEmail(admin.email, admin.name, {
               orderId, status: 'cancelled', updatedBy: 'Customer',
               customerName: order.customerName || 'Customer',
+              sellerName: cancelledSellerNameStr,
               totalAmount: order.totalAmount, reason: finalReason
             }).catch(err => console.error("Admin cancel email error (non-blocking):", err.message));
           }
