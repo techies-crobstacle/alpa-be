@@ -11,6 +11,7 @@ const {
 const {
   sendSellerLowStockEmail,
   sendAdminProductPendingEmail,
+  sendAdminProductSellerDeactivatedEmail,
   sendAdminProductSubmitReviewEmail,
   sendSellerProductSelfDeactivatedEmail,
   sendSellerProductSubmitReviewConfirmEmail
@@ -1051,11 +1052,11 @@ exports.deactivateMyProduct = async (request, reply) => {
     prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
       .then(admins => {
         for (const admin of admins) {
-          sendAdminProductSubmitReviewEmail(admin.email, admin.name || 'Admin', {
+          sendAdminProductSellerDeactivatedEmail(admin.email, admin.name || 'Admin', {
             productTitle: product.title,
             productId,
             sellerName: product.seller?.name || 'Unknown',
-            reviewNote: `Seller deactivated this product. Reason: ${inactiveReason.trim()}`
+            inactiveReason: inactiveReason.trim()
           }).catch(err => console.error('Admin deactivate email error:', err.message));
         }
       }).catch(err => console.error('Admin lookup error (deactivate email):', err.message));

@@ -482,6 +482,68 @@ exports.deleteNotification = async (request, reply) => {
   }
 };
 
+// Sent to all admins when a seller submits a product for review (to be activated).
+// productDetails: { productTitle, sellerName, reviewNote }
+const notifyAdminProductSubmitReview = async (productId, productDetails = {}) => {
+  const { productTitle, sellerName, reviewNote } = productDetails;
+
+  const noteText = reviewNote ? ` Seller's note: "${reviewNote}".` : '';
+  const title = 'Product Submitted for Review';
+  const message = `Seller ${sellerName || 'Unknown'} has submitted product "${productTitle || 'Untitled'}" for review and activation.${noteText}`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'NEW_PRODUCT_SUBMITTED',
+      productId,
+      'product',
+      productDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
+// Sent to all admins when a seller deactivates their own product (with reason).
+// productDetails: { productTitle, sellerName, inactiveReason }
+const notifyAdminProductSellerDeactivated = async (productId, productDetails = {}) => {
+  const { productTitle, sellerName, inactiveReason } = productDetails;
+
+  const reasonText = inactiveReason ? ` Reason: "${inactiveReason}".` : '';
+  const title = 'Product Deactivated by Seller';
+  const message = `Seller ${sellerName || 'Unknown'} has deactivated product "${productTitle || 'Untitled'}".${reasonText}`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'GENERAL',
+      productId,
+      'product',
+      productDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
 // Export helper functions for use in other controllers
 module.exports = {
   ...module.exports,
@@ -499,5 +561,7 @@ module.exports = {
   notifyAdminNewProduct,
   notifyAdminProductPending,
   notifyAdminOrderStatusChange,
-  notifyAdminLowStockDeactivation
+  notifyAdminLowStockDeactivation,
+  notifyAdminProductSubmitReview,
+  notifyAdminProductSellerDeactivated
 };
