@@ -60,6 +60,14 @@ const buildMsg = (msg) => {
     text,
     // SendGrid requires replyTo as a dedicated field — NOT inside headers
     replyTo: { email: replyToEmail, name: senderName },
+    // Bypass suppression lists (global unsubscribes, bounce lists, etc.) so
+    // transactional notifications (product approved, order update, etc.) are
+    // always delivered even if the recipient previously unsubscribed from a
+    // marketing email or was auto-added to a suppression group.
+    mail_settings: {
+      bypass_list_management: { enable: true },
+      ...(msg.mail_settings || {}),
+    },
     headers: {
       // List-Unsubscribe is allowed as a custom header
       'List-Unsubscribe': `<mailto:${unsubscribeEmail}?subject=unsubscribe>`,
@@ -2352,6 +2360,105 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
   }
 };
 
+// ── Seller Product Edited by Admin Email ────────────────────────────────────
+// Sent to seller when an admin directly edits their product details.
+// productDetails: { productTitle, productId, changedFields[] }
+const sendSellerAdminProductEditEmail = async (sellerEmail, sellerName, { productTitle, productId, changedFields = [] } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Product Edited by Admin");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Changes: ${changedFields.join(', ')}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const productUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products/${productId}`;
+
+  const changesHtml = changedFields.length > 0
+    ? changedFields.map(f => `<li style="padding:4px 0;color:#555;font-size:14px;">${f}</li>`).join('')
+    : '<li style="padding:4px 0;color:#555;font-size:14px;">General update</li>';
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Your Product Has Been Updated by Admin: "${productTitle}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#F5F7FA;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F5F7FA;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Updated</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">An admin has made changes to your listing</p>
+                </td>
+              </tr>
+              <!-- Info banner -->
+              <tr>
+                <td style="background-color:#1565C0;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#9998; Product Details Updated by Admin</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">We're letting you know that an admin has updated your product listing. Your product remains active on the marketplace — no action is required from you. Please review the changes below.</p>
+                  <!-- Product box -->
+                  <div style="background:#EEF4FF;border-radius:8px;padding:22px;border-top:3px solid #1565C0;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#0D47A1;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Updated Product</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                  </div>
+                  <!-- Changes list -->
+                  <div style="background:#F5F7FA;border-radius:8px;padding:22px;border-left:4px solid #1565C0;margin-bottom:24px;">
+                    <p style="margin:0 0 14px;color:#0D47A1;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">&#128221; Fields Updated</p>
+                    <ul style="margin:0;padding-left:20px;">
+                      ${changesHtml}
+                    </ul>
+                  </div>
+                  <div style="background:#EEF4FF;border-left:4px solid #1565C0;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#0D47A1;font-weight:700;font-size:14px;">&#128161; Note</p>
+                    <p style="margin:0;color:#555;font-size:13px;line-height:1.6;">Your product's approval status has not changed. If you have questions about these changes, please contact our support team.</p>
+                  </div>
+                </td>
+              </tr>
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Product</a>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller admin-edit email sent to ${sellerEmail} for product: "${productTitle}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller admin-edit email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
@@ -2383,6 +2490,7 @@ module.exports = {
   sendSellerProductActivatedEmail,
   sendSellerProductDeactivatedEmail,
   sendAdminLowStockDeactivationEmail,
+  sendSellerAdminProductEditEmail,
   sendSellerOrderStatusEmail,
   sendAdminOrderStatusEmail
 };
