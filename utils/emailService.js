@@ -230,7 +230,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127912; Order Confirmed!</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">  Order Confirmed!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">Thank you for your purchase, ${customerName}!</p>
                 </td>
               </tr>
@@ -383,7 +383,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists! &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -515,7 +515,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                   <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127912; Order Update</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">  Order Update</h1>
                 </td>
               </tr>
 
@@ -618,7 +618,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us! &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &#8212; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1064,7 +1064,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace! &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1172,7 +1172,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace! &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1245,7 +1245,7 @@ const sendSellerApprovedEmail = async (email, name) => {
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
                         <td style="padding:8px 0;">
-                          <span style="color:#C4603A;font-size:16px;margin-right:10px;">&#127912;</span>
+                          <span style="color:#C4603A;font-size:16px;margin-right:10px;"> </span>
                           <span style="color:#555;font-size:14px;">Upload your first artwork listing from the seller dashboard</span>
                         </td>
                       </tr>
@@ -1286,7 +1286,7 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the MIA Marketplace family! &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the MIA Marketplace family!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1422,7 +1422,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1524,7 +1524,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1594,7 +1594,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
                   <!-- Product box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #4CAF50;margin-bottom:24px;">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Approved Product</p>
-                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
                   </div>
 
                   <!-- What's next -->
@@ -1636,7 +1636,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -1707,7 +1707,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
                   <!-- Product box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C62828;margin-bottom:24px;">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Under Review</p>
-                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
                   </div>
 
                   <!-- Reason box -->
@@ -1756,7 +1756,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -2150,7 +2150,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
                   <!-- Product box -->
                   <div style="background:#F0FBF2;border-radius:8px;padding:22px;border-top:3px solid #2E7D32;margin-bottom:24px;">
                     <p style="margin:0 0 12px;color:#1B5E20;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Activated Product</p>
-                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
                   </div>
                   <div style="background:#F3F8F5;border-left:4px solid #2E7D32;border-radius:0 8px 8px 0;padding:16px 20px;">
                     <p style="margin:0 0 6px;color:#1B5E20;font-weight:700;font-size:14px;">&#128161; What Happens Now?</p>
@@ -2167,7 +2167,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -2238,7 +2238,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
                   <!-- Product box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #B71C1C;margin-bottom:24px;">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Deactivated Product</p>
-                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">&#127912; ${productTitle || 'Your Product'}</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
                   </div>
                   ${reason ? `
                   <!-- Reason box -->
@@ -2262,7 +2262,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>
@@ -2367,7 +2367,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Admin Notifications &#127775;</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Admin Notifications   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
                 </td>
               </tr>

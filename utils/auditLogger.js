@@ -15,10 +15,10 @@ const prisma = require('../config/prisma');
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const ENTITY_TYPES = {
-  PRODUCT: 'PRODUCT',
-  ORDER:   'ORDER',
-  USER:    'USER',
-  // Add more when needed: COUPON, SELLER, CATEGORY, etc.
+  PRODUCT:  'PRODUCT',
+  ORDER:    'ORDER',
+  USER:     'USER',
+  CATEGORY: 'CATEGORY',
 };
 
 const AUDIT_ACTIONS = {
@@ -42,6 +42,17 @@ const AUDIT_ACTIONS = {
 
   // ── Automated / system actions ─────────────────────────────────────────────
   PRODUCT_AUTO_DEACTIVATED_LOW_STOCK: 'PRODUCT_AUTO_DEACTIVATED_LOW_STOCK',
+
+  // ── Category lifecycle ─────────────────────────────────────────────────────
+  CATEGORY_CREATED:      'CATEGORY_CREATED',       // Admin created directly (APPROVED)
+  CATEGORY_REQUESTED:    'CATEGORY_REQUESTED',      // Seller/Admin submitted request
+  CATEGORY_APPROVED:     'CATEGORY_APPROVED',       // Admin approved a PENDING request
+  CATEGORY_REJECTED:     'CATEGORY_REJECTED',       // Admin rejected a PENDING request
+  CATEGORY_EDITED:       'CATEGORY_EDITED',         // Admin edited an APPROVED category directly
+  CATEGORY_RESUBMITTED:  'CATEGORY_RESUBMITTED',    // Seller re-edited and resubmitted after rejection
+  CATEGORY_SOFT_DELETED: 'CATEGORY_SOFT_DELETED',   // Moved to recycle bin
+  CATEGORY_RESTORED:     'CATEGORY_RESTORED',       // Recovered from recycle bin
+  CATEGORY_HARD_DELETED: 'CATEGORY_HARD_DELETED',   // Permanently deleted (row gone; log entry remains)
 
   // ── Future entities — add when ready ──────────────────────────────────────
   // ORDER_CREATED, ORDER_STATUS_CHANGED, ORDER_CANCELLED, ORDER_REFUNDED ...
