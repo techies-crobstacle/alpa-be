@@ -11,7 +11,9 @@ const {
   getProductStock,
   getBulkStock,
   getRecycleBin,
-  restoreProduct
+  restoreProduct,
+  deactivateMyProduct,
+  submitProductForReview
 } = require("../controllers/product");
 
 async function productRoutes(fastify, options) {
@@ -32,6 +34,14 @@ async function productRoutes(fastify, options) {
 
   // GET PRODUCT BY ID (Public)
   fastify.get("/:id", getProductById);
+
+  // ── Seller: Self-Deactivate & Submit for Review ────────────────────────────
+  // PUT  /products/:id/deactivate    — seller deactivates their ACTIVE product with a reason
+  fastify.put("/:id/deactivate", { preHandler: authenticateSeller }, deactivateMyProduct);
+
+  // POST /products/:id/submit-review — seller submits INACTIVE/REJECTED product for admin review
+  //   Body: { reviewNote?: string }  (optional note to admin)
+  fastify.post("/:id/submit-review", { preHandler: authenticateSeller }, submitProductForReview);
 
   // UPDATE PRODUCT (Seller and Admin - own products or admin access, with image upload)
   fastify.put("/:id", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN']), handleProductImagesUpload] }, updateProduct);

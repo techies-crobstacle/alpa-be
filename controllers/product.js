@@ -4,9 +4,17 @@ const {
   notifySellerLowStock,
   notifyAdminNewProduct,
   notifyAdminProductPending,
-  notifyAdminLowStockDeactivation
+  notifyAdminLowStockDeactivation,
+  notifyAdminProductSubmitReview,
+  notifyAdminProductSellerDeactivated
 } = require("./notification");
-const { sendSellerLowStockEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
+const {
+  sendSellerLowStockEmail,
+  sendAdminProductPendingEmail,
+  sendAdminProductSubmitReviewEmail,
+  sendSellerProductSelfDeactivatedEmail,
+  sendSellerProductSubmitReviewConfirmEmail
+} = require("../utils/emailService");
 const auditLogger = require("../utils/auditLogger");
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
 
@@ -964,6 +972,190 @@ exports.getAllProducts = async (request, reply) => {
   } catch (err) {
     console.error("Get all products error:", err);
     return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ── SELLER: DEACTIVATE MY PRODUCT ────────────────────────────────────────────
+// Seller can deactivate their own product with a mandatory reason.
+// Product moves to INACTIVE status. Admin is notified with the reason.
+exports.deactivateMyProduct = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+    const { id: productId } = request.params;
+    const body = request.body || {};
+    const inactiveReason = body.reason || body.inactiveReason;
+
+    if (!inactiveReason || !inactiveReason.trim()) {
+      return reply.status(400).send({ success: false, message: 'A reason is required to deactivate your product.' });
+    }
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { seller: { select: { id: true, name: true, email: true } } }
+    });
+
+    if (!product) {
+      return reply.status(404).send({ success: false, message: 'Product not found.' });
+    }
+
+    // Ensure the seller owns this product
+    if (product.sellerId !== sellerId) {
+      return reply.status(403).send({ success: false, message: 'You do not own this product.' });
+    }
+
+    // Only active products can be deactivated by seller
+    if (product.status !== 'ACTIVE') {
+      return reply.status(400).send({
+        success: false,
+        message: `Product cannot be deactivated — current status is ${product.status}. Only ACTIVE products can be deactivated.`
+      });
+    }
+
+    // Deactivate
+    await prisma.product.update({
+      where: { id: productId },
+      data: {
+        status: 'INACTIVE',
+        sellerInactiveReason: inactiveReason.trim()
+      }
+    });
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
+
+    auditLog({
+      entityType: ENTITY_TYPES.PRODUCT,
+      entityId: productId,
+      action: AUDIT_ACTIONS.PRODUCT_DEACTIVATED,
+      previousData: product,
+      newData: { ...product, status: 'INACTIVE', isActive: false, sellerInactiveReason: inactiveReason.trim() },
+      reason: inactiveReason.trim(),
+      ...extractRequestMeta(request)
+    });
+
+    // Notify admins (in-app)
+    notifyAdminProductSellerDeactivated(productId, {
+      productTitle: product.title,
+      sellerName: product.seller?.name || 'Unknown',
+      inactiveReason: inactiveReason.trim()
+    }).catch(err => console.error('Admin deactivate notification error:', err.message));
+
+    // Email seller confirmation (non-blocking)
+    if (product.seller?.email) {
+      sendSellerProductSelfDeactivatedEmail(product.seller.email, product.seller.name || 'Seller', {
+        productTitle: product.title,
+        productId,
+        inactiveReason: inactiveReason.trim()
+      }).catch(err => console.error('Seller self-deactivate email error:', err.message));
+    }
+
+    // Email admins (non-blocking)
+    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+      .then(admins => {
+        for (const admin of admins) {
+          sendAdminProductSubmitReviewEmail(admin.email, admin.name || 'Admin', {
+            productTitle: product.title,
+            productId,
+            sellerName: product.seller?.name || 'Unknown',
+            reviewNote: `Seller deactivated this product. Reason: ${inactiveReason.trim()}`
+          }).catch(err => console.error('Admin deactivate email error:', err.message));
+        }
+      }).catch(err => console.error('Admin lookup error (deactivate email):', err.message));
+
+    return reply.send({ success: true, message: 'Product deactivated successfully.' });
+  } catch (error) {
+    console.error('Seller deactivate product error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ── SELLER: SUBMIT PRODUCT FOR REVIEW ────────────────────────────────────────
+// Seller submits an INACTIVE or REJECTED product for admin review.
+// Product moves to PENDING. Admin is notified with the seller's note.
+// Seller CANNOT make a product directly ACTIVE — only admin can approve it.
+exports.submitProductForReview = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+    const { id: productId } = request.params;
+    const body = request.body || {};
+    const reviewNote = body.reviewNote || body.note || body.reason || '';
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { seller: { select: { id: true, name: true, email: true } } }
+    });
+
+    if (!product) {
+      return reply.status(404).send({ success: false, message: 'Product not found.' });
+    }
+
+    if (product.sellerId !== sellerId) {
+      return reply.status(403).send({ success: false, message: 'You do not own this product.' });
+    }
+
+    // Only INACTIVE or REJECTED products can be submitted for review
+    if (!['INACTIVE', 'REJECTED'].includes(product.status)) {
+      return reply.status(400).send({
+        success: false,
+        message: `Product cannot be submitted for review — current status is ${product.status}. Only INACTIVE or REJECTED products can be submitted.`
+      });
+    }
+
+    // Set status to PENDING and store the review note
+    await prisma.product.update({
+      where: { id: productId },
+      data: {
+        status: 'PENDING',
+        reviewNote: reviewNote.trim() || null,
+        rejectionReason: null   // clear old rejection reason on new review request
+      }
+    });
+    await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE "id" = ${productId}`;
+
+    auditLog({
+      entityType: ENTITY_TYPES.PRODUCT,
+      entityId: productId,
+      action: AUDIT_ACTIONS.PRODUCT_UPDATED,
+      previousData: product,
+      newData: { ...product, status: 'PENDING', reviewNote: reviewNote.trim() || null },
+      reason: 'Seller submitted product for admin review',
+      ...extractRequestMeta(request)
+    });
+
+    // Notify admins (in-app)
+    notifyAdminProductSubmitReview(productId, {
+      productTitle: product.title,
+      sellerName: product.seller?.name || 'Unknown',
+      reviewNote: reviewNote.trim() || null
+    }).catch(err => console.error('Admin submit-review notification error:', err.message));
+
+    // Email admins (non-blocking)
+    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+      .then(admins => {
+        for (const admin of admins) {
+          sendAdminProductSubmitReviewEmail(admin.email, admin.name || 'Admin', {
+            productTitle: product.title,
+            productId,
+            sellerName: product.seller?.name || 'Unknown',
+            reviewNote: reviewNote.trim() || null
+          }).catch(err => console.error('Admin submit-review email error:', err.message));
+        }
+      }).catch(err => console.error('Admin lookup error (submit-review email):', err.message));
+
+    // Email seller confirmation (non-blocking)
+    if (product.seller?.email) {
+      sendSellerProductSubmitReviewConfirmEmail(product.seller.email, product.seller.name || 'Seller', {
+        productTitle: product.title,
+        productId,
+        reviewNote: reviewNote.trim() || null
+      }).catch(err => console.error('Seller submit-review confirm email error:', err.message));
+    }
+
+    return reply.send({
+      success: true,
+      message: 'Product submitted for review. An admin will review and approve it shortly.'
+    });
+  } catch (error) {
+    console.error('Seller submit-for-review error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
