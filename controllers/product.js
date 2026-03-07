@@ -4,9 +4,17 @@ const {
   notifySellerLowStock,
   notifyAdminNewProduct,
   notifyAdminProductPending,
-  notifyAdminLowStockDeactivation
+  notifyAdminLowStockDeactivation,
+  notifyAdminProductSubmitReview,
+  notifyAdminProductSellerDeactivated
 } = require("./notification");
-const { sendSellerLowStockEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
+const {
+  sendSellerLowStockEmail,
+  sendAdminProductPendingEmail,
+  sendAdminProductSubmitReviewEmail,
+  sendSellerProductSelfDeactivatedEmail,
+  sendSellerProductSubmitReviewConfirmEmail
+} = require("../utils/emailService");
 const auditLogger = require("../utils/auditLogger");
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
 
