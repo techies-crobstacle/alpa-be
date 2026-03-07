@@ -206,9 +206,13 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
+  // For authenticated users, use a signed token URL so the button directly downloads the PDF.
+  // For guests, use the existing email+orderId query-param public endpoint.
   const invoiceUrl = orderDetails.isGuest
     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
-    : `${baseUrl}/orders/${orderDetails.orderId}`;
+    : orderDetails.invoiceToken
+      ? `${backendBaseUrl}/api/orders/invoice/download/${orderDetails.invoiceToken}`
+      : `${baseUrl}/orders/${orderDetails.orderId}`;
 
   // Build message with optional PDF attachment
   const msg = {
@@ -492,9 +496,12 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
+  // Use signed token URL if provided (for order confirmation emails), else fall back to frontend.
   const invoiceUrl = orderDetails.isGuest
     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
-    : `${baseUrl}/orders/${orderDetails.orderId}`;
+    : orderDetails.invoiceToken
+      ? `${backendBaseUrl}/api/orders/invoice/download/${orderDetails.invoiceToken}`
+      : `${baseUrl}/orders/${orderDetails.orderId}`;
 
   const msg = {
     to: email,
