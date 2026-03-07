@@ -206,13 +206,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
-  // For authenticated users, use a signed token URL so the button directly downloads the PDF.
-  // For guests, use the existing email+orderId query-param public endpoint.
-  const invoiceUrl = orderDetails.isGuest
-    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
-    : orderDetails.invoiceToken
-      ? `${backendBaseUrl}/api/orders/invoice/download/${orderDetails.invoiceToken}`
-      : `${baseUrl}/orders/${orderDetails.orderId}`;
+  // All orders (guest and authenticated) store customerEmail, so we always use
+  // the orderId+email endpoint — no token in the URL, no login required.
+  const invoiceUrl = `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`;
 
   // Build message with optional PDF attachment
   const msg = {
@@ -496,12 +492,8 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
-  // Use signed token URL if provided (for order confirmation emails), else fall back to frontend.
-  const invoiceUrl = orderDetails.isGuest
-    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
-    : orderDetails.invoiceToken
-      ? `${backendBaseUrl}/api/orders/invoice/download/${orderDetails.invoiceToken}`
-      : `${baseUrl}/orders/${orderDetails.orderId}`;
+  // All orders store customerEmail — use orderId+email for direct PDF download, no token needed.
+  const invoiceUrl = `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`;
 
   const msg = {
     to: email,

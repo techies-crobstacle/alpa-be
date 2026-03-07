@@ -57,10 +57,6 @@ async function orderRoutes(fastify, options) {
   // Reorder - Add all items from previous order to cart
   fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
 
-  // Download invoice via signed token (public — used in email "Download Invoice" button)
-  // MUST be registered before /invoice/:orderId to avoid "download" being matched as orderId
-  fastify.get("/invoice/download/:token", orderController.downloadInvoiceByToken);
-
   // Download invoice PDF (accessible by customer, seller for their orders, admin for all)
   fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['CUSTOMER', 'USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
 
