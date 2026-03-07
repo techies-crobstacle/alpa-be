@@ -964,7 +964,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
 
                     <!-- CTA -->
                     <div style="text-align:center;">
-                      <a href="${process.env.FRONTEND_URL}/seller/orders/${orderId}" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">&#128640; Take Action Now</a>
+                      <a href="${process.env.FRONTEND_URL || process.env.SELLER_DASHBOARD_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderId}" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">&#128640; Take Action Now</a>
                     </div>
                   </td>
                 </tr>
