@@ -2185,75 +2185,49 @@ const generateInvoiceBuffer = (order) => {
   });
 };
 
-// Download Invoice as PDF
+// Download Invoice as PDF — verified by orderId + customerEmail, no bearer token required
 exports.downloadInvoice = async (request, reply) => {
   try {
-    const userId = request.user.userId;
-    const userRole = request.user.role;
     const { orderId } = request.params;
+    const { customerEmail } = request.query;
 
-    // Build query based on user role
-    let orderQuery = {
-      where: { id: orderId },
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({
+        success: false,
+        message: "Order ID and customerEmail query param are required"
+      });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, customerEmail },
       include: {
         items: {
           include: {
             product: {
-              select: {
-                id: true,
-                title: true,
-                price: true,
-                category: true,
-                sellerId: true  // Include sellerId for authorization
-              }
+              select: { id: true, title: true, price: true, category: true }
             }
           }
         },
         user: {
-          select: {
-            name: true,
-            email: true,
-            phone: true
-          }
+          select: { name: true, email: true, phone: true }
         }
       }
-    };
-
-    // Apply role-based access control
-    if (userRole === 'USER') {
-      // Customers can only access their own orders
-      orderQuery.where.userId = userId;
-    } else if (userRole === 'SELLER') {
-      // Sellers can access orders containing their products
-      orderQuery.where.items = {
-        some: {
-          product: {
-            sellerId: userId
-          }
-        }
-      };
-    }
-    // Admins can access all orders (no additional where clause)
-
-    // Get order with all necessary details
-    const order = await prisma.order.findFirst(orderQuery);
+    });
 
     if (!order) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Order not found or you don't have permission to access this order" 
+      return reply.status(404).send({
+        success: false,
+        message: "Order not found or email doesn't match"
       });
     }
 
-    // Check if order status is DELIVERED
     if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: `Invoice is not available for orders with status: ${order.status}` 
+      return reply.status(400).send({
+        success: false,
+        message: `Invoice is not available for orders with status: ${order.status}`
       });
     }
 
-    // Generate PDF
     const pdfBuffer = await generateInvoiceBuffer(order);
 
     reply.header('Content-Type', 'application/pdf');
