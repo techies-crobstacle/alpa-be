@@ -709,8 +709,11 @@ exports.deleteProduct = async (request, reply) => {
     const userId   = request.user.userId;
     const userRole = request.user.role;
 
+    // Support both :id (product routes) and :productId (admin routes)
+    const productId = request.params.id || request.params.productId;
+
     const product = await prisma.product.findUnique({
-      where: { id: request.params.id }
+      where: { id: productId }
     });
 
     if (!product || product.deletedAt) {
@@ -732,13 +735,13 @@ exports.deleteProduct = async (request, reply) => {
           "deletedByRole" = ${userRole},
           "isActive"      = false,
           status          = 'INACTIVE'::"ProductStatus"
-      WHERE id = ${request.params.id}
+      WHERE id = ${productId}
     `;
 
     // Audit log
     auditLog({
       entityType:   ENTITY_TYPES.PRODUCT,
-      entityId:     request.params.id,
+      entityId:     productId,
       action:       AUDIT_ACTIONS.PRODUCT_DELETED,
       previousData: product,
       newData:      { ...product, deletedAt: now, deletedBy: userId, deletedByRole: userRole, deletedByEmail: request.user.email, isActive: false, status: 'INACTIVE' },

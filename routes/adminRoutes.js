@@ -70,6 +70,8 @@ async function adminRoutes(fastify, options) {
   fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
 
   // ── Recycle Bin (admin) ────────────────────────────────────────────────────
+  // DELETE /admin/products/:productId               — soft delete (move to Recycle Bin)
+  fastify.delete("/products/:productId", { preHandler: adminAuth }, productController.deleteProduct);
   // GET  /admin/products/recycle-bin?sellerId=xxx   — all deleted products
   fastify.get("/products/recycle-bin", { preHandler: adminAuth }, adminController.getAdminRecycleBin);
   // POST /admin/products/:productId/restore         — restore to INACTIVE
