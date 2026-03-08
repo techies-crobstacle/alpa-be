@@ -2041,12 +2041,12 @@ exports.permanentlyDeleteProduct = async (request, reply) => {
     }
 
     // Audit log before hard delete — last chance to record it
-    auditLog({
+    await auditLog({
       entityType:   ENTITY_TYPES.PRODUCT,
       entityId:     productId,
       action:       AUDIT_ACTIONS.PRODUCT_PERMANENTLY_DELETED,
       previousData: product,
-      reason:       request.body?.reason ?? 'Permanent deletion from Recycle Bin by Admin',
+      reason:       request.body?.reason ?? `Permanently deleted from Recycle Bin by ${request.user.role} (${request.user.email})`,
       ...extractRequestMeta(request),
     });
 
