@@ -51,6 +51,7 @@ exports.getAllCategories = async (request, reply) => {
     approvedCategoryRequests.forEach(cat => {
       if (!categoryMap.has(cat.categoryName)) {
         categoryMap.set(cat.categoryName, {
+          id: cat.id,
           productCount: 0,
           requestedBy: cat.requestedBy,
           approvalMessage: cat.approvalMessage,
@@ -61,6 +62,7 @@ exports.getAllCategories = async (request, reply) => {
         const existing = categoryMap.get(cat.categoryName);
         if (typeof existing === 'number') {
           categoryMap.set(cat.categoryName, {
+            id: cat.id,
             productCount: existing,
             requestedBy: cat.requestedBy,
             isRequestedCategory: true
@@ -72,13 +74,16 @@ exports.getAllCategories = async (request, reply) => {
     const approvedCategories = Array.from(categoryMap.entries())
       .map(([name, data]) => {
         if (typeof data === 'number') {
+          // Category exists only in products table — no category_requests row, no id
           return {
             categoryName: name,
+            id: null,
             ...(isAdmin && { totalProductCount: data }),
             ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 })
           };
         }
         return {
+          id: data.id || null,
           categoryName: name,
           ...(isAdmin && { totalProductCount: data.productCount || 0 }),
           ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
