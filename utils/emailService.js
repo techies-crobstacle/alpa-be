@@ -1561,7 +1561,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
     return { success: true };
   }
 
-  const productUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products/${productId || ''}`;
+  const productUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -2206,7 +2206,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+  const productUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
