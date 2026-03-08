@@ -202,10 +202,11 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
 
   // Build guest-aware tracking URL
   const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-be.onrender.com';
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
-    : `${baseUrl}/customerdashboard/orders/${orderDetails.orderId}`;
+    : `${dashboardUrl}/customerdashboard/orders`;
   // Authenticated users get the dedicated public email-download endpoint (no bearer token needed in links).
   // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
@@ -490,10 +491,11 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 
   // Build guest-aware tracking URL
   const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-back.onrender.com';
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
-    : `${baseUrl}/orders/${orderDetails.orderId}`;
+    : `${dashboardUrl}/customerdashboard/orders`;
   // Authenticated users get the dedicated public email-download endpoint.
   // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
