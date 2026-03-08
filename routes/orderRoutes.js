@@ -57,12 +57,12 @@ async function orderRoutes(fastify, options) {
   // Reorder - Add all items from previous order to cart
   fastify.post("/reorder/:id", { preHandler: authenticateUser }, orderController.reorder);
 
-  // Download invoice via signed token (public — used in email "Download Invoice" button)
-  // MUST be registered before /invoice/:orderId to avoid "download" being matched as orderId
-  fastify.get("/invoice/download/:token", orderController.downloadInvoiceByToken);
-
-  // Download invoice PDF (accessible by customer, seller for their orders, admin for all)
+  // Download invoice PDF — requires auth (used by frontend in many places)
   fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['CUSTOMER', 'USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
+
+  // Download invoice PDF — public endpoint for email "Download Invoice" button
+  // Registered as a separate path so it never conflicts with the auth route above
+  fastify.get("/invoice/public/:orderId", orderController.downloadPublicInvoice);
 
   // ----------- GUEST CHECKOUT ROUTES (No authentication) -----------
   // Note: Guest checkout is Stripe-only. There is no COD option.

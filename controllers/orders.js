@@ -1,5 +1,4 @@
 const prisma = require("../config/prisma");
-const jwt = require("jsonwebtoken");
 const { checkInventory } = require("../utils/checkInventory");
 const { 
   sendOrderConfirmationEmail, 
@@ -417,16 +416,8 @@ exports.createOrder = async (request, reply) => {
         if (user.email) {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
-            // Generate a 30-day signed token so the email "Download Invoice"
-            // button can directly download the PDF without a bearer token.
-            const invoiceToken = jwt.sign(
-              { orderId: order.id, userId: order.userId, purpose: 'invoice' },
-              process.env.JWT_SECRET,
-              { expiresIn: '30d' }
-            );
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
               orderId: order.id,
-              invoiceToken,
               totalAmount,
               itemCount: order.items.length,
               products: order.items.map(item => ({
@@ -2460,40 +2451,15 @@ exports.downloadGuestInvoice = async (request, reply) => {
   }
 };
 
-// ─── Signed-Token Invoice Download (no bearer auth required — for email links) ─
-// GET /api/orders/invoice/download/:token
-// The token is a short-lived JWT: { orderId, userId, purpose: 'invoice' }
-// Generated at order-confirmation time and embedded in the email "Download Invoice" button.
-exports.downloadInvoiceByToken = async (request, reply) => {
+// Download Invoice as PDF — public endpoint for email links
+// No auth required: orderId is an unguessable CUID.
+// GET /api/orders/invoice/public/:orderId
+exports.downloadPublicInvoice = async (request, reply) => {
   try {
-    const { token } = request.params;
+    const { orderId } = request.params;
 
-    if (!token) {
-      return reply.status(400).send({ success: false, message: "Invoice token is required" });
-    }
-
-    // Verify and decode the signed token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
-    } catch (err) {
-      return reply.status(401).send({
-        success: false,
-        message: err.name === 'TokenExpiredError'
-          ? "Invoice link has expired. Please log in to download your invoice."
-          : "Invalid invoice link."
-      });
-    }
-
-    if (decoded.purpose !== 'invoice' || !decoded.orderId || !decoded.userId) {
-      return reply.status(400).send({ success: false, message: "Invalid invoice token" });
-    }
-
-    const { orderId, userId } = decoded;
-
-    // Fetch the order, restricted to the token owner
     const order = await prisma.order.findFirst({
-      where: { id: orderId, userId },
+      where: { id: orderId },
       include: {
         items: {
           include: {
@@ -2525,7 +2491,7 @@ exports.downloadInvoiceByToken = async (request, reply) => {
     reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
     return reply.send(pdfBuffer);
   } catch (error) {
-    console.error("Download invoice by token error:", error);
+    console.error("Download public invoice error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

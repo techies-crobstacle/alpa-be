@@ -206,13 +206,11 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
-  // For authenticated users, use a signed token URL so the button directly downloads the PDF.
-  // For guests, use the existing email+orderId query-param public endpoint.
+  // Authenticated users get the dedicated public email-download endpoint (no bearer token needed in links).
+  // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
-    : orderDetails.invoiceToken
-      ? `${backendBaseUrl}/api/orders/invoice/download/${orderDetails.invoiceToken}`
-      : `${baseUrl}/orders/${orderDetails.orderId}`;
+    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.orderId}`;
 
   // Build message with optional PDF attachment
   const msg = {
@@ -496,12 +494,11 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.orderId}&email=${encodeURIComponent(email)}`
     : `${baseUrl}/orders/${orderDetails.orderId}`;
-  // Use signed token URL if provided (for order confirmation emails), else fall back to frontend.
+  // Authenticated users get the dedicated public email-download endpoint.
+  // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.orderId}&customerEmail=${encodeURIComponent(email)}`
-    : orderDetails.invoiceToken
-      ? `${backendBaseUrl}/api/orders/invoice/download/${orderDetails.invoiceToken}`
-      : `${baseUrl}/orders/${orderDetails.orderId}`;
+    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.orderId}`;
 
   const msg = {
     to: email,
