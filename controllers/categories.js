@@ -72,27 +72,17 @@ exports.getAllCategories = async (request, reply) => {
     });
 
     const approvedCategories = Array.from(categoryMap.entries())
-      .map(([name, data]) => {
-        if (typeof data === 'number') {
-          // Category exists only in products table — no category_requests row, no id
-          return {
-            categoryName: name,
-            id: null,
-            ...(isAdmin && { totalProductCount: data }),
-            ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 })
-          };
-        }
-        return {
-          id: data.id || null,
-          categoryName: name,
-          ...(isAdmin && { totalProductCount: data.productCount || 0 }),
-          ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
-          isRequestedCategory: data.isRequestedCategory || false,
-          requestedByMe: !isAdmin && data.requestedBy === request.user?.userId,
-          ...(isAdmin && data.approvalMessage && { approvalMessage: data.approvalMessage }),
-          ...(isAdmin && data.approvedAt && { approvedAt: data.approvedAt })
-        };
-      })
+      .filter(([, data]) => typeof data !== 'number')
+      .map(([name, data]) => ({
+        id: data.id,
+        categoryName: name,
+        ...(isAdmin && { totalProductCount: data.productCount || 0 }),
+        ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
+        isRequestedCategory: data.isRequestedCategory || false,
+        requestedByMe: !isAdmin && data.requestedBy === request.user?.userId,
+        ...(isAdmin && data.approvalMessage && { approvalMessage: data.approvalMessage }),
+        ...(isAdmin && data.approvedAt && { approvedAt: data.approvedAt })
+      }))
       .sort((a, b) => {
         if (isAdmin) return (b.totalProductCount || 0) - (a.totalProductCount || 0);
         if (a.requestedByMe && !b.requestedByMe) return -1;
