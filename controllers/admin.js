@@ -1011,14 +1011,6 @@ exports.createCoupon = async (request, reply) => {
       return reply.status(400).send({ success: false, message: 'Fixed discount must be greater than 0' });
     }
 
-    if (discountType === 'percentage' && (discountValue <= 0 || discountValue > 100)) {
-      return reply.status(400).send({ success: false, message: 'Percentage discount must be between 1 and 100' });
-    }
-
-    if (discountType === 'flat' && discountValue <= 0) {
-      return reply.status(400).send({ success: false, message: 'Flat discount must be greater than 0' });
-    }
-
     const existingCoupon = await prisma.coupon.findUnique({ where: { code: code.toUpperCase() } });
     if (existingCoupon) {
       return reply.status(400).send({ success: false, message: 'Coupon code already exists' });
@@ -1039,6 +1031,17 @@ exports.createCoupon = async (request, reply) => {
       }
     });
 
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType: ENTITY_TYPES.COUPON,
+      entityId:   coupon.id,
+      action:     AUDIT_ACTIONS.COUPON_CREATED,
+      ...meta,
+      previousData: null,
+      newData:      coupon,
+      reason:       `Coupon "${coupon.code}" created by admin`,
+    });
+
     reply.status(201).send({ success: true, message: 'Coupon created successfully', coupon });
   } catch (error) {
     console.error('Create coupon error:', error);
@@ -1046,17 +1049,23 @@ exports.createCoupon = async (request, reply) => {
   }
 };
 
-// GET ALL COUPONS (Public)
+// GET ALL COUPONS (Admin — active list; use ?recycleBin=true for recycle bin)
 exports.getAllCoupons = async (request, reply) => {
   try {
+    const recycleBin = request.query?.recycleBin === 'true';
+
     const coupons = await prisma.coupon.findMany({
+      where: recycleBin
+        ? { softDeletedAt: { not: null } }
+        : { softDeletedAt: null },
       orderBy: { createdAt: 'desc' }
     });
 
     reply.send({
       success: true,
       coupons,
-      count: coupons.length
+      count: coupons.length,
+      recycleBin
     });
   } catch (error) {
     console.error('Get all coupons error:', error);
@@ -1071,6 +1080,7 @@ exports.getActiveCoupons = async (request, reply) => {
     const coupons = await prisma.coupon.findMany({
       where: {
         isActive: true,
+        softDeletedAt: null,
         expiresAt: { gt: now }
       },
       orderBy: { createdAt: 'desc' },
@@ -1111,6 +1121,10 @@ exports.updateCoupon = async (request, reply) => {
     const existingCoupon = await prisma.coupon.findUnique({ where: { id } });
     if (!existingCoupon) {
       return reply.status(404).send({ success: false, message: 'Coupon not found' });
+    }
+
+    if (existingCoupon.softDeletedAt) {
+      return reply.status(400).send({ success: false, message: 'Cannot edit a soft-deleted coupon. Restore it first.' });
     }
 
     const updateData = {};
@@ -1171,6 +1185,17 @@ exports.updateCoupon = async (request, reply) => {
 
     const updatedCoupon = await prisma.coupon.update({ where: { id }, data: updateData });
 
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType:   ENTITY_TYPES.COUPON,
+      entityId:     id,
+      action:       AUDIT_ACTIONS.COUPON_UPDATED,
+      ...meta,
+      previousData: existingCoupon,
+      newData:      updatedCoupon,
+      reason:       `Coupon "${updatedCoupon.code}" updated by admin`,
+    });
+
     reply.send({ success: true, message: 'Coupon updated successfully', coupon: updatedCoupon });
   } catch (error) {
     console.error('Update coupon error:', error);
@@ -1178,8 +1203,61 @@ exports.updateCoupon = async (request, reply) => {
   }
 };
 
-// DELETE COUPON (Admin only)
-exports.deleteCoupon = async (request, reply) => {
+// SOFT DELETE COUPON — moves to recycle bin (Admin only)
+exports.softDeleteCoupon = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { id } = request.params;
+    const { reason } = request.body || {};
+
+    const existingCoupon = await prisma.coupon.findUnique({ where: { id } });
+    if (!existingCoupon) {
+      return reply.status(404).send({ success: false, message: 'Coupon not found' });
+    }
+
+    if (existingCoupon.softDeletedAt) {
+      return reply.status(400).send({ success: false, message: 'Coupon is already in the recycle bin' });
+    }
+
+    const now = new Date();
+    const adminId = request.user.userId || request.user.uid;
+
+    await prisma.coupon.update({
+      where: { id },
+      data: {
+        softDeletedAt: now,
+        softDeletedBy: adminId,
+        isActive:      false,
+      }
+    });
+
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType:   ENTITY_TYPES.COUPON,
+      entityId:     id,
+      action:       AUDIT_ACTIONS.COUPON_SOFT_DELETED,
+      ...meta,
+      previousData: existingCoupon,
+      newData:      { ...existingCoupon, softDeletedAt: now, softDeletedBy: adminId, isActive: false },
+      reason:       reason || `Coupon "${existingCoupon.code}" moved to recycle bin`,
+    });
+
+    reply.send({
+      success: true,
+      message: `Coupon "${existingCoupon.code}" moved to recycle bin`,
+      data: { id, code: existingCoupon.code, softDeletedAt: now }
+    });
+  } catch (error) {
+    console.error('Soft delete coupon error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// RESTORE COUPON from recycle bin (Admin only)
+exports.restoreCoupon = async (request, reply) => {
   try {
     if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
@@ -1187,28 +1265,93 @@ exports.deleteCoupon = async (request, reply) => {
 
     const { id } = request.params;
 
-    // Check if coupon exists
-    const existingCoupon = await prisma.coupon.findUnique({
-      where: { id }
-    });
-
+    const existingCoupon = await prisma.coupon.findUnique({ where: { id } });
     if (!existingCoupon) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Coupon not found'
-      });
+      return reply.status(404).send({ success: false, message: 'Coupon not found' });
     }
 
-    await prisma.coupon.delete({
-      where: { id }
+    if (!existingCoupon.softDeletedAt) {
+      return reply.status(400).send({ success: false, message: 'Coupon is not in the recycle bin' });
+    }
+
+    const now = new Date();
+    const adminId = request.user.userId || request.user.uid;
+
+    const restoredCoupon = await prisma.coupon.update({
+      where: { id },
+      data: {
+        softDeletedAt: null,
+        softDeletedBy: null,
+        restoredAt:    now,
+        restoredBy:    adminId,
+      }
+    });
+
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType:   ENTITY_TYPES.COUPON,
+      entityId:     id,
+      action:       AUDIT_ACTIONS.COUPON_RESTORED,
+      ...meta,
+      previousData: existingCoupon,
+      newData:      restoredCoupon,
+      reason:       `Coupon "${existingCoupon.code}" restored from recycle bin`,
     });
 
     reply.send({
       success: true,
-      message: 'Coupon deleted successfully'
+      message: `Coupon "${existingCoupon.code}" has been restored`,
+      coupon: restoredCoupon
     });
   } catch (error) {
-    console.error('Delete coupon error:', error);
+    console.error('Restore coupon error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// HARD DELETE COUPON — permanent, irreversible (Admin only; must be in recycle bin first)
+exports.hardDeleteCoupon = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { id } = request.params;
+    const { reason } = request.body || {};
+
+    const existingCoupon = await prisma.coupon.findUnique({ where: { id } });
+    if (!existingCoupon) {
+      return reply.status(404).send({ success: false, message: 'Coupon not found' });
+    }
+
+    if (!existingCoupon.softDeletedAt) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Coupon must be moved to the recycle bin before it can be permanently deleted'
+      });
+    }
+
+    // Write audit log BEFORE deleting so the row snapshot is preserved
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType:   ENTITY_TYPES.COUPON,
+      entityId:     id,
+      action:       AUDIT_ACTIONS.COUPON_HARD_DELETED,
+      ...meta,
+      previousData: existingCoupon,
+      newData:      null,
+      reason:       reason || `Coupon "${existingCoupon.code}" permanently deleted`,
+    });
+
+    await prisma.coupon.delete({ where: { id } });
+
+    reply.send({
+      success: true,
+      message: `Coupon "${existingCoupon.code}" has been permanently deleted. Audit logs are retained.`,
+      data: { id, code: existingCoupon.code }
+    });
+  } catch (error) {
+    console.error('Hard delete coupon error:', error);
     reply.status(500).send({ success: false, error: error.message });
   }
 };
@@ -1225,6 +1368,10 @@ exports.validateCoupon = async (request, reply) => {
     const coupon = await prisma.coupon.findUnique({ where: { code: code.toUpperCase() } });
 
     if (!coupon) {
+      return reply.status(404).send({ success: false, message: 'Invalid coupon code' });
+    }
+
+    if (coupon.softDeletedAt) {
       return reply.status(404).send({ success: false, message: 'Invalid coupon code' });
     }
 
