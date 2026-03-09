@@ -342,9 +342,9 @@ exports.createCommissionEarned = async ({
   sellerName = null
 }) => {
   try {
-    // Resolve the seller's commission rate
-    const sellerCommission = await exports.getCommissionForSeller(sellerId);
-    const defaultCommission = sellerCommission || await exports.getDefaultCommission();
+    // Always use the platform default commission ("Standard Commission" document).
+    // Fall back to hardcoded 10 % only if no default is configured.
+    const defaultCommission = await exports.getDefaultCommission();
 
     let commissionRate = DEFAULT_COMMISSION_RATE;
     let commissionAmount = parseFloat(((orderValue * DEFAULT_COMMISSION_RATE) / 100).toFixed(2));
@@ -361,11 +361,13 @@ exports.createCommissionEarned = async ({
       }
     }
 
+    const netPayable = parseFloat((orderValue - commissionAmount).toFixed(2));
+
     await prisma.$executeRaw`
       INSERT INTO commission_earned
         (id, order_id, seller_id, customer_id, customer_name, customer_email,
-         seller_name, order_value, commission_rate, commission_amount, status,
-         created_at, updated_at)
+         seller_name, order_value, commission_rate, commission_amount, net_payable,
+         status, created_at, updated_at)
       VALUES (
         ${require("cuid")()},
         ${orderId},
@@ -377,12 +379,13 @@ exports.createCommissionEarned = async ({
         ${parseFloat(orderValue.toFixed(2))},
         ${commissionRate},
         ${commissionAmount},
+        ${netPayable},
         'PENDING'::"CommissionStatus",
         NOW(), NOW()
       )
     `;
 
-    console.log(`💰 Commission earned recorded — order: ${orderId}, seller: ${sellerId}, amount: $${commissionAmount}`);
+    console.log(`💰 Commission recorded — order: ${orderId}, seller: ${sellerId}, orderValue: $${orderValue.toFixed(2)}, commission: $${commissionAmount}, netPayable: $${netPayable}`);
   } catch (err) {
     // Non-fatal — log but never crash the order flow
     console.error("createCommissionEarned error (non-fatal):", err.message);
@@ -424,9 +427,10 @@ exports.getAllCommissionEarned = async (request, reply) => {
         ce.customer_name  AS "customerName",
         ce.customer_email AS "customerEmail",
         ce.seller_name    AS "sellerName",
-        ce.order_value    AS "orderValue",
+        ce.order_value        AS "orderValue",
         ce.commission_rate    AS "commissionRate",
         ce.commission_amount  AS "commissionAmount",
+        ce.net_payable        AS "netPayable",
         ce.status::text   AS status,
         ce.created_at     AS "createdAt",
         ce.updated_at     AS "updatedAt",
@@ -478,6 +482,7 @@ exports.getCommissionEarnedSummary = async (request, reply) => {
         COUNT(*)::int                                    AS "totalOrders",
         COALESCE(SUM(order_value), 0)::float             AS "totalOrderValue",
         COALESCE(SUM(commission_amount), 0)::float       AS "totalCommissionEarned",
+        COALESCE(SUM(net_payable), 0)::float             AS "totalNetPayable",
         COALESCE(SUM(CASE WHEN status = 'PAID'      THEN commission_amount ELSE 0 END), 0)::float AS "totalPaid",
         COALESCE(SUM(CASE WHEN status = 'PENDING'   THEN commission_amount ELSE 0 END), 0)::float AS "totalPending",
         COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN commission_amount ELSE 0 END), 0)::float AS "totalCancelled",
@@ -508,9 +513,10 @@ exports.getCommissionEarnedByOrder = async (request, reply) => {
         ce.customer_name  AS "customerName",
         ce.customer_email AS "customerEmail",
         ce.seller_name    AS "sellerName",
-        ce.order_value    AS "orderValue",
+        ce.order_value        AS "orderValue",
         ce.commission_rate    AS "commissionRate",
         ce.commission_amount  AS "commissionAmount",
+        ce.net_payable        AS "netPayable",
         ce.status::text   AS status,
         ce.created_at     AS "createdAt",
         ce.updated_at     AS "updatedAt"
@@ -583,6 +589,7 @@ exports.getMyCommissionEarned = async (request, reply) => {
         ce.order_value        AS "orderValue",
         ce.commission_rate    AS "commissionRate",
         ce.commission_amount  AS "commissionAmount",
+        ce.net_payable        AS "netPayable",
         ce.status::text       AS status,
         ce.created_at         AS "createdAt"
       FROM commission_earned ce
@@ -598,9 +605,11 @@ exports.getMyCommissionEarned = async (request, reply) => {
     // Aggregate totals for the seller
     const totalsRows = await prisma.$queryRawUnsafe(`
       SELECT
-        COALESCE(SUM(commission_amount), 0)::float AS "totalEarned",
-        COALESCE(SUM(CASE WHEN status = 'PAID'    THEN commission_amount ELSE 0 END), 0)::float AS "totalPaid",
-        COALESCE(SUM(CASE WHEN status = 'PENDING' THEN commission_amount ELSE 0 END), 0)::float AS "totalPending"
+        COALESCE(SUM(order_value), 0)::float             AS "totalOrderValue",
+        COALESCE(SUM(commission_amount), 0)::float       AS "totalCommissionDeducted",
+        COALESCE(SUM(net_payable), 0)::float             AS "totalNetPayable",
+        COALESCE(SUM(CASE WHEN status = 'PAID'    THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
+        COALESCE(SUM(CASE WHEN status = 'PENDING' THEN net_payable ELSE 0 END), 0)::float AS "totalPending"
       FROM commission_earned
       WHERE seller_id = '${sellerId.replace(/'/g, "''")}'
     `);
