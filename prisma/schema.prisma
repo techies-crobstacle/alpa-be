@@ -347,7 +347,6 @@ model CategoryRequest {
   id                String              @id @default(cuid())
   categoryName      String              @unique
   description       String?
-  sampleProduct     String?             // Product reference example
   status            CategoryStatus      @default(PENDING)
   requestedBy       String?             // User ID who requested it (optional)
   approvedBy        String?             // Admin ID who approved it

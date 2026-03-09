@@ -37,7 +37,7 @@ exports.getAllCategories = async (request, reply) => {
     let approvedCategoryRequests = [];
     try {
       approvedCategoryRequests = await prisma.$queryRaw`
-        SELECT cr."id", cr."categoryName", cr."description", cr."sampleProduct",
+        SELECT cr."id", cr."categoryName", cr."description",
                cr."requestedBy", cr."approvalMessage", cr."approvedAt",
                u."role" as requester_role
         FROM "category_requests" cr
@@ -100,7 +100,7 @@ exports.getAllCategories = async (request, reply) => {
     try {
       if (isAdmin) {
         pendingRequests = await prisma.$queryRaw`
-          SELECT cr."id", cr."categoryName", cr."description", cr."sampleProduct",
+          SELECT cr."id", cr."categoryName", cr."description",
                  cr."requestedAt", cr."requestedBy",
                  u."id" as seller_id, u."email", u."name" as seller_name,
                  sp."storeName", sp."businessName", sp."status" as seller_status
@@ -126,7 +126,7 @@ exports.getAllCategories = async (request, reply) => {
         `;
       } else {
         myPendingRequests = await prisma.$queryRaw`
-          SELECT "id", "categoryName", "description", "sampleProduct",
+          SELECT "id", "categoryName", "description",
                  "requestedAt", "status"
           FROM "category_requests"
           WHERE "requestedBy" = ${request.user?.userId}
@@ -244,10 +244,10 @@ exports.createCategoryDirect = async (request, reply) => {
       try {
         await prisma.$executeRaw`
           INSERT INTO "category_requests" (
-            "id", "categoryName", "description", "sampleProduct",
+            "id", "categoryName", "description",
             "requestedBy", "status", "approvedBy", "approvedAt", "requestedAt", "updatedAt"
           ) VALUES (
-            ${newId}, ${categoryName}, NULL, NULL,
+            ${newId}, ${categoryName}, NULL,
             NULL, 'APPROVED', ${request.user?.userId}, NOW(), NOW(), NOW()
           )
         `;
@@ -292,7 +292,7 @@ exports.createCategoryDirect = async (request, reply) => {
 
 exports.requestCategory = async (request, reply) => {
   try {
-    const { categoryName, description, sampleProduct } = request.body;
+    const { categoryName, description } = request.body;
 
     if (!categoryName || categoryName.trim() === '') {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
@@ -315,11 +315,11 @@ exports.requestCategory = async (request, reply) => {
     const newId = randomUUID();
     await prisma.$executeRaw`
       INSERT INTO "category_requests" (
-        "id", "categoryName", "description", "sampleProduct",
+        "id", "categoryName", "description",
         "requestedBy", "status", "requestedAt", "updatedAt"
       ) VALUES (
         ${newId}, ${categoryName.trim()},
-        ${description || null}, ${sampleProduct || null},
+        ${description || null},
         ${request.user?.userId || null}, 'PENDING',
         NOW(), NOW()
       )
@@ -333,7 +333,7 @@ exports.requestCategory = async (request, reply) => {
       ...meta,
       newData: {
         id: newId, categoryName: categoryName.trim(),
-        description: description || null, sampleProduct: sampleProduct || null,
+        description: description || null,
         status: 'PENDING', requestedBy: request.user?.userId || null
       },
       reason: `Category "${categoryName.trim()}" submitted for approval`,
@@ -346,7 +346,6 @@ exports.requestCategory = async (request, reply) => {
         id: newId,
         categoryName: categoryName.trim(),
         description: description || null,
-        sampleProduct: sampleProduct || null,
         status: 'PENDING'
       }
     });
@@ -469,7 +468,7 @@ exports.rejectCategory = async (request, reply) => {
 exports.editCategory = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { categoryName, description, sampleProduct } = request.body;
+    const { categoryName, description } = request.body;
 
     if (!categoryName || categoryName.trim() === '') {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
@@ -511,7 +510,6 @@ exports.editCategory = async (request, reply) => {
       UPDATE "category_requests"
       SET "categoryName" = ${categoryName.trim()},
           "description"  = ${description ?? category.description},
-          "sampleProduct"= ${sampleProduct ?? category.sampleProduct},
           "updatedAt"    = NOW()
       WHERE "id" = ${id}
     `;
@@ -527,7 +525,6 @@ exports.editCategory = async (request, reply) => {
         ...category,
         categoryName:  categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         updatedAt:     new Date()
       },
       reason: `Admin edited category`,
@@ -540,7 +537,6 @@ exports.editCategory = async (request, reply) => {
         id,
         categoryName: categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         status: category.status
       }
     });
@@ -555,7 +551,7 @@ exports.editCategory = async (request, reply) => {
 exports.resubmitCategory = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { categoryName, description, sampleProduct } = request.body;
+    const { categoryName, description } = request.body;
 
     if (!categoryName || categoryName.trim() === '') {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
@@ -604,7 +600,6 @@ exports.resubmitCategory = async (request, reply) => {
       SET "status"        = 'PENDING',
           "categoryName"  = ${categoryName.trim()},
           "description"   = ${description ?? category.description},
-          "sampleProduct" = ${sampleProduct ?? category.sampleProduct},
           "rejectionMessage" = NULL,
           "rejectedBy"    = NULL,
           "rejectedAt"    = NULL,
@@ -625,7 +620,6 @@ exports.resubmitCategory = async (request, reply) => {
         status:        'PENDING',
         categoryName:  categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         rejectionMessage: null, rejectedBy: null, rejectedAt: null,
         requestedAt:   new Date(), updatedAt: new Date()
       },
@@ -639,7 +633,6 @@ exports.resubmitCategory = async (request, reply) => {
         id,
         categoryName: categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         status: 'PENDING'
       }
     });
