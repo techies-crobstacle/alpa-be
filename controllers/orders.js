@@ -512,10 +512,10 @@ exports.createOrder = async (request, reply) => {
           }
         }));
 
-        // 3. Admin order emails — notify all admins with full order details
+        // 3. Admin order emails — notify SUPER_ADMIN only
         try {
           const admins = await prisma.user.findMany({
-            where: { role: 'ADMIN' },
+            where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
           const allItems = order.items.map(item => ({
@@ -761,7 +761,7 @@ exports.cancelOrder = async (request, reply) => {
       reason: finalReason,
       updatedBy: 'Customer'
     }).catch(err => console.error("Admin cancel in-app notification error (non-blocking):", err.message));
-    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+    prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
       .then(admins => {
         for (const admin of admins) {
           if (admin.email) {
@@ -925,7 +925,7 @@ exports.requestRefund = async (request, reply) => {
 
     const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
     const admins = await prisma.user.findMany({
-      where: { role: 'ADMIN' },
+      where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
       select: { id: true }
     });
 
@@ -1183,7 +1183,7 @@ exports.requestGuestRefund = async (request, reply) => {
 
     const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
     const admins = await prisma.user.findMany({
-      where: { role: 'ADMIN' },
+      where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
       select: { id: true }
     });
 
@@ -1977,7 +1977,7 @@ exports.createGuestOrder = async (request, reply) => {
         // 3. Admin order emails for guest orders
         try {
           const admins = await prisma.user.findMany({
-            where: { role: 'ADMIN' },
+            where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
           const guestSellerNames = [...sellerNotifications.keys()]
