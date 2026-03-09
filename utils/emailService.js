@@ -1784,6 +1784,276 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
   }
 };
 
+// ── Send Seller Category Approved Email ──────────────────────────────────────
+const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { categoryName, approvalMessage, categoryId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Category Approved");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Category Approved: "${categoryName}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; Category Approved!</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your category request has been approved</p>
+                </td>
+              </tr>
+              <!-- Approved banner -->
+              <tr>
+                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10003; Category Approved &amp; Available</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! Your category request has been reviewed and <strong style="color:#4CAF50;">approved</strong> by our team. You can now use this category when listing your products.</p>
+
+                  <!-- Category box -->
+                  <div style="background:#E8F5E8;border-radius:8px;padding:22px;border-top:3px solid #4CAF50;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#2E7D32;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Approved Category</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">${categoryName || 'Your Category'}</p>
+                  </div>
+
+                  ${approvalMessage ? `
+                  <!-- Admin message -->
+                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                    <p style="margin:0 0 10px;color:#1565C0;font-size:13px;font-weight:600;">Admin Message:</p>
+                    <p style="margin:0;color:#333;font-size:15px;line-height:1.6;">${approvalMessage}</p>
+                  </div>` : ''}
+
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">You can now start creating products in this new category. Visit your dashboard to begin listing your items.</p>
+
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Go to Dashboard</a>
+                  </p>
+
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">&mdash; Thank you for being part of the MIA Marketplace community! &mdash;</p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller category approved email sent to ${sellerEmail} for category: "${categoryName}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller category approved email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Send Seller Category Rejected Email ──────────────────────────────────────
+const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { categoryName, rejectionMessage, categoryId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Category Rejected");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Category Request Update: "${categoryName}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Category Request Update</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your category request requires review</p>
+                </td>
+              </tr>
+              <!-- Rejected banner -->
+              <tr>
+                <td style="background-color:#C62828;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10007; Category Request Not Approved</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for submitting your category request. After reviewing your submission, our team has provided feedback that needs to be addressed before this category can be approved.</p>
+
+                  <!-- Category box -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C62828;margin-bottom:24px;">
+                    <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Category Under Review</p>
+                    <p style="margin:0;color:#333;font-size:16px;font-weight:600;">${categoryName || 'Your Category'}</p>
+                  </div>
+
+                  <!-- Reason box -->
+                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #C62828;margin-bottom:24px;">
+                    <p style="margin:0 0 10px;color:#C62828;font-size:13px;font-weight:600;">Feedback from Admin Team:</p>
+                    <p style="margin:0;color:#333;font-size:15px;line-height:1.6;">${rejectionMessage || 'Please review the category requirements and resubmit.'}</p>
+                  </div>
+
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Based on the feedback above, please review and consider resubmitting your category request with the necessary adjustments. Our goal is to maintain quality and consistency across all categories.</p>
+
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Go to Dashboard</a>
+                  </p>
+
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">If you have questions about this feedback, please don't hesitate to contact our support team.</p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Seller category rejected email sent to ${sellerEmail} for category: "${categoryName}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller category rejected email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Send Super Admin Category Request Email ──────────────────────────────────
+const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categoryName, description, sellerName, categoryId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Super Admin Category Request");
+    console.log("=".repeat(50));
+    console.log(`To: ${adminEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-admin.vercel.app'}/admin/categories`;
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `New Category Request: "${categoryName}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace Admin</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">📝 New Category Request</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review category request</p>
+                </td>
+              </tr>
+              <!-- Alert banner -->
+              <tr>
+                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">⚠️ Category Approval Required</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted a new category request that requires your review and approval.</p>
+
+                  <!-- Request details box -->
+                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#1565C0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Request Details</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Category Name:</strong> ${categoryName || 'Not specified'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Requested by:</strong> ${sellerName || 'Unknown Seller'}</p>
+                    ${description ? `<p style="margin:0;color:#333;font-size:15px;"><strong>Description:</strong> ${description}</p>` : ''}
+                  </div>
+
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Please review this request and determine whether to approve or reject it. You can provide feedback to help the seller improve future submissions.</p>
+
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${adminDashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Review in Admin Dashboard</a>
+                  </p>
+
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">Please review this request promptly to maintain our seller satisfaction standards.</p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace Admin Panel &mdash; Administrative Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Super admin category request email sent to ${adminEmail} for category: "${categoryName}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Super admin category request email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 // ── Admin New Order Email ────────────────────────────────────────────────────
 // Sent to every admin when a new order is placed.
 // orderDetails: { orderId, customerName, customerEmail, customerPhone?,
@@ -2766,6 +3036,9 @@ module.exports = {
   sendAdminProductPendingEmail,
   sendSellerProductApprovedEmail,
   sendSellerProductRejectedEmail,
+  sendSellerCategoryApprovedEmail,
+  sendSellerCategoryRejectedEmail,
+  sendSuperAdminCategoryRequestEmail,
   sendSellerProductActivatedEmail,
   sendSellerProductDeactivatedEmail,
   sendAdminLowStockDeactivationEmail,

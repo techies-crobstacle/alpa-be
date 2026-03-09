@@ -219,6 +219,70 @@ const notifySellerProductRecommendation = async (sellerId, sellerName = 'Seller'
   );
 };
 
+// CATEGORY REQUEST NOTIFICATIONS
+const notifySellerCategoryApproved = async (sellerId, categoryDetails = {}) => {
+  const { categoryName, approvalMessage, sellerName } = categoryDetails;
+  
+  const title = '✅ Category Request Approved!';
+  const message = `Great news, ${sellerName || 'Seller'}! Your category request "${categoryName || 'Unknown'}" has been approved by our admin team.${approvalMessage ? ` Admin message: ${approvalMessage}` : ''}`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'CATEGORY_APPROVED',
+    categoryDetails.categoryId,
+    'category',
+    { approvalMessage, categoryName }
+  );
+};
+
+const notifySellerCategoryRejected = async (sellerId, categoryDetails = {}) => {
+  const { categoryName, rejectionMessage, sellerName } = categoryDetails;
+  
+  const title = '❌ Category Request Rejected';
+  const message = `Your category request "${categoryName || 'Unknown'}" has been reviewed but was not approved. Reason: ${rejectionMessage || 'Not specified'}`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'CATEGORY_REJECTED',
+    categoryDetails.categoryId,
+    'category',
+    { rejectionMessage, categoryName }
+  );
+};
+
+const notifyAdminNewCategoryRequest = async (categoryId, categoryDetails = {}) => {
+  const { categoryName, description, sellerName } = categoryDetails;
+  
+  const title = 'New Category Request';
+  const message = `Seller ${sellerName || 'Unknown'} submitted a new category request "${categoryName || 'Untitled'}"${description ? ` — ${description}` : ''} for approval`;
+
+  // Get all admin users
+  const admins = await prisma.user.findMany({
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'NEW_CATEGORY_REQUEST',
+      categoryId,
+      'category',
+      categoryDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
 // ADMIN NOTIFICATIONS
 const notifyAdminNewOrder = async (orderId, orderDetails = {}) => {
   const { customerName, sellerName, totalAmount, itemCount, productNames } = orderDetails;
@@ -557,6 +621,9 @@ module.exports = {
   notifySellerApprovalRejected,
   notifySellerCulturalApproval,
   notifySellerProductRecommendation,
+  notifySellerCategoryApproved,
+  notifySellerCategoryRejected,
+  notifyAdminNewCategoryRequest,
   notifyAdminNewOrder,
   notifyAdminNewProduct,
   notifyAdminProductPending,

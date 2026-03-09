@@ -2,6 +2,8 @@ const prisma = require("../config/prisma");
 const { randomUUID } = require("crypto");
 const auditLogger = require("../utils/auditLogger");
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = auditLogger;
+const { notifyAdminNewCategoryRequest, notifySellerCategoryApproved, notifySellerCategoryRejected } = require("./notification");
+const { sendSuperAdminCategoryRequestEmail, sendSellerCategoryApprovedEmail, sendSellerCategoryRejectedEmail } = require("../utils/emailService");
 
 // ==================== GET ALL CATEGORIES ====================
 
@@ -339,6 +341,48 @@ exports.requestCategory = async (request, reply) => {
       reason: `Category "${categoryName.trim()}" submitted for approval`,
     });
 
+    // Get seller information for notifications
+    const seller = await prisma.user.findUnique({
+      where: { id: request.user?.userId },
+      select: { name: true, email: true }
+    });
+
+    // Send notifications to all admins (admin + super admin)
+    const categoryDetails = {
+      categoryName: categoryName.trim(),
+      description: description || null,
+      sellerName: seller?.name || 'Unknown Seller'
+    };
+    
+    try {
+      await notifyAdminNewCategoryRequest(newId, categoryDetails);
+      console.log(`🔔 Notifications sent to admins for category request: ${categoryName.trim()}`);
+    } catch (notificationError) {
+      console.error('Failed to send notifications to admins:', notificationError);
+    }
+
+    // Send emails only to super admins
+    try {
+      const superAdmins = await prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN' },
+        select: { email: true, name: true }
+      });
+
+      for (const admin of superAdmins) {
+        if (admin.email) {
+          await sendSuperAdminCategoryRequestEmail(admin.email, admin.name, {
+            categoryName: categoryName.trim(),
+            description: description || null,
+            sellerName: seller?.name || 'Unknown Seller',
+            categoryId: newId
+          });
+        }
+      }
+      console.log(`📧 Emails sent to ${superAdmins.length} super admins for category request: ${categoryName.trim()}`);
+    } catch (emailError) {
+      console.error('Failed to send emails to super admins:', emailError);
+    }
+
     reply.status(201).send({
       success: true,
       message: 'Category request submitted successfully',
@@ -396,6 +440,41 @@ exports.approveCategory = async (request, reply) => {
       reason:       approvalMessage || null,
     });
 
+    // Get seller information for notifications
+    const seller = await prisma.user.findUnique({
+      where: { id: category.requestedBy },
+      select: { name: true, email: true }
+    });
+
+    // Send notification to seller
+    if (seller && category.requestedBy) {
+      try {
+        await notifySellerCategoryApproved(category.requestedBy, {
+          categoryName: category.categoryName,
+          approvalMessage: approvalMessage || null,
+          sellerName: seller.name,
+          categoryId: id
+        });
+        console.log(`🔔 Approval notification sent to seller for category: ${category.categoryName}`);
+      } catch (notificationError) {
+        console.error('Failed to send approval notification to seller:', notificationError);
+      }
+
+      // Send email to seller
+      if (seller.email) {
+        try {
+          await sendSellerCategoryApprovedEmail(seller.email, seller.name, {
+            categoryName: category.categoryName,
+            approvalMessage: approvalMessage || null,
+            categoryId: id
+          });
+          console.log(`📧 Approval email sent to seller for category: ${category.categoryName}`);
+        } catch (emailError) {
+          console.error('Failed to send approval email to seller:', emailError);
+        }
+      }
+    }
+
     reply.send({
       success: true,
       message: 'Category approved successfully',
@@ -451,6 +530,41 @@ exports.rejectCategory = async (request, reply) => {
       newData:      { ...category, status: 'REJECTED', rejectedBy: request.user?.userId, rejectionMessage: rejectionMessage.trim(), rejectedAt: new Date() },
       reason:       rejectionMessage.trim(),
     });
+
+    // Get seller information for notifications
+    const seller = await prisma.user.findUnique({
+      where: { id: category.requestedBy },
+      select: { name: true, email: true }
+    });
+
+    // Send notification to seller
+    if (seller && category.requestedBy) {
+      try {
+        await notifySellerCategoryRejected(category.requestedBy, {
+          categoryName: category.categoryName,
+          rejectionMessage: rejectionMessage.trim(),
+          sellerName: seller.name,
+          categoryId: id
+        });
+        console.log(`🔔 Rejection notification sent to seller for category: ${category.categoryName}`);
+      } catch (notificationError) {
+        console.error('Failed to send rejection notification to seller:', notificationError);
+      }
+
+      // Send email to seller
+      if (seller.email) {
+        try {
+          await sendSellerCategoryRejectedEmail(seller.email, seller.name, {
+            categoryName: category.categoryName,
+            rejectionMessage: rejectionMessage.trim(),
+            categoryId: id
+          });
+          console.log(`📧 Rejection email sent to seller for category: ${category.categoryName}`);
+        } catch (emailError) {
+          console.error('Failed to send rejection email to seller:', emailError);
+        }
+      }
+    }
 
     reply.send({
       success: true,
