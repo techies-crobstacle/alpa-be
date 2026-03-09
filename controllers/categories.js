@@ -835,6 +835,7 @@ exports.getSoftDeletedCategories = async (request, reply) => {
 exports.getCategoryLogs = async (request, reply) => {
   try {
     const { id } = request.params;
+    const { action } = request.query;
     const isAdmin = request.user.role === 'ADMIN';
 
     // Sellers may only view logs for a category they originally requested
@@ -850,11 +851,14 @@ exports.getCategoryLogs = async (request, reply) => {
       }
     }
 
+    const where = {
+      entityType: ENTITY_TYPES.CATEGORY,
+      entityId:   id,
+      ...(action ? { action } : {})
+    };
+
     const logs = await prisma.auditLog.findMany({
-      where: {
-        entityType: ENTITY_TYPES.CATEGORY,
-        entityId:   id
-      },
+      where,
       orderBy: { createdAt: 'asc' }
     });
 
@@ -862,14 +866,16 @@ exports.getCategoryLogs = async (request, reply) => {
       return reply.status(404).send({ success: false, message: 'No audit logs found for this category' });
     }
 
-    // Strip sensitive internal fields before returning to sellers
+    // Strip sensitive internal fields (actorId, actorEmail, actorIp, userAgent)
+    // before returning to sellers — actorRole is safe to expose
     const sellerSafeFields = (log) => ({
-      id:           log.id,
-      action:       log.action,
-      actorRole:    log.performedByRole,
-      changedFields: log.newData ?? null,
-      reason:       log.reason ?? null,
-      createdAt:    log.createdAt
+      id:            log.id,
+      action:        log.action,
+      actorRole:     log.actorRole,
+      changedFields: log.changedFields ?? [],
+      newData:       log.newData ?? null,
+      reason:        log.reason ?? null,
+      createdAt:     log.createdAt
     });
 
     reply.send({
