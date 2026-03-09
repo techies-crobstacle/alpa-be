@@ -6,6 +6,34 @@ const prisma = new PrismaClient({
     : ['error'],
 });
 
+// ── NeonDB cold-start retry middleware ───────────────────────────────────────
+// NeonDB serverless branches sleep after inactivity. The first query after
+// sleep hits a P1001 "Can't reach database server" error while the branch wakes.
+// This middleware transparently retries up to 5 times with exponential backoff
+// so callers never see the cold-start error.
+prisma.$use(async (params, next) => {
+  const MAX_RETRIES = 5;
+  const BASE_DELAY_MS = 500; // 500ms, 1s, 2s, 4s, 8s
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await next(params);
+    } catch (err) {
+      const isColdStart = err?.code === 'P1001' || err?.message?.includes("Can't reach database server");
+      attempt++;
+      if (isColdStart && attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(`⏳ NeonDB cold-start — retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ── Real-time stock broadcast middleware ─────────────────────────────────────
 // Intercepts EVERY product.update / product.updateMany that touches `stock`,
 // regardless of which controller triggered it (orders, cancellations, seller

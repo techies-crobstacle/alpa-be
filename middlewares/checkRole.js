@@ -14,8 +14,12 @@ module.exports = function checkRole(allowedRoles) {
 
       // Check if allowedRoles is an array or single role
       const rolesArray = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-      
-      if (!rolesArray.includes(userRole)) {
+      // SUPER_ADMIN automatically inherits all ADMIN access rights
+      const expandedRoles = rolesArray.includes('ADMIN') && !rolesArray.includes('SUPER_ADMIN')
+        ? [...rolesArray, 'SUPER_ADMIN']
+        : rolesArray;
+
+      if (!expandedRoles.includes(userRole)) {
         return reply.status(403).send({ 
           success: false,
           error: "Unauthorized access",

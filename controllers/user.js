@@ -5,8 +5,7 @@ exports.getAllUsers = async (request, reply) => {
   try {
     // Debug: log the user object
     console.log('Authenticated user:', request.user);
-    // Prisma enum is ADMIN (not 'admin')
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !['ADMIN', 'SUPER_ADMIN'].includes(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
     const users = await prisma.user.findMany();

@@ -197,7 +197,7 @@ exports.isAdmin = async (request, reply) => {
         where: { id: userId }
       });
 
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
         return reply.status(403).send({ 
           success: false, 
           message: "Admin access required" 

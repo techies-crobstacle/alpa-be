@@ -8,7 +8,7 @@ const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = audit
 // GET ALL CATEGORIES (Shows approved + active categories. Pending/rejected shown for admin.)
 exports.getAllCategories = async (request, reply) => {
   try {
-    const isAdmin = request.user.role === 'ADMIN';
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(request.user.role);
 
     const products = await prisma.product.findMany({
       select: { category: true, sellerId: true }
@@ -568,7 +568,7 @@ exports.resubmitCategory = async (request, reply) => {
     const category = categoryRequest[0];
 
     // Only the original requester (or admin) can resubmit
-    const isAdmin = request.user.role === 'ADMIN';
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(request.user.role);
     if (!isAdmin && category.requestedBy !== request.user.userId) {
       return reply.status(403).send({ success: false, message: 'You can only resubmit your own category requests' });
     }
@@ -664,7 +664,7 @@ exports.softDeleteCategory = async (request, reply) => {
     }
 
     // Sellers can only soft-delete their own category requests
-    const isAdmin = request.user.role === 'ADMIN';
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(request.user.role);
     if (!isAdmin && category.requestedBy !== request.user.userId) {
       return reply.status(403).send({ success: false, message: 'You can only delete your own category requests' });
     }
@@ -836,7 +836,7 @@ exports.getCategoryLogs = async (request, reply) => {
   try {
     const { id } = request.params;
     const { action } = request.query;
-    const isAdmin = request.user.role === 'ADMIN';
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(request.user.role);
 
     // Sellers may only view logs for a category they originally requested
     if (!isAdmin) {
@@ -935,7 +935,7 @@ exports.getAllCategoryLogs = async (request, reply) => {
 exports.getCategoryDetail = async (request, reply) => {
   try {
     const { id } = request.params;
-    const isAdmin = request.user.role === 'ADMIN';
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(request.user.role);
 
     const rows = await prisma.$queryRaw`
       SELECT cr.*,

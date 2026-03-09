@@ -232,7 +232,7 @@ const notifyAdminNewOrder = async (orderId, orderDetails = {}) => {
 
   // Get all admin users
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 
@@ -260,7 +260,7 @@ const notifyAdminNewProduct = async (productId, productDetails = {}) => {
   const message = `Seller ${sellerName || 'Unknown'} submitted a new product "${productTitle || 'Untitled'}" for approval`;
 
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 
@@ -292,7 +292,7 @@ const notifyAdminProductPending = async (productId, productDetails = {}) => {
   const message = `Seller ${sellerName || 'Unknown'} updated product "${productTitle || 'Untitled'}" — it requires your review and approval.${changesLine}`;
 
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 
@@ -320,7 +320,7 @@ const notifyAdminLowStockDeactivation = async (productId, productDetails = {}) =
   const message = `Product "${productTitle || 'Untitled'}" from seller ${sellerName || 'Unknown'} has been automatically deactivated because stock dropped to ${stock} (threshold: ≤ 2).`;
 
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 
@@ -349,7 +349,7 @@ const notifyAdminOrderStatusChange = async (orderId, status, orderDetails = {}) 
   const message = `Order from ${customerName || 'Customer'} to seller ${sellerName || 'Unknown'} for $${totalAmount || '0.00'} has been updated to ${status}`;
 
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 
@@ -492,7 +492,7 @@ const notifyAdminProductSubmitReview = async (productId, productDetails = {}) =>
   const message = `Seller ${sellerName || 'Unknown'} has submitted product "${productTitle || 'Untitled'}" for review and activation.${noteText}`;
 
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 
@@ -523,7 +523,7 @@ const notifyAdminProductSellerDeactivated = async (productId, productDetails = {
   const message = `Seller ${sellerName || 'Unknown'} has deactivated product "${productTitle || 'Untitled'}".${reasonText}`;
 
   const admins = await prisma.user.findMany({
-    where: { role: 'ADMIN' },
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
     select: { id: true }
   });
 

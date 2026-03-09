@@ -175,7 +175,7 @@ exports.login = async (request, reply) => {
     const now = new Date();
 
     // LANE SELECTION LOGIC
-    const isInternalStaff = user.role === 'ADMIN'; // Treat ADMIN as Internal Staff
+    const isInternalStaff = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'; // Internal staff bypass verification
     
     // Default Session Configuration (Lane 1: External)
     let sessionDuration = "7d";

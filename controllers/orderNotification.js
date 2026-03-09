@@ -68,12 +68,12 @@ exports.getSellerNotifications = async (request, reply) => {
     let adminViewAll = false;
     
     // If admin, allow them to query notifications for a specific seller or see all
-    if (userRole === 'ADMIN' && querySellerId) {
+    if (['ADMIN', 'SUPER_ADMIN'].includes(userRole) && querySellerId) {
       sellerId = querySellerId;
-    } else if (userRole === 'ADMIN' && !querySellerId) {
+    } else if (['ADMIN', 'SUPER_ADMIN'].includes(userRole) && !querySellerId) {
       // Admin with no sellerId — return all notifications across all sellers
       adminViewAll = true;
-    } else if (userRole !== 'SELLER' && userRole !== 'ADMIN') {
+    } else if (userRole !== 'SELLER' && !['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       // Only sellers and admins can view notifications
       return reply.status(403).send({
         success: false,
@@ -238,7 +238,7 @@ exports.updateOrderStatus = async (request, reply) => {
 
     const orderWhere = {
       id: orderId,
-      ...(userRole === 'ADMIN' ? {} : {
+      ...(['ADMIN', 'SUPER_ADMIN'].includes(userRole) ? {} : {
         items: {
           some: {
             product: {
@@ -307,7 +307,7 @@ exports.updateOrderStatus = async (request, reply) => {
     await prisma.orderNotification.updateMany({
       where: {
         orderId,
-        ...(userRole === 'ADMIN' ? {} : { sellerId: authenticatedUserId }),
+        ...(['ADMIN', 'SUPER_ADMIN'].includes(userRole) ? {} : { sellerId: authenticatedUserId }),
         status: 'PENDING'
       },
       data: {
@@ -318,7 +318,7 @@ exports.updateOrderStatus = async (request, reply) => {
     });
 
     // Create next workflow notification based on new status
-    if (userRole === 'ADMIN') {
+    if (['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
       for (const sellerId of sellerIds) {
         await createWorkflowNotification(orderId, sellerId, normalizedStatus);
@@ -400,7 +400,7 @@ exports.getSLADashboard = async (request, reply) => {
 
     // Admin: show all unless a specific sellerId is requested
     let notificationWhere;
-    if (userRole === 'ADMIN') {
+    if (['ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
       notificationWhere = querySellerId ? { sellerId: querySellerId } : {};
     } else {
       notificationWhere = { sellerId: userId };

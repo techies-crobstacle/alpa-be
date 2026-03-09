@@ -237,7 +237,7 @@ exports.addProduct = async (request, reply) => {
 
         // Email all admins — separate try/catch so notification failure never blocks email
         try {
-          const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
+          const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } });
           console.log(`📧 [addProduct] Found ${admins.length} admin(s) to email — product "${title}"`);
           for (const admin of admins) {
             if (admin.email) {
@@ -654,7 +654,7 @@ exports.updateProduct = async (request, reply) => {
 
         // Email all admins — separate try/catch so notification failure never blocks email
         try {
-          const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } });
+          const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } });
           console.log(`📧 [updateProduct] Found ${admins.length} admin(s) to email — product "${pendingDetails.productTitle}"`);
           for (const admin of admins) {
             if (admin.email) {
@@ -1063,7 +1063,7 @@ exports.deactivateMyProduct = async (request, reply) => {
     }
 
     // Email admins (non-blocking)
-    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+    prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
       .then(admins => {
         for (const admin of admins) {
           sendAdminProductSellerDeactivatedEmail(admin.email, admin.name || 'Admin', {
@@ -1143,7 +1143,7 @@ exports.submitProductForReview = async (request, reply) => {
     }).catch(err => console.error('Admin submit-review notification error:', err.message));
 
     // Email admins (non-blocking)
-    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+    prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
       .then(admins => {
         for (const admin of admins) {
           sendAdminProductSubmitReviewEmail(admin.email, admin.name || 'Admin', {

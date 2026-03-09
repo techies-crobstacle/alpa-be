@@ -1,6 +1,11 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
 const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail } = require("../utils/emailService");
+
+// ── Role helper ───────────────────────────────────────────────────────────────
+// SUPER_ADMIN has all the same operational rights as ADMIN.
+// Use this everywhere instead of hardcoding role === 'ADMIN'.
+const isAdminRole = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
@@ -80,7 +85,7 @@ exports.scanLowStockProducts = async (request, reply) => {
       }
 
       // Email all admins (non-blocking)
-      prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+      prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
         .then(admins => {
           for (const admin of admins) {
             if (admin.email) {
@@ -114,7 +119,7 @@ exports.scanLowStockProducts = async (request, reply) => {
 exports.getOrdersBySellerId = async (request, reply) => {
   try {
     // Only admin can access (route preHandler should enforce, but double-check)
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
     const { sellerId } = request.params;
@@ -917,7 +922,7 @@ exports.activateSeller = async (request, reply) => {
 // GET ALL CATEGORIES WITH PRODUCT COUNTS (Admin , Seller only)
 exports.getAllCategories = async (request, reply) => {
   try {
-    if (!request.user || (request.user.role !== 'ADMIN' && request.user.role !== 'SELLER')) {
+    if (!request.user || (!isAdminRole(request.user.role) && request.user.role !== 'SELLER')) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -971,7 +976,7 @@ exports.getAllCategories = async (request, reply) => {
 // CREATE COUPON (Admin only)
 exports.createCoupon = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1095,7 +1100,7 @@ exports.getActiveCoupons = async (request, reply) => {
 // UPDATE COUPON (Admin only)
 exports.updateCoupon = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1176,7 +1181,7 @@ exports.updateCoupon = async (request, reply) => {
 // DELETE COUPON (Admin only)
 exports.deleteCoupon = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1288,7 +1293,7 @@ exports.validateCoupon = async (request, reply) => {
 // GET SALES ANALYTICS (ADMIN)
 exports.getSalesAnalytics = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1365,7 +1370,7 @@ exports.getSalesAnalytics = async (request, reply) => {
 // EXPORT SALES CSV (ADMIN)
 exports.exportSalesCSV = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1422,7 +1427,7 @@ exports.exportSalesCSV = async (request, reply) => {
 exports.getPendingProducts = async (request, reply) => {
   try {
     // Only admin can access
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1459,7 +1464,7 @@ exports.getPendingProducts = async (request, reply) => {
 exports.approveProduct = async (request, reply) => {
   try {
     // Only admin can access
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1566,7 +1571,7 @@ exports.approveProduct = async (request, reply) => {
 exports.rejectProduct = async (request, reply) => {
   try {
     // Only admin can access
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1667,7 +1672,7 @@ exports.rejectProduct = async (request, reply) => {
 // ACTIVATE PRODUCT (Admin only) - set product live
 exports.activateProduct = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1719,7 +1724,7 @@ exports.activateProduct = async (request, reply) => {
 // DEACTIVATE PRODUCT (Admin only) - hide product from public
 exports.deactivateProduct = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1787,7 +1792,7 @@ exports.deactivateProduct = async (request, reply) => {
 exports.bulkApproveProducts = async (request, reply) => {
   try {
     // Only admin can access
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1839,7 +1844,7 @@ exports.bulkApproveProducts = async (request, reply) => {
 // Returns daily (7D/30D) or monthly (1Y) revenue & order count for DELIVERED orders
 exports.getRevenueOrdersChart = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -1957,7 +1962,7 @@ exports.backfillOrderNotifications = async (request, reply) => {
  */
 exports.getAdminRecycleBin = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -2020,7 +2025,7 @@ exports.getAdminRecycleBin = async (request, reply) => {
  */
 exports.permanentlyDeleteProduct = async (request, reply) => {
   try {
-    if (!request.user || request.user.role !== 'ADMIN') {
+    if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
@@ -2133,7 +2138,7 @@ exports.getProductAuditHistory = async (request, reply) => {
     const callerId   = request.user?.userId;
 
     // ── Role gate: only ADMIN or SELLER may call this endpoint ───────────────
-    if (callerRole !== 'ADMIN' && callerRole !== 'SELLER') {
+    if (!isAdminRole(callerRole) && callerRole !== 'SELLER') {
       return reply.status(403).send({
         success: false,
         message: 'Access denied. Admin or Seller account required.',

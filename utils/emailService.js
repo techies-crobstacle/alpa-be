@@ -2262,7 +2262,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Products</a>
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Products</a>
                 </td>
               </tr>
               <!-- Footer -->
@@ -2582,7 +2582,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -2664,8 +2664,8 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
-
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
