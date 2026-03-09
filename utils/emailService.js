@@ -2262,7 +2262,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Products</a>
+                  <a href="${productUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Products</a>
                 </td>
               </tr>
               <!-- Footer -->
