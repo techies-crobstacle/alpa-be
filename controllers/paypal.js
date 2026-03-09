@@ -25,6 +25,7 @@ const { calculateCartTotals } = require("./cart");
 const { sendOrderConfirmationEmail } = require("../utils/emailService");
 const { notifyAdminNewOrder, notifySellerNewOrder } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
+const { createCommissionEarned } = require("./commission");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PayPal API helpers
@@ -436,6 +437,18 @@ exports.captureOrder = async (request, reply) => {
         itemCount,
         productNames
       }).catch((e) => console.error("Seller in-app notification error (non-blocking):", e.message));
+
+      // ── Commission Earned ─────────────────────────────────────────────────
+      createCommissionEarned({
+        orderId:       order.id,
+        sellerId:      sid,
+        orderValue:    itemTotal,
+        customerName:  user?.name || 'Customer',
+        customerEmail: order.customerEmail,
+        customerId:    userId || null,
+        sellerName:    sellerDisplayNames[sellerIdSet.indexOf(sid)] || null
+      }).catch((e) => console.error('Commission earned error (non-blocking):', e.message));
+      // ─────────────────────────────────────────────────────────────────────
     }
 
     return reply.status(200).send({

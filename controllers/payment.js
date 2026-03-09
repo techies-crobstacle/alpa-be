@@ -9,6 +9,7 @@ const {
   notifySellerNewOrder,
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
+const { createCommissionEarned } = require("./commission");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -472,6 +473,18 @@ async function handlePaymentSucceeded(paymentIntentId) {
       itemCount,
       productNames
     }).catch((e) => console.error('Seller in-app notification error (non-blocking):', e.message));
+
+    // ── Commission Earned ───────────────────────────────────────────────────
+    createCommissionEarned({
+      orderId:       order.id,
+      sellerId:      sid,
+      orderValue:    itemTotal,
+      customerName:  toName,
+      customerEmail: order.customerEmail,
+      customerId:    order.userId || null,
+      sellerName:    sellerDisplayNames[sellerIdSet.indexOf(sid)] || null
+    }).catch((e) => console.error('Commission earned error (non-blocking):', e.message));
+    // ───────────────────────────────────────────────────────────────────────
   }
 
   return true;
