@@ -17,15 +17,20 @@ async function categoryRoutes(fastify, options) {
     preHandler: [authMiddleware, checkRole('ADMIN')]
   }, categoryController.getSoftDeletedCategories);
 
+  // GET detail for a single category — Admin (any category incl. soft-deleted); Seller (own or approved)
+  fastify.get("/:id", {
+    preHandler: [authMiddleware, checkRole(['SELLER', 'ADMIN'])]
+  }, categoryController.getCategoryDetail);
+
   // GET all category audit logs — Admin only
   // Query params: ?page=1&limit=50&action=CATEGORY_APPROVED
   fastify.get("/logs", {
     preHandler: [authMiddleware, checkRole('ADMIN')]
   }, categoryController.getAllCategoryLogs);
 
-  // GET audit logs for a specific category — Admin only
+  // GET audit logs for a specific category — Admin (any); Seller (own categories only)
   fastify.get("/:id/logs", {
-    preHandler: [authMiddleware, checkRole('ADMIN')]
+    preHandler: [authMiddleware, checkRole(['SELLER', 'ADMIN'])]
   }, categoryController.getCategoryLogs);
 
   // ── Create / Request ──────────────────────────────────────────────────────
@@ -66,9 +71,9 @@ async function categoryRoutes(fastify, options) {
 
   // ── Soft delete / Restore / Hard delete ───────────────────────────────────
 
-  // SOFT DELETE a category (move to recycle bin) — Admin only
+  // SOFT DELETE a category (move to recycle bin) — Admin or Seller (own categories only)
   fastify.delete("/:id", {
-    preHandler: [authMiddleware, checkRole('ADMIN')]
+    preHandler: [authMiddleware, checkRole(['SELLER', 'ADMIN'])]
   }, categoryController.softDeleteCategory);
 
   // RESTORE a soft-deleted category — Admin only

@@ -36,6 +36,8 @@ model User {
   siteFeedback  SiteFeedback[]
   ssoTickets    SsoTicket[]
   addresses     UserAddress[]
+  sellerCommissions   CommissionEarned[] @relation("SellerCommissions")
+  customerCommissions CommissionEarned[] @relation("CustomerCommissions")
 
   @@map("users")
 }
@@ -145,6 +147,7 @@ model SellerProfile {
   minimumProductsUploaded Boolean       @default(false)
   commissionId            String?       @map("commission_id")
   commission              Commission?   @relation(fields: [commissionId], references: [id])
+  bankChangeRequests      BankChangeRequest[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -248,6 +251,7 @@ model Order {
   updatedAt         DateTime    @updatedAt
 
   orderNotifications OrderNotification[]
+  commissionEarned   CommissionEarned[]
 
   @@index([userId])
   @@index([status])
@@ -347,7 +351,6 @@ model CategoryRequest {
   id                String              @id @default(cuid())
   categoryName      String              @unique
   description       String?
-  sampleProduct     String?             // Product reference example
   status            CategoryStatus      @default(PENDING)
   requestedBy       String?             // User ID who requested it (optional)
   approvedBy        String?             // Admin ID who approved it
@@ -473,6 +476,38 @@ model Commission {
 enum CommissionType {
   FIXED
   PERCENTAGE
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+// CommissionEarned: auto-created for every order, tracking the platform fee per seller
+model CommissionEarned {
+  id               String           @id @default(cuid())
+  orderId          String           @map("order_id")
+  order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sellerId         String           @map("seller_id")
+  seller           User             @relation("SellerCommissions", fields: [sellerId], references: [id], onDelete: Cascade)
+  customerId       String?          @map("customer_id")
+  customer         User?            @relation("CustomerCommissions", fields: [customerId], references: [id], onDelete: SetNull)
+  customerName     String           @map("customer_name")
+  customerEmail    String           @map("customer_email")
+  sellerName       String?          @map("seller_name")
+  // Seller's portion of the order (sum of their items × qty)
+  orderValue       Decimal          @db.Decimal(10, 2) @map("order_value")
+  commissionRate   Decimal          @db.Decimal(5, 2)  @map("commission_rate")  // e.g. 10.00
+  commissionAmount Decimal          @db.Decimal(10, 2) @map("commission_amount")
+  status           CommissionStatus @default(PENDING)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt       @map("updated_at")
+
+  @@index([orderId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("commission_earned")
 }
 
 model Coupon {
@@ -635,4 +670,30 @@ model AuditLog {
   @@index([entityType, action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ─── BANK CHANGE REQUEST ──────────────────────────────────────────────────────
+// Seller-initiated request to change their bank details.
+// Always requires admin approval before the live bankDetails are updated.
+model BankChangeRequest {
+  id             String           @id @default(cuid())
+  sellerId       String           // references SellerProfile.userId
+  seller         SellerProfile    @relation(fields: [sellerId], references: [userId], onDelete: Cascade)
+  newBankDetails Json             // { bankName, accountName, bsb, accountNumber }
+  reason         String
+  status         BankChangeStatus @default(PENDING)
+  reviewedBy     String?          // Admin userId who actioned the request
+  reviewNote     String?          // Optional admin note when rejecting
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("bank_change_requests")
+}
+
+enum BankChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

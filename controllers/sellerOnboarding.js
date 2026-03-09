@@ -1628,6 +1628,131 @@ exports.validateABNPublic = async (request, reply) => {
   }
 };
 
+// ─── BANK DETAILS (Dashboard) ─────────────────────────────────────────────────
+
+// GET /seller-onboarding/bank-details
+// Returns the seller's current bank details (account number partially masked)
+// and any pending change request they may have submitted.
+exports.getBankDetails = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId },
+      select: {
+        bankDetails: true,
+        bankChangeRequests: {
+          where: { status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            newBankDetails: true,
+            reason: true,
+            status: true,
+            createdAt: true
+          }
+        }
+      }
+    });
+
+    if (!sellerProfile) {
+      return reply.status(404).send({ success: false, message: "Seller profile not found" });
+    }
+
+    // Mask sensitive fields before sending
+    const raw = sellerProfile.bankDetails;
+    const masked = raw ? {
+      bankName: raw.bankName || null,
+      accountName: raw.accountName || null,
+      bsb: raw.bsb ? raw.bsb.replace(/^(\d{3})/, 'XXX') : null,
+      accountNumber: raw.accountNumber
+        ? '*'.repeat(Math.max(0, raw.accountNumber.length - 3)) + raw.accountNumber.slice(-3)
+        : null
+    } : null;
+
+    return reply.status(200).send({
+      success: true,
+      bankDetails: masked,
+      pendingChangeRequest: sellerProfile.bankChangeRequests[0] || null
+    });
+  } catch (error) {
+    console.error("getBankDetails error:", error);
+    return reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// POST /seller-onboarding/bank-details/change-request
+// Seller submits a request to change their bank details.
+// Requires: bankName, accountName, bsb, accountNumber, currentPassword, reason
+exports.requestBankDetailsChange = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+    const { bankName, accountName, bsb, accountNumber, currentPassword, reason } = request.body;
+
+    // Input validation
+    if (!bankName || !accountName || !bsb || !accountNumber || !currentPassword || !reason) {
+      return reply.status(400).send({
+        success: false,
+        message: "bankName, accountName, bsb, accountNumber, currentPassword and reason are all required"
+      });
+    }
+
+    if (reason.trim().length < 10) {
+      return reply.status(400).send({
+        success: false,
+        message: "Please provide a more detailed reason (at least 10 characters)"
+      });
+    }
+
+    // Verify current password
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true }
+    });
+
+    if (!user) {
+      return reply.status(404).send({ success: false, message: "User not found" });
+    }
+
+    const passwordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!passwordValid) {
+      return reply.status(401).send({ success: false, message: "Incorrect password" });
+    }
+
+    // Check for an existing pending request — only one allowed at a time
+    const existingRequest = await prisma.bankChangeRequest.findFirst({
+      where: { sellerId: userId, status: 'PENDING' }
+    });
+
+    if (existingRequest) {
+      return reply.status(409).send({
+        success: false,
+        message: "You already have a pending bank details change request. Please wait for it to be reviewed."
+      });
+    }
+
+    // Create the change request
+    const changeRequest = await prisma.bankChangeRequest.create({
+      data: {
+        sellerId: userId,
+        newBankDetails: { bankName, accountName, bsb, accountNumber },
+        reason: reason.trim(),
+        status: 'PENDING'
+      }
+    });
+
+    return reply.status(201).send({
+      success: true,
+      message: "Bank details change request submitted successfully. It will be reviewed by our team.",
+      requestId: changeRequest.id
+    });
+  } catch (error) {
+    console.error("requestBankDetailsChange error:", error);
+    return reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
 
 
 

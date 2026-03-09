@@ -709,8 +709,11 @@ exports.deleteProduct = async (request, reply) => {
     const userId   = request.user.userId;
     const userRole = request.user.role;
 
+    // Support both :id (product routes) and :productId (admin routes)
+    const productId = request.params.id || request.params.productId;
+
     const product = await prisma.product.findUnique({
-      where: { id: request.params.id }
+      where: { id: productId }
     });
 
     if (!product || product.deletedAt) {
@@ -732,17 +735,17 @@ exports.deleteProduct = async (request, reply) => {
           "deletedByRole" = ${userRole},
           "isActive"      = false,
           status          = 'INACTIVE'::"ProductStatus"
-      WHERE id = ${request.params.id}
+      WHERE id = ${productId}
     `;
 
     // Audit log
     auditLog({
       entityType:   ENTITY_TYPES.PRODUCT,
-      entityId:     request.params.id,
+      entityId:     productId,
       action:       AUDIT_ACTIONS.PRODUCT_DELETED,
       previousData: product,
-      newData:      { ...product, deletedAt: now, deletedBy: userId, deletedByRole: userRole, isActive: false, status: 'INACTIVE' },
-      reason:       request.body?.reason ?? null,
+      newData:      { ...product, deletedAt: now, deletedBy: userId, deletedByRole: userRole, deletedByEmail: request.user.email, isActive: false, status: 'INACTIVE' },
+      reason:       request.body?.reason ?? `Moved to Recycle Bin by ${userRole} (${request.user.email})`,
       ...extractRequestMeta(request),
     });
 
@@ -839,8 +842,19 @@ exports.restoreProduct = async (request, reply) => {
       entityId:     productId,
       action:       AUDIT_ACTIONS.PRODUCT_RESTORED,
       previousData: product,
-      newData:      { ...product, deletedAt: null, deletedBy: null, deletedByRole: null, isActive: false, status: restoredStatus },
-      reason:       `Restored by ${userRole}. Status set to ${restoredStatus} — ${userRole === 'SELLER' ? 'awaiting admin approval' : 'activate when ready'}.`,
+      newData:      {
+        ...product,
+        deletedAt:       null,
+        deletedBy:       null,
+        deletedByRole:   null,
+        restoredAt:      new Date(),
+        restoredById:    userId,
+        restoredByEmail: request.user.email,
+        restoredByRole:  userRole,
+        isActive:        false,
+        status:          restoredStatus,
+      },
+      reason:       `Restored by ${userRole} (${request.user.email}). Status set to ${restoredStatus} — ${userRole === 'SELLER' ? 'awaiting admin approval' : 'activate when ready'}.`,
       ...extractRequestMeta(request),
     });
 

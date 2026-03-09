@@ -37,11 +37,13 @@ exports.getAllCategories = async (request, reply) => {
     let approvedCategoryRequests = [];
     try {
       approvedCategoryRequests = await prisma.$queryRaw`
-        SELECT "id", "categoryName", "description", "sampleProduct",
-               "requestedBy", "approvalMessage", "approvedAt"
-        FROM "category_requests"
-        WHERE "status" = 'APPROVED'
-          AND "softDeletedAt" IS NULL
+        SELECT cr."id", cr."categoryName", cr."description",
+               cr."requestedBy", cr."approvalMessage", cr."approvedAt",
+               u."role" as requester_role
+        FROM "category_requests" cr
+        LEFT JOIN "users" u ON cr."requestedBy" = u."id"
+        WHERE cr."status" = 'APPROVED'
+          AND cr."softDeletedAt" IS NULL
       `;
     } catch (error) {
       console.warn('Could not fetch approved categories from requests:', error.message);
@@ -51,43 +53,38 @@ exports.getAllCategories = async (request, reply) => {
     approvedCategoryRequests.forEach(cat => {
       if (!categoryMap.has(cat.categoryName)) {
         categoryMap.set(cat.categoryName, {
+          id: cat.id,
           productCount: 0,
           requestedBy: cat.requestedBy,
+          requesterRole: cat.requester_role,
           approvalMessage: cat.approvalMessage,
           approvedAt: cat.approvedAt,
-          isRequestedCategory: true
         });
       } else {
         const existing = categoryMap.get(cat.categoryName);
         if (typeof existing === 'number') {
           categoryMap.set(cat.categoryName, {
+            id: cat.id,
             productCount: existing,
             requestedBy: cat.requestedBy,
-            isRequestedCategory: true
+            requesterRole: cat.requester_role,
           });
         }
       }
     });
 
     const approvedCategories = Array.from(categoryMap.entries())
-      .map(([name, data]) => {
-        if (typeof data === 'number') {
-          return {
-            categoryName: name,
-            ...(isAdmin && { totalProductCount: data }),
-            ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 })
-          };
-        }
-        return {
-          categoryName: name,
-          ...(isAdmin && { totalProductCount: data.productCount || 0 }),
-          ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
-          isRequestedCategory: data.isRequestedCategory || false,
-          requestedByMe: !isAdmin && data.requestedBy === request.user?.userId,
-          ...(isAdmin && data.approvalMessage && { approvalMessage: data.approvalMessage }),
-          ...(isAdmin && data.approvedAt && { approvedAt: data.approvedAt })
-        };
-      })
+      .filter(([, data]) => typeof data !== 'number')
+      .map(([name, data]) => ({
+        id: data.id,
+        categoryName: name,
+        ...(isAdmin && { totalProductCount: data.productCount || 0 }),
+        ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
+        requestedBySeller: data.requesterRole === 'SELLER',
+        requestedByMe: !isAdmin && data.requestedBy === request.user?.userId,
+        ...(isAdmin && data.approvalMessage && { approvalMessage: data.approvalMessage }),
+        ...(isAdmin && data.approvedAt && { approvedAt: data.approvedAt })
+      }))
       .sort((a, b) => {
         if (isAdmin) return (b.totalProductCount || 0) - (a.totalProductCount || 0);
         if (a.requestedByMe && !b.requestedByMe) return -1;
@@ -103,7 +100,7 @@ exports.getAllCategories = async (request, reply) => {
     try {
       if (isAdmin) {
         pendingRequests = await prisma.$queryRaw`
-          SELECT cr."id", cr."categoryName", cr."description", cr."sampleProduct",
+          SELECT cr."id", cr."categoryName", cr."description",
                  cr."requestedAt", cr."requestedBy",
                  u."id" as seller_id, u."email", u."name" as seller_name,
                  sp."storeName", sp."businessName", sp."status" as seller_status
@@ -129,7 +126,7 @@ exports.getAllCategories = async (request, reply) => {
         `;
       } else {
         myPendingRequests = await prisma.$queryRaw`
-          SELECT "id", "categoryName", "description", "sampleProduct",
+          SELECT "id", "categoryName", "description",
                  "requestedAt", "status"
           FROM "category_requests"
           WHERE "requestedBy" = ${request.user?.userId}
@@ -247,10 +244,10 @@ exports.createCategoryDirect = async (request, reply) => {
       try {
         await prisma.$executeRaw`
           INSERT INTO "category_requests" (
-            "id", "categoryName", "description", "sampleProduct",
+            "id", "categoryName", "description",
             "requestedBy", "status", "approvedBy", "approvedAt", "requestedAt", "updatedAt"
           ) VALUES (
-            ${newId}, ${categoryName}, NULL, NULL,
+            ${newId}, ${categoryName}, NULL,
             NULL, 'APPROVED', ${request.user?.userId}, NOW(), NOW(), NOW()
           )
         `;
@@ -295,7 +292,7 @@ exports.createCategoryDirect = async (request, reply) => {
 
 exports.requestCategory = async (request, reply) => {
   try {
-    const { categoryName, description, sampleProduct } = request.body;
+    const { categoryName, description } = request.body;
 
     if (!categoryName || categoryName.trim() === '') {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
@@ -318,11 +315,11 @@ exports.requestCategory = async (request, reply) => {
     const newId = randomUUID();
     await prisma.$executeRaw`
       INSERT INTO "category_requests" (
-        "id", "categoryName", "description", "sampleProduct",
+        "id", "categoryName", "description",
         "requestedBy", "status", "requestedAt", "updatedAt"
       ) VALUES (
         ${newId}, ${categoryName.trim()},
-        ${description || null}, ${sampleProduct || null},
+        ${description || null},
         ${request.user?.userId || null}, 'PENDING',
         NOW(), NOW()
       )
@@ -336,7 +333,7 @@ exports.requestCategory = async (request, reply) => {
       ...meta,
       newData: {
         id: newId, categoryName: categoryName.trim(),
-        description: description || null, sampleProduct: sampleProduct || null,
+        description: description || null,
         status: 'PENDING', requestedBy: request.user?.userId || null
       },
       reason: `Category "${categoryName.trim()}" submitted for approval`,
@@ -349,7 +346,6 @@ exports.requestCategory = async (request, reply) => {
         id: newId,
         categoryName: categoryName.trim(),
         description: description || null,
-        sampleProduct: sampleProduct || null,
         status: 'PENDING'
       }
     });
@@ -472,7 +468,7 @@ exports.rejectCategory = async (request, reply) => {
 exports.editCategory = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { categoryName, description, sampleProduct } = request.body;
+    const { categoryName, description } = request.body;
 
     if (!categoryName || categoryName.trim() === '') {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
@@ -514,7 +510,6 @@ exports.editCategory = async (request, reply) => {
       UPDATE "category_requests"
       SET "categoryName" = ${categoryName.trim()},
           "description"  = ${description ?? category.description},
-          "sampleProduct"= ${sampleProduct ?? category.sampleProduct},
           "updatedAt"    = NOW()
       WHERE "id" = ${id}
     `;
@@ -530,7 +525,6 @@ exports.editCategory = async (request, reply) => {
         ...category,
         categoryName:  categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         updatedAt:     new Date()
       },
       reason: `Admin edited category`,
@@ -543,7 +537,6 @@ exports.editCategory = async (request, reply) => {
         id,
         categoryName: categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         status: category.status
       }
     });
@@ -558,7 +551,7 @@ exports.editCategory = async (request, reply) => {
 exports.resubmitCategory = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { categoryName, description, sampleProduct } = request.body;
+    const { categoryName, description } = request.body;
 
     if (!categoryName || categoryName.trim() === '') {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
@@ -607,7 +600,6 @@ exports.resubmitCategory = async (request, reply) => {
       SET "status"        = 'PENDING',
           "categoryName"  = ${categoryName.trim()},
           "description"   = ${description ?? category.description},
-          "sampleProduct" = ${sampleProduct ?? category.sampleProduct},
           "rejectionMessage" = NULL,
           "rejectedBy"    = NULL,
           "rejectedAt"    = NULL,
@@ -628,7 +620,6 @@ exports.resubmitCategory = async (request, reply) => {
         status:        'PENDING',
         categoryName:  categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         rejectionMessage: null, rejectedBy: null, rejectedAt: null,
         requestedAt:   new Date(), updatedAt: new Date()
       },
@@ -642,7 +633,6 @@ exports.resubmitCategory = async (request, reply) => {
         id,
         categoryName: categoryName.trim(),
         description:   description ?? category.description,
-        sampleProduct: sampleProduct ?? category.sampleProduct,
         status: 'PENDING'
       }
     });
@@ -671,6 +661,12 @@ exports.softDeleteCategory = async (request, reply) => {
 
     if (category.softDeletedAt) {
       return reply.status(400).send({ success: false, message: 'Category is already soft-deleted' });
+    }
+
+    // Sellers can only soft-delete their own category requests
+    const isAdmin = request.user.role === 'ADMIN';
+    if (!isAdmin && category.requestedBy !== request.user.userId) {
+      return reply.status(403).send({ success: false, message: 'You can only delete your own category requests' });
     }
 
     await prisma.$executeRaw`
@@ -772,6 +768,14 @@ exports.hardDeleteCategory = async (request, reply) => {
 
     const category = categoryRequest[0];
 
+    // Must be in the recycle bin before a permanent delete is permitted
+    if (!category.softDeletedAt) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Category must be moved to the recycle bin before it can be permanently deleted'
+      });
+    }
+
     // Write the audit log BEFORE deleting so the row snapshot is preserved
     const meta = extractRequestMeta(request);
     await auditLog({
@@ -831,13 +835,30 @@ exports.getSoftDeletedCategories = async (request, reply) => {
 exports.getCategoryLogs = async (request, reply) => {
   try {
     const { id } = request.params;
+    const { action } = request.query;
+    const isAdmin = request.user.role === 'ADMIN';
 
-    // Verify the category either exists or existed (logs remain after hard delete)
+    // Sellers may only view logs for a category they originally requested
+    if (!isAdmin) {
+      const rows = await prisma.$queryRaw`
+        SELECT "requestedBy" FROM "category_requests" WHERE "id" = ${id} LIMIT 1
+      `;
+      if (!rows || rows.length === 0) {
+        return reply.status(404).send({ success: false, message: 'Category not found' });
+      }
+      if (rows[0].requestedBy !== request.user.userId) {
+        return reply.status(403).send({ success: false, message: 'Access denied' });
+      }
+    }
+
+    const where = {
+      entityType: ENTITY_TYPES.CATEGORY,
+      entityId:   id,
+      ...(action ? { action } : {})
+    };
+
     const logs = await prisma.auditLog.findMany({
-      where: {
-        entityType: ENTITY_TYPES.CATEGORY,
-        entityId:   id
-      },
+      where,
       orderBy: { createdAt: 'asc' }
     });
 
@@ -845,11 +866,23 @@ exports.getCategoryLogs = async (request, reply) => {
       return reply.status(404).send({ success: false, message: 'No audit logs found for this category' });
     }
 
+    // Strip sensitive internal fields (actorId, actorEmail, actorIp, userAgent)
+    // before returning to sellers — actorRole is safe to expose
+    const sellerSafeFields = (log) => ({
+      id:            log.id,
+      action:        log.action,
+      actorRole:     log.actorRole,
+      changedFields: log.changedFields ?? [],
+      newData:       log.newData ?? null,
+      reason:        log.reason ?? null,
+      createdAt:     log.createdAt
+    });
+
     reply.send({
       success: true,
       data: {
         categoryId: id,
-        logs,
+        logs: isAdmin ? logs : logs.map(sellerSafeFields),
         total: logs.length
       }
     });
@@ -895,490 +928,54 @@ exports.getAllCategoryLogs = async (request, reply) => {
 };
 
 
-// GET ALL CATEGORIES (Shows approved categories + pending requests for admin)
-exports.getAllCategories = async (request, reply) => {
+// ==================== GET SINGLE CATEGORY DETAIL ====================
+// Admin: any category (including soft-deleted)
+// Seller: approved categories OR their own requested categories (any status, including soft-deleted)
+
+exports.getCategoryDetail = async (request, reply) => {
   try {
+    const { id } = request.params;
     const isAdmin = request.user.role === 'ADMIN';
 
-    const products = await prisma.product.findMany({
-      select: { category: true, sellerId: true }
-    });
-
-    // Group categories from products
-    const categoryMap = new Map();
-    const sellerCategoryMap = new Map(); // For seller-specific counts
-
-    products.forEach(product => {
-      const trimmedCategory = product.category?.trim();
-      if (trimmedCategory) {
-        // Total product count per category
-        if (categoryMap.has(trimmedCategory)) {
-          categoryMap.set(trimmedCategory, categoryMap.get(trimmedCategory) + 1);
-        } else {
-          categoryMap.set(trimmedCategory, 1);
-        }
-
-        // Seller-specific product count
-        if (!isAdmin && product.sellerId === request.user?.userId) {
-          const key = trimmedCategory;
-          if (sellerCategoryMap.has(key)) {
-            sellerCategoryMap.set(key, sellerCategoryMap.get(key) + 1);
-          } else {
-            sellerCategoryMap.set(key, 1);
-          }
-        }
-      }
-    });
-
-    // Get approved categories from category_requests table
-    let approvedCategoryRequests = [];
-    try {
-      approvedCategoryRequests = await prisma.$queryRaw`
-        SELECT "id", "categoryName", "description", "sampleProduct", 
-               "requestedBy", "approvalMessage", "approvedAt"
-        FROM "category_requests"
-        WHERE "status" = 'APPROVED'
-      `;
-    } catch (error) {
-      console.warn('Could not fetch approved categories from requests:', error.message);
-    }
-
-    // Merge categories from products and approved requests
-    approvedCategoryRequests.forEach(cat => {
-      if (!categoryMap.has(cat.categoryName)) {
-        categoryMap.set(cat.categoryName, { 
-          productCount: 0, 
-          requestedBy: cat.requestedBy,
-          approvalMessage: cat.approvalMessage,
-          approvedAt: cat.approvedAt,
-          isRequestedCategory: true
-        });
-      } else {
-        // Mark if this category was also requested by someone
-        const existing = categoryMap.get(cat.categoryName);
-        if (typeof existing === 'number') {
-          categoryMap.set(cat.categoryName, {
-            productCount: existing,
-            requestedBy: cat.requestedBy,
-            isRequestedCategory: true
-          });
-        }
-      }
-    });
-
-    const approvedCategories = Array.from(categoryMap.entries())
-      .map(([name, data]) => {
-        if (typeof data === 'number') {
-          return {
-            categoryName: name,
-            ...(isAdmin && { totalProductCount: data }),
-            ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 })
-          };
-        } else {
-          return {
-            categoryName: name,
-            ...(isAdmin && { totalProductCount: data.productCount || 0 }),
-            ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
-            isRequestedCategory: data.isRequestedCategory || false,
-            requestedByMe: !isAdmin && data.requestedBy === request.user?.userId,
-            ...(isAdmin && data.approvalMessage && { approvalMessage: data.approvalMessage }),
-            ...(isAdmin && data.approvedAt && { approvedAt: data.approvedAt })
-          };
-        }
-      })
-      .sort((a, b) => {
-        if (isAdmin) {
-          return (b.totalProductCount || 0) - (a.totalProductCount || 0);
-        }
-        // Sellers: show their requested categories first
-        if (a.requestedByMe && !b.requestedByMe) return -1;
-        if (!a.requestedByMe && b.requestedByMe) return 1;
-        return a.categoryName.localeCompare(b.categoryName);
-      });
-
-    // Get pending requests if admin and table exists
-    let pendingRequests = [];
-    let rejectedRequests = [];
-    let myPendingRequests = [];
-    let myRejectedRequests = [];
-    
-    try {
-      if (isAdmin) {
-        pendingRequests = await prisma.$queryRaw`
-          SELECT cr."id", cr."categoryName", cr."description", cr."sampleProduct", 
-                 cr."requestedAt", cr."requestedBy",
-                 u."id" as seller_id, u."email", u."name" as seller_name,
-                 sp."storeName", sp."businessName", sp."status" as seller_status
-          FROM "category_requests" cr
-          LEFT JOIN "users" u ON cr."requestedBy" = u."id"
-          LEFT JOIN "seller_profiles" sp ON u."id" = sp."userId"
-          WHERE cr."status" = 'PENDING'
-          ORDER BY cr."requestedAt" DESC
-        `;
-
-        rejectedRequests = await prisma.$queryRaw`
-          SELECT cr."id", cr."categoryName", cr."rejectionMessage", 
-                 cr."rejectedAt", cr."rejectedBy",
-                 u."id" as seller_id, u."email", u."name" as seller_name,
-                 sp."storeName", sp."businessName"
-          FROM "category_requests" cr
-          LEFT JOIN "users" u ON cr."requestedBy" = u."id"
-          LEFT JOIN "seller_profiles" sp ON u."id" = sp."userId"
-          WHERE cr."status" = 'REJECTED'
-          ORDER BY cr."rejectedAt" DESC
-        `;
-      } else {
-        // Sellers see their own pending requests
-        myPendingRequests = await prisma.$queryRaw`
-          SELECT "id", "categoryName", "description", "sampleProduct", 
-                 "requestedAt", "status"
-          FROM "category_requests" 
-          WHERE "requestedBy" = ${request.user?.userId}
-          AND "status" = 'PENDING'
-          ORDER BY "requestedAt" DESC
-        `;
-
-        // Sellers see their own rejected requests with rejection message
-        myRejectedRequests = await prisma.$queryRaw`
-          SELECT "id", "categoryName", "rejectionMessage", 
-                 "rejectedAt", "status"
-          FROM "category_requests" 
-          WHERE "requestedBy" = ${request.user?.userId}
-          AND "status" = 'REJECTED'
-          ORDER BY "rejectedAt" DESC
-        `;
-      }
-    } catch (tableError) {
-      console.warn('CategoryRequest table not yet created:', tableError.message);
-      // Continue without pending requests if table doesn't exist
-    }
-
-    const totalProducts = await prisma.product.count();
-    const totalCategories = approvedCategories.length;
-    
-    // For sellers, calculate their total products
-    let myTotalProducts = 0;
-    if (!isAdmin) {
-      myTotalProducts = products.filter(p => p.sellerId === request.user?.userId).length;
-    }
-
-    // Response based on role
-    if (isAdmin) {
-      reply.send({
-        success: true,
-        data: {
-          approvedCategories,
-          totalApproved: approvedCategories.length,
-          totalProducts,
-          totalCategories,
-          pendingRequests,
-          rejectedRequests,
-          totalPending: pendingRequests.length,
-          totalRejected: rejectedRequests.length
-        }
-      });
-    } else {
-      // Seller view - approved categories + their own requests (pending & rejected)
-      reply.send({
-        success: true,
-        data: {
-          approvedCategories,
-          totalCategories,
-          myTotalProducts,
-          myPendingRequests,
-          totalMyPending: myPendingRequests.length,
-          myRejectedRequests: myRejectedRequests.map(req => ({
-            id: req.id,
-            categoryName: req.categoryName,
-            rejectionMessage: req.rejectionMessage,
-            rejectedAt: req.rejectedAt,
-            status: req.status
-          })),
-          totalMyRejected: myRejectedRequests.length
-        }
-      });
-    }
-  } catch (error) {
-    console.error('Get all categories error:', error);
-    reply.status(500).send({ success: false, error: error.message });
-  }
-};
-
-// ==================== CREATE CATEGORIES DIRECTLY (Admin Only) ====================
-
-// CREATE CATEGORY DIRECTLY - Admin can create multiple categories at once
-exports.createCategoryDirect = async (request, reply) => {
-  try {
-    const { categories } = request.body; // Array of category names
-
-    // Validate input
-    if (!categories || !Array.isArray(categories) || categories.length === 0) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Please provide an array of category names'
-      });
-    }
-
-    // Validate each category name
-    const invalidCategories = categories.filter(cat => !cat || typeof cat !== 'string' || cat.trim() === '');
-    if (invalidCategories.length > 0) {
-      return reply.status(400).send({
-        success: false,
-        message: 'All category names must be non-empty strings'
-      });
-    }
-
-    // Trim and check for duplicates in the request
-    const trimmedCategories = [...new Set(categories.map(c => c.trim()))];
-
-    // Check which categories already exist in the product table
-    const existingProducts = await prisma.product.findMany({
-      select: { category: true },
-      distinct: ['category']
-    });
-
-    const existingCategories = existingProducts
-      .map(p => p.category?.trim())
-      .filter(c => c);
-
-    // Check which categories already exist in category_requests
-    let existingRequests = [];
-    try {
-      existingRequests = await prisma.$queryRaw`
-        SELECT "categoryName" FROM "category_requests" 
-        WHERE "status" IN ('APPROVED', 'PENDING')
-      `;
-    } catch (error) {
-      console.warn('Could not fetch existing requests:', error.message);
-    }
-
-    const existingRequestNames = existingRequests.map(r => r.categoryName?.trim());
-
-    // Filter out categories that already exist
-    const newCategories = trimmedCategories.filter(
-      cat => !existingCategories.includes(cat) && !existingRequestNames.includes(cat)
-    );
-
-    if (newCategories.length === 0) {
-      return reply.status(400).send({
-        success: false,
-        message: 'All provided categories already exist'
-      });
-    }
-
-    // Insert new categories as APPROVED directly
-    const createdCategories = [];
-    for (const categoryName of newCategories) {
-      try {
-        await prisma.$executeRaw`
-          INSERT INTO "category_requests" (
-            "id", "categoryName", "description", "sampleProduct", 
-            "requestedBy", "status", "approvedBy", "approvedAt", "requestedAt", "updatedAt"
-          ) VALUES (
-            ${randomUUID()}, ${categoryName}, NULL, NULL,
-            NULL, 'APPROVED', ${request.user?.userId}, NOW(), NOW(), NOW()
-          )
-        `;
-        createdCategories.push({
-          categoryName,
-          status: 'APPROVED',
-          createdBy: request.user?.userId,
-          createdAt: new Date()
-        });
-      } catch (error) {
-        console.error(`Error creating category ${categoryName}:`, error.message);
-      }
-    }
-
-    reply.status(201).send({
-      success: true,
-      message: `${createdCategories.length} categor${createdCategories.length === 1 ? 'y' : 'ies'} created successfully`,
-      data: {
-        created: createdCategories,
-        totalCreated: createdCategories.length,
-        skipped: trimmedCategories.length - createdCategories.length,
-        skippedCategories: trimmedCategories.filter(cat => !newCategories.includes(cat))
-      }
-    });
-  } catch (error) {
-    console.error('Create category error:', error);
-    reply.status(500).send({ success: false, error: error.message });
-  }
-};
-
-// ==================== REQUEST A NEW CATEGORY ====================
-
-// REQUEST A NEW CATEGORY (Seller/Admin can request)
-exports.requestCategory = async (request, reply) => {
-  try {
-    const { categoryName, description, sampleProduct } = request.body;
-
-    // Validate input
-    if (!categoryName || categoryName.trim() === '') {
-      return reply.status(400).send({
-        success: false,
-        message: 'Category name is required'
-      });
-    }
-
-    // Check if category already exists using raw query
-    const existingCategory = await prisma.$queryRaw`
-      SELECT id FROM "category_requests" 
-      WHERE LOWER("categoryName") = LOWER(${categoryName.trim()})
-      AND "status" IN ('APPROVED', 'PENDING')
+    const rows = await prisma.$queryRaw`
+      SELECT cr.*,
+             u."email"  AS requested_by_email,
+             u."name"   AS requested_by_name,
+             sp."storeName", sp."businessName",
+             ab."email" AS approved_by_email,
+             ab."name"  AS approved_by_name,
+             rb."email" AS rejected_by_email,
+             rb."name"  AS rejected_by_name,
+             sd."email" AS soft_deleted_by_email,
+             sd."name"  AS soft_deleted_by_name
+      FROM "category_requests" cr
+      LEFT JOIN "users" u  ON cr."requestedBy"  = u."id"
+      LEFT JOIN "seller_profiles" sp ON u."id" = sp."userId"
+      LEFT JOIN "users" ab ON cr."approvedBy"   = ab."id"
+      LEFT JOIN "users" rb ON cr."rejectedBy"   = rb."id"
+      LEFT JOIN "users" sd ON cr."softDeletedBy" = sd."id"
+      WHERE cr."id" = ${id}
       LIMIT 1
     `;
 
-    if (existingCategory && existingCategory.length > 0) {
-      return reply.status(400).send({
-        success: false,
-        message: `Category "${categoryName}" already exists or is pending approval`
-      });
+    if (!rows || rows.length === 0) {
+      return reply.status(404).send({ success: false, message: 'Category not found' });
     }
 
-    // Create category request using raw query
-    const result = await prisma.$executeRaw`
-      INSERT INTO "category_requests" (
-        "id", "categoryName", "description", "sampleProduct", 
-        "requestedBy", "status", "requestedAt", "updatedAt"
-      ) VALUES (
-        ${randomUUID()}, ${categoryName.trim()}, 
-        ${description || null}, ${sampleProduct || null},
-        ${request.user?.userId || null}, 'PENDING',
-        NOW(), NOW()
-      )
-    `;
+    const category = rows[0];
 
-    reply.status(201).send({
-      success: true,
-      message: 'Category request submitted successfully',
-      data: {
-        categoryName: categoryName.trim(),
-        description: description || null,
-        sampleProduct: sampleProduct || null,
-        status: 'PENDING'
+    // Sellers can only see approved categories OR their own requests
+    if (!isAdmin) {
+      const isOwner   = category.requestedBy === request.user.userId;
+      const isApproved = category.status === 'APPROVED';
+      if (!isOwner && !isApproved) {
+        return reply.status(403).send({ success: false, message: 'Access denied' });
       }
-    });
+    }
+
+    reply.send({ success: true, data: category });
   } catch (error) {
-    console.error('Request category error:', error);
-    reply.status(500).send({ success: false, error: error.message });
-  }
-};
-
-// ==================== APPROVE CATEGORY REQUEST ====================
-
-// APPROVE CATEGORY REQUEST (Admin only)
-exports.approveCategory = async (request, reply) => {
-  try {
-    const { id } = request.params;
-    const { approvalMessage } = request.body;
-
-    // Check if category request exists 
-    const categoryRequest = await prisma.$queryRaw`
-      SELECT * FROM "category_requests" WHERE "id" = ${id}
-    `;
-
-    if (!categoryRequest || categoryRequest.length === 0) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Category request not found'
-      });
-    }
-
-    const category = categoryRequest[0];
-    if (category.status !== 'PENDING') {
-      return reply.status(400).send({
-        success: false,
-        message: `Cannot approve a ${category.status.toLowerCase()} request`
-      });
-    }
-
-    // Update category request to approved
-    await prisma.$executeRaw`
-      UPDATE "category_requests" 
-      SET "status" = 'APPROVED',
-          "approvedBy" = ${request.user?.userId},
-          "approvalMessage" = ${approvalMessage || null},
-          "approvedAt" = NOW(),
-          "updatedAt" = NOW()
-      WHERE "id" = ${id}
-    `;
-
-    reply.send({
-      success: true,
-      message: 'Category approved successfully',
-      data: {
-        id,
-        categoryName: category.categoryName,
-        status: 'APPROVED',
-        approvalMessage: approvalMessage || null
-      }
-    });
-  } catch (error) {
-    console.error('Approve category error:', error);
-    reply.status(500).send({ success: false, error: error.message });
-  }
-};
-
-// ==================== REJECT CATEGORY REQUEST ====================
-
-// REJECT CATEGORY REQUEST (Admin only)
-exports.rejectCategory = async (request, reply) => {
-  try {
-    const { id } = request.params;
-    const { rejectionMessage } = request.body;
-
-    // Validate rejection message
-    if (!rejectionMessage || rejectionMessage.trim() === '') {
-      return reply.status(400).send({
-        success: false,
-        message: 'Rejection message is required'
-      });
-    }
-
-    // Check if category request exists
-    const categoryRequest = await prisma.$queryRaw`
-      SELECT * FROM "category_requests" WHERE "id" = ${id}
-    `;
-
-    if (!categoryRequest || categoryRequest.length === 0) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Category request not found'
-      });
-    }
-
-    const category = categoryRequest[0];
-    if (category.status !== 'PENDING') {
-      return reply.status(400).send({
-        success: false,
-        message: `Cannot reject a ${category.status.toLowerCase()} request`
-      });
-    }
-
-    // Update category request to rejected
-    await prisma.$executeRaw`
-      UPDATE "category_requests" 
-      SET "status" = 'REJECTED',
-          "rejectedBy" = ${request.user?.userId},
-          "rejectionMessage" = ${rejectionMessage.trim()},
-          "rejectedAt" = NOW(),
-          "updatedAt" = NOW()
-      WHERE "id" = ${id}
-    `;
-
-    reply.send({
-      success: true,
-      message: 'Category request rejected successfully',
-      data: {
-        id,
-        categoryName: category.categoryName,
-        status: 'REJECTED',
-        rejectionMessage: rejectionMessage.trim()
-      }
-    });
-  } catch (error) {
-    console.error('Reject category error:', error);
+    console.error('Get category detail error:', error);
     reply.status(500).send({ success: false, error: error.message });
   }
 };

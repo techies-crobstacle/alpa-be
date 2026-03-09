@@ -70,6 +70,8 @@ async function adminRoutes(fastify, options) {
   fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
 
   // ── Recycle Bin (admin) ────────────────────────────────────────────────────
+  // DELETE /admin/products/:productId               — soft delete (move to Recycle Bin)
+  fastify.delete("/products/:productId", { preHandler: adminAuth }, productController.deleteProduct);
   // GET  /admin/products/recycle-bin?sellerId=xxx   — all deleted products
   fastify.get("/products/recycle-bin", { preHandler: adminAuth }, adminController.getAdminRecycleBin);
   // POST /admin/products/:productId/restore         — restore to INACTIVE
@@ -111,9 +113,20 @@ async function adminRoutes(fastify, options) {
   // Assign a specific commission to a specific seller
   fastify.put("/sellers/:sellerId/commission",        { preHandler: adminAuth }, commissionController.assignCommissionToSeller);
 
+  // Commission Earned (recorded per order)
+  fastify.get("/commissions/earned",                          { preHandler: adminAuth }, commissionController.getAllCommissionEarned);
+  fastify.get("/commissions/earned/summary",                  { preHandler: adminAuth }, commissionController.getCommissionEarnedSummary);
+  fastify.get("/commissions/earned/order/:orderId",           { preHandler: adminAuth }, commissionController.getCommissionEarnedByOrder);
+  fastify.put("/commissions/earned/:id/status",               { preHandler: adminAuth }, commissionController.updateCommissionEarnedStatus);
+
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
   fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);
+
+  // ---------------- BANK CHANGE REQUESTS ----------------
+  fastify.get("/bank-change-requests", { preHandler: adminAuth }, adminController.getBankChangeRequests);
+  fastify.post("/bank-change-requests/:id/approve", { preHandler: adminAuth }, adminController.approveBankChangeRequest);
+  fastify.post("/bank-change-requests/:id/reject", { preHandler: adminAuth }, adminController.rejectBankChangeRequest);
 
   // ---------------- AUDIT LOGS (immutable, read-only) ----------------
   // GET /admin/audit-logs?entityType=PRODUCT&action=PRODUCT_APPROVED&from=2026-01-01&page=1&limit=50
