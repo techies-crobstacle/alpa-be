@@ -36,6 +36,8 @@ model User {
   siteFeedback  SiteFeedback[]
   ssoTickets    SsoTicket[]
   addresses     UserAddress[]
+  sellerCommissions   CommissionEarned[] @relation("SellerCommissions")
+  customerCommissions CommissionEarned[] @relation("CustomerCommissions")
 
   @@map("users")
 }
@@ -249,6 +251,7 @@ model Order {
   updatedAt         DateTime    @updatedAt
 
   orderNotifications OrderNotification[]
+  commissionEarned   CommissionEarned[]
 
   @@index([userId])
   @@index([status])
@@ -473,6 +476,38 @@ model Commission {
 enum CommissionType {
   FIXED
   PERCENTAGE
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+// CommissionEarned: auto-created for every order, tracking the platform fee per seller
+model CommissionEarned {
+  id               String           @id @default(cuid())
+  orderId          String           @map("order_id")
+  order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sellerId         String           @map("seller_id")
+  seller           User             @relation("SellerCommissions", fields: [sellerId], references: [id], onDelete: Cascade)
+  customerId       String?          @map("customer_id")
+  customer         User?            @relation("CustomerCommissions", fields: [customerId], references: [id], onDelete: SetNull)
+  customerName     String           @map("customer_name")
+  customerEmail    String           @map("customer_email")
+  sellerName       String?          @map("seller_name")
+  // Seller's portion of the order (sum of their items × qty)
+  orderValue       Decimal          @db.Decimal(10, 2) @map("order_value")
+  commissionRate   Decimal          @db.Decimal(5, 2)  @map("commission_rate")  // e.g. 10.00
+  commissionAmount Decimal          @db.Decimal(10, 2) @map("commission_amount")
+  status           CommissionStatus @default(PENDING)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt       @map("updated_at")
+
+  @@index([orderId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("commission_earned")
 }
 
 model Coupon {

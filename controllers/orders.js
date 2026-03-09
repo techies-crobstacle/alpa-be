@@ -20,6 +20,7 @@ const {
 const { createOrderNotification } = require("./orderNotification");
 const { calculateCartTotals } = require("./cart");
 const { normalizeOrderStatus, validateStatusTransition } = require("../utils/orderStatusRules");
+const { createCommissionEarned } = require("./commission");
 const PDFDocument = require('pdfkit');
 
 // ─── Low Stock Alert Helper ───────────────────────────────────────────────────
@@ -352,6 +353,20 @@ exports.createOrder = async (request, reply) => {
 
     // Check for low stock on all ordered products and deactivate + alert if <= 2
     handleLowStockAlerts(cart.items.map(i => i.productId));
+
+    // ── Commission Earned — record 10 % platform fee per seller (non-blocking) ─
+    for (const [sellerId, sellerData] of sellerNotifications) {
+      createCommissionEarned({
+        orderId: order.id,
+        sellerId,
+        orderValue: sellerData.totalAmount,
+        customerName: user.name,
+        customerEmail: user.email,
+        customerId: userId || null,
+        sellerName: sellerData.sellerName || null
+      }).catch(err => console.error(`Commission earned error (seller ${sellerId}):`, err.message));
+    }
+    // ──────────────────────────────────────────────────────────────────────────
 
     // Get seller names (DB lookup for accurate name) + product titles
     const sellerIdList = [...sellerNotifications.keys()];

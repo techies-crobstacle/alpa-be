@@ -113,6 +113,12 @@ async function adminRoutes(fastify, options) {
   // Assign a specific commission to a specific seller
   fastify.put("/sellers/:sellerId/commission",        { preHandler: adminAuth }, commissionController.assignCommissionToSeller);
 
+  // Commission Earned (recorded per order)
+  fastify.get("/commissions/earned",                          { preHandler: adminAuth }, commissionController.getAllCommissionEarned);
+  fastify.get("/commissions/earned/summary",                  { preHandler: adminAuth }, commissionController.getCommissionEarnedSummary);
+  fastify.get("/commissions/earned/order/:orderId",           { preHandler: adminAuth }, commissionController.getCommissionEarnedByOrder);
+  fastify.put("/commissions/earned/:id/status",               { preHandler: adminAuth }, commissionController.updateCommissionEarnedStatus);
+
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
   fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);

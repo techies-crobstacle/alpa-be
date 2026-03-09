@@ -312,3 +312,312 @@ exports.getCommissionForSeller = async (sellerId) => {
   `;
   return rows[0] || null;
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMMISSION EARNED — tracks 10 % platform fee recorded on every order
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const DEFAULT_COMMISSION_RATE = 10; // % fallback when seller has no commission assigned
+
+/**
+ * Internal helper — called by ordersController after every successful order.
+ * Creates one CommissionEarned row per seller that appears in the order.
+ *
+ * @param {Object} params
+ * @param {string}  params.orderId
+ * @param {string}  params.sellerId
+ * @param {number}  params.orderValue  – seller's slice of the order (sum of their items)
+ * @param {string}  params.customerName
+ * @param {string}  params.customerEmail
+ * @param {string|null} params.customerId  – null for guest orders
+ * @param {string|null} params.sellerName
+ */
+exports.createCommissionEarned = async ({
+  orderId,
+  sellerId,
+  orderValue,
+  customerName,
+  customerEmail,
+  customerId = null,
+  sellerName = null
+}) => {
+  try {
+    // Resolve the seller's commission rate
+    const sellerCommission = await exports.getCommissionForSeller(sellerId);
+    const defaultCommission = sellerCommission || await exports.getDefaultCommission();
+
+    let commissionRate = DEFAULT_COMMISSION_RATE;
+    let commissionAmount = parseFloat(((orderValue * DEFAULT_COMMISSION_RATE) / 100).toFixed(2));
+
+    if (defaultCommission) {
+      const rateValue = parseFloat(defaultCommission.value);
+      if (defaultCommission.type === "PERCENTAGE") {
+        commissionRate = rateValue;
+        commissionAmount = parseFloat(((orderValue * rateValue) / 100).toFixed(2));
+      } else {
+        // FIXED — flat fee regardless of order size
+        commissionRate = rateValue;
+        commissionAmount = parseFloat(rateValue.toFixed(2));
+      }
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO commission_earned
+        (id, order_id, seller_id, customer_id, customer_name, customer_email,
+         seller_name, order_value, commission_rate, commission_amount, status,
+         created_at, updated_at)
+      VALUES (
+        ${require("cuid")()},
+        ${orderId},
+        ${sellerId},
+        ${customerId},
+        ${customerName},
+        ${customerEmail},
+        ${sellerName},
+        ${parseFloat(orderValue.toFixed(2))},
+        ${commissionRate},
+        ${commissionAmount},
+        'PENDING'::"CommissionStatus",
+        NOW(), NOW()
+      )
+    `;
+
+    console.log(`💰 Commission earned recorded — order: ${orderId}, seller: ${sellerId}, amount: $${commissionAmount}`);
+  } catch (err) {
+    // Non-fatal — log but never crash the order flow
+    console.error("createCommissionEarned error (non-fatal):", err.message);
+  }
+};
+
+// ─── ADMIN: list all commission earned records ────────────────────────────────
+// GET /api/admin/commissions/earned
+exports.getAllCommissionEarned = async (request, reply) => {
+  try {
+    const {
+      sellerId,
+      status,
+      from,
+      to,
+      page = "1",
+      limit = "20"
+    } = request.query || {};
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, parseInt(limit, 10) || 20);
+    const offset   = (pageNum - 1) * limitNum;
+
+    // Build WHERE clauses
+    const conditions = [];
+    if (sellerId) conditions.push(`ce.seller_id = '${sellerId.replace(/'/g, "''")}'`);
+    if (status)   conditions.push(`ce.status::text = '${status.toUpperCase().replace(/'/g, "''")}'`);
+    if (from)     conditions.push(`ce.created_at >= '${from.replace(/'/g, "''")}'::timestamptz`);
+    if (to)       conditions.push(`ce.created_at <= '${to.replace(/'/g, "''")}'::timestamptz`);
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT
+        ce.id,
+        ce.order_id       AS "orderId",
+        ce.seller_id      AS "sellerId",
+        ce.customer_id    AS "customerId",
+        ce.customer_name  AS "customerName",
+        ce.customer_email AS "customerEmail",
+        ce.seller_name    AS "sellerName",
+        ce.order_value    AS "orderValue",
+        ce.commission_rate    AS "commissionRate",
+        ce.commission_amount  AS "commissionAmount",
+        ce.status::text   AS status,
+        ce.created_at     AS "createdAt",
+        ce.updated_at     AS "updatedAt",
+        u.name            AS "sellerFullName",
+        sp."storeName"    AS "storeName",
+        sp."businessName" AS "businessName"
+      FROM commission_earned ce
+      LEFT JOIN users u          ON u.id = ce.seller_id
+      LEFT JOIN seller_profiles sp ON sp."userId" = ce.seller_id
+      ${whereClause}
+      ORDER BY ce.created_at DESC
+      LIMIT ${limitNum} OFFSET ${offset}
+    `);
+
+    const countRows = await prisma.$queryRawUnsafe(`
+      SELECT COUNT(*)::int AS total FROM commission_earned ce ${whereClause}
+    `);
+    const total = countRows[0]?.total || 0;
+
+    return reply.send({
+      success: true,
+      data: rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (err) {
+    console.error("getAllCommissionEarned error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── ADMIN: summary stats ─────────────────────────────────────────────────────
+// GET /api/admin/commissions/earned/summary
+exports.getCommissionEarnedSummary = async (request, reply) => {
+  try {
+    const { from, to } = request.query || {};
+
+    const conditions = [];
+    if (from) conditions.push(`created_at >= '${from.replace(/'/g, "''")}'::timestamptz`);
+    if (to)   conditions.push(`created_at <= '${to.replace(/'/g, "''")}'::timestamptz`);
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT
+        COUNT(*)::int                                    AS "totalOrders",
+        COALESCE(SUM(order_value), 0)::float             AS "totalOrderValue",
+        COALESCE(SUM(commission_amount), 0)::float       AS "totalCommissionEarned",
+        COALESCE(SUM(CASE WHEN status = 'PAID'      THEN commission_amount ELSE 0 END), 0)::float AS "totalPaid",
+        COALESCE(SUM(CASE WHEN status = 'PENDING'   THEN commission_amount ELSE 0 END), 0)::float AS "totalPending",
+        COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN commission_amount ELSE 0 END), 0)::float AS "totalCancelled",
+        COUNT(DISTINCT seller_id)::int                   AS "uniqueSellers"
+      FROM commission_earned
+      ${whereClause}
+    `);
+
+    return reply.send({ success: true, summary: rows[0] });
+  } catch (err) {
+    console.error("getCommissionEarnedSummary error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── ADMIN: commission earned for a specific order ────────────────────────────
+// GET /api/admin/commissions/earned/order/:orderId
+exports.getCommissionEarnedByOrder = async (request, reply) => {
+  try {
+    const { orderId } = request.params;
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        ce.id,
+        ce.order_id       AS "orderId",
+        ce.seller_id      AS "sellerId",
+        ce.customer_id    AS "customerId",
+        ce.customer_name  AS "customerName",
+        ce.customer_email AS "customerEmail",
+        ce.seller_name    AS "sellerName",
+        ce.order_value    AS "orderValue",
+        ce.commission_rate    AS "commissionRate",
+        ce.commission_amount  AS "commissionAmount",
+        ce.status::text   AS status,
+        ce.created_at     AS "createdAt",
+        ce.updated_at     AS "updatedAt"
+      FROM commission_earned ce
+      WHERE ce.order_id = ${orderId}
+      ORDER BY ce.created_at ASC
+    `;
+
+    return reply.send({ success: true, data: rows });
+  } catch (err) {
+    console.error("getCommissionEarnedByOrder error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── ADMIN: update status (PENDING → PAID / CANCELLED) ───────────────────────
+// PUT /api/admin/commissions/earned/:id/status
+exports.updateCommissionEarnedStatus = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const { status } = request.body || {};
+
+    const VALID = ["PENDING", "PAID", "CANCELLED"];
+    if (!status || !VALID.includes(status.toUpperCase())) {
+      return reply.status(400).send({ success: false, message: `status must be one of: ${VALID.join(", ")}` });
+    }
+
+    const rows = await prisma.$queryRaw`SELECT id FROM commission_earned WHERE id = ${id}`;
+    if (!rows.length) {
+      return reply.status(404).send({ success: false, message: "Commission earned record not found" });
+    }
+
+    const upperStatus = status.toUpperCase();
+    await prisma.$executeRaw`
+      UPDATE commission_earned
+      SET status = ${upperStatus}::"CommissionStatus", updated_at = NOW()
+      WHERE id = ${id}
+    `;
+
+    return reply.send({ success: true, message: `Status updated to ${upperStatus}` });
+  } catch (err) {
+    console.error("updateCommissionEarnedStatus error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── SELLER: view my commission earned ───────────────────────────────────────
+// GET /api/commissions/earned/my   (authenticated seller)
+exports.getMyCommissionEarned = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+    const { status, from, to, page = "1", limit = "20" } = request.query || {};
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, parseInt(limit, 10) || 20);
+    const offset   = (pageNum - 1) * limitNum;
+
+    const conditions = [`ce.seller_id = '${sellerId.replace(/'/g, "''")}'`];
+    if (status) conditions.push(`ce.status::text = '${status.toUpperCase().replace(/'/g, "''")}'`);
+    if (from)   conditions.push(`ce.created_at >= '${from.replace(/'/g, "''")}'::timestamptz`);
+    if (to)     conditions.push(`ce.created_at <= '${to.replace(/'/g, "''")}'::timestamptz`);
+
+    const whereClause = `WHERE ${conditions.join(" AND ")}`;
+
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT
+        ce.id,
+        ce.order_id           AS "orderId",
+        ce.customer_name      AS "customerName",
+        ce.order_value        AS "orderValue",
+        ce.commission_rate    AS "commissionRate",
+        ce.commission_amount  AS "commissionAmount",
+        ce.status::text       AS status,
+        ce.created_at         AS "createdAt"
+      FROM commission_earned ce
+      ${whereClause}
+      ORDER BY ce.created_at DESC
+      LIMIT ${limitNum} OFFSET ${offset}
+    `);
+
+    const countRows = await prisma.$queryRawUnsafe(`
+      SELECT COUNT(*)::int AS total FROM commission_earned ce ${whereClause}
+    `);
+
+    // Aggregate totals for the seller
+    const totalsRows = await prisma.$queryRawUnsafe(`
+      SELECT
+        COALESCE(SUM(commission_amount), 0)::float AS "totalEarned",
+        COALESCE(SUM(CASE WHEN status = 'PAID'    THEN commission_amount ELSE 0 END), 0)::float AS "totalPaid",
+        COALESCE(SUM(CASE WHEN status = 'PENDING' THEN commission_amount ELSE 0 END), 0)::float AS "totalPending"
+      FROM commission_earned
+      WHERE seller_id = '${sellerId.replace(/'/g, "''")}'
+    `);
+
+    return reply.send({
+      success: true,
+      data: rows,
+      totals: totalsRows[0],
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: countRows[0]?.total || 0,
+        totalPages: Math.ceil((countRows[0]?.total || 0) / limitNum)
+      }
+    });
+  } catch (err) {
+    console.error("getMyCommissionEarned error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
