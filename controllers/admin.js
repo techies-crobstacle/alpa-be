@@ -2195,6 +2195,129 @@ exports.getProductAuditHistory = async (request, reply) => {
   }
 };
 
+// ─── BANK CHANGE REQUESTS (Admin) ────────────────────────────────────────────
+
+// GET /admin/bank-change-requests?status=PENDING|APPROVED|REJECTED&page=1&limit=20
+exports.getBankChangeRequests = async (request, reply) => {
+  try {
+    const { status, page = 1, limit = 20 } = request.query;
+    const take = Math.min(parseInt(limit, 10) || 20, 100);
+    const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
+
+    const where = status ? { status } : {};
+
+    const [requests, total] = await Promise.all([
+      prisma.bankChangeRequest.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          seller: {
+            select: {
+              userId: true,
+              storeName: true,
+              businessName: true,
+              bankDetails: true,
+              user: { select: { email: true, name: true } }
+            }
+          }
+        }
+      }),
+      prisma.bankChangeRequest.count({ where })
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      requests,
+      pagination: {
+        total,
+        page: parseInt(page, 10),
+        limit: take,
+        pages: Math.ceil(total / take)
+      }
+    });
+  } catch (error) {
+    console.error('getBankChangeRequests error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// POST /admin/bank-change-requests/:id/approve
+exports.approveBankChangeRequest = async (request, reply) => {
+  try {
+    const adminId = request.user.userId || request.user.id;
+    const { id } = request.params;
+
+    const changeRequest = await prisma.bankChangeRequest.findUnique({ where: { id } });
+
+    if (!changeRequest) {
+      return reply.status(404).send({ success: false, message: "Bank change request not found" });
+    }
+
+    if (changeRequest.status !== 'PENDING') {
+      return reply.status(409).send({ success: false, message: `Request is already ${changeRequest.status.toLowerCase()}` });
+    }
+
+    // Apply the new bank details and mark request as approved in one transaction
+    await prisma.$transaction([
+      prisma.sellerProfile.update({
+        where: { userId: changeRequest.sellerId },
+        data: { bankDetails: changeRequest.newBankDetails }
+      }),
+      prisma.bankChangeRequest.update({
+        where: { id },
+        data: { status: 'APPROVED', reviewedBy: adminId }
+      })
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      message: "Bank details change request approved and applied"
+    });
+  } catch (error) {
+    console.error('approveBankChangeRequest error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// POST /admin/bank-change-requests/:id/reject
+// Body: { reviewNote: string }
+exports.rejectBankChangeRequest = async (request, reply) => {
+  try {
+    const adminId = request.user.userId || request.user.id;
+    const { id } = request.params;
+    const { reviewNote } = request.body || {};
+
+    const changeRequest = await prisma.bankChangeRequest.findUnique({ where: { id } });
+
+    if (!changeRequest) {
+      return reply.status(404).send({ success: false, message: "Bank change request not found" });
+    }
+
+    if (changeRequest.status !== 'PENDING') {
+      return reply.status(409).send({ success: false, message: `Request is already ${changeRequest.status.toLowerCase()}` });
+    }
+
+    await prisma.bankChangeRequest.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        reviewedBy: adminId,
+        reviewNote: reviewNote ? reviewNote.trim() : null
+      }
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: "Bank details change request rejected"
+    });
+  } catch (error) {
+    console.error('rejectBankChangeRequest error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 
 
 

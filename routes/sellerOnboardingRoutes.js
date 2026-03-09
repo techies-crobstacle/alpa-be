@@ -56,6 +56,12 @@ async function sellerOnboardingRoutes(fastify, options) {
   // Step 7: Bank Details (Optional - can be added later)
   fastify.post("/bank-details", { preHandler: authenticateSeller }, sellerController.submitBankDetails);
 
+  // Dashboard: get current bank details (masked)
+  fastify.get("/bank-details", { preHandler: authenticateSeller }, sellerController.getBankDetails);
+
+  // Dashboard: request a bank details change
+  fastify.post("/bank-details/change-request", { preHandler: authenticateSeller }, sellerController.requestBankDetailsChange);
+
   // Submit Application for Review
   fastify.post("/submit-for-review", { preHandler: authenticateSeller }, sellerController.submitForReview);
 

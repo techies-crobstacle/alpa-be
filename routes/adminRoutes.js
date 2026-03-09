@@ -117,6 +117,11 @@ async function adminRoutes(fastify, options) {
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
   fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);
 
+  // ---------------- BANK CHANGE REQUESTS ----------------
+  fastify.get("/bank-change-requests", { preHandler: adminAuth }, adminController.getBankChangeRequests);
+  fastify.post("/bank-change-requests/:id/approve", { preHandler: adminAuth }, adminController.approveBankChangeRequest);
+  fastify.post("/bank-change-requests/:id/reject", { preHandler: adminAuth }, adminController.rejectBankChangeRequest);
+
   // ---------------- AUDIT LOGS (immutable, read-only) ----------------
   // GET /admin/audit-logs?entityType=PRODUCT&action=PRODUCT_APPROVED&from=2026-01-01&page=1&limit=50
   fastify.get("/audit-logs", { preHandler: adminAuth }, adminController.getAuditLogs);

@@ -145,6 +145,7 @@ model SellerProfile {
   minimumProductsUploaded Boolean       @default(false)
   commissionId            String?       @map("commission_id")
   commission              Commission?   @relation(fields: [commissionId], references: [id])
+  bankChangeRequests      BankChangeRequest[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -634,4 +635,30 @@ model AuditLog {
   @@index([entityType, action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ─── BANK CHANGE REQUEST ──────────────────────────────────────────────────────
+// Seller-initiated request to change their bank details.
+// Always requires admin approval before the live bankDetails are updated.
+model BankChangeRequest {
+  id             String           @id @default(cuid())
+  sellerId       String           // references SellerProfile.userId
+  seller         SellerProfile    @relation(fields: [sellerId], references: [userId], onDelete: Cascade)
+  newBankDetails Json             // { bankName, accountName, bsb, accountNumber }
+  reason         String
+  status         BankChangeStatus @default(PENDING)
+  reviewedBy     String?          // Admin userId who actioned the request
+  reviewNote     String?          // Optional admin note when rejecting
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("bank_change_requests")
+}
+
+enum BankChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
