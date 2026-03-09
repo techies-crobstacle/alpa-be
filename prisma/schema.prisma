@@ -500,6 +500,7 @@ model CommissionEarned {
   orderValue       Decimal          @db.Decimal(10, 2) @map("order_value")
   commissionRate   Decimal          @db.Decimal(5, 2)  @map("commission_rate")  // e.g. 10.00
   commissionAmount Decimal          @db.Decimal(10, 2) @map("commission_amount")
+  netPayable       Decimal          @db.Decimal(10, 2) @map("net_payable")       // orderValue - commissionAmount
   status           CommissionStatus @default(PENDING)
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt       @map("updated_at")
