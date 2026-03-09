@@ -37,11 +37,13 @@ exports.getAllCategories = async (request, reply) => {
     let approvedCategoryRequests = [];
     try {
       approvedCategoryRequests = await prisma.$queryRaw`
-        SELECT "id", "categoryName", "description", "sampleProduct",
-               "requestedBy", "approvalMessage", "approvedAt"
-        FROM "category_requests"
-        WHERE "status" = 'APPROVED'
-          AND "softDeletedAt" IS NULL
+        SELECT cr."id", cr."categoryName", cr."description", cr."sampleProduct",
+               cr."requestedBy", cr."approvalMessage", cr."approvedAt",
+               u."role" as requester_role
+        FROM "category_requests" cr
+        LEFT JOIN "users" u ON cr."requestedBy" = u."id"
+        WHERE cr."status" = 'APPROVED'
+          AND cr."softDeletedAt" IS NULL
       `;
     } catch (error) {
       console.warn('Could not fetch approved categories from requests:', error.message);
@@ -54,9 +56,9 @@ exports.getAllCategories = async (request, reply) => {
           id: cat.id,
           productCount: 0,
           requestedBy: cat.requestedBy,
+          requesterRole: cat.requester_role,
           approvalMessage: cat.approvalMessage,
           approvedAt: cat.approvedAt,
-          isRequestedCategory: true
         });
       } else {
         const existing = categoryMap.get(cat.categoryName);
@@ -65,7 +67,7 @@ exports.getAllCategories = async (request, reply) => {
             id: cat.id,
             productCount: existing,
             requestedBy: cat.requestedBy,
-            isRequestedCategory: true
+            requesterRole: cat.requester_role,
           });
         }
       }
@@ -78,7 +80,7 @@ exports.getAllCategories = async (request, reply) => {
         categoryName: name,
         ...(isAdmin && { totalProductCount: data.productCount || 0 }),
         ...(!isAdmin && { myProductCount: sellerCategoryMap.get(name) || 0 }),
-        isRequestedCategory: data.isRequestedCategory || false,
+        requestedBySeller: data.requesterRole === 'SELLER',
         requestedByMe: !isAdmin && data.requestedBy === request.user?.userId,
         ...(isAdmin && data.approvalMessage && { approvalMessage: data.approvalMessage }),
         ...(isAdmin && data.approvedAt && { approvedAt: data.approvedAt })
