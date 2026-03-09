@@ -835,8 +835,21 @@ exports.getSoftDeletedCategories = async (request, reply) => {
 exports.getCategoryLogs = async (request, reply) => {
   try {
     const { id } = request.params;
+    const isAdmin = request.user.role === 'ADMIN';
 
-    // Verify the category either exists or existed (logs remain after hard delete)
+    // Sellers may only view logs for a category they originally requested
+    if (!isAdmin) {
+      const rows = await prisma.$queryRaw`
+        SELECT "requestedBy" FROM "category_requests" WHERE "id" = ${id} LIMIT 1
+      `;
+      if (!rows || rows.length === 0) {
+        return reply.status(404).send({ success: false, message: 'Category not found' });
+      }
+      if (rows[0].requestedBy !== request.user.userId) {
+        return reply.status(403).send({ success: false, message: 'Access denied' });
+      }
+    }
+
     const logs = await prisma.auditLog.findMany({
       where: {
         entityType: ENTITY_TYPES.CATEGORY,
@@ -849,11 +862,21 @@ exports.getCategoryLogs = async (request, reply) => {
       return reply.status(404).send({ success: false, message: 'No audit logs found for this category' });
     }
 
+    // Strip sensitive internal fields before returning to sellers
+    const sellerSafeFields = (log) => ({
+      id:           log.id,
+      action:       log.action,
+      actorRole:    log.performedByRole,
+      changedFields: log.newData ?? null,
+      reason:       log.reason ?? null,
+      createdAt:    log.createdAt
+    });
+
     reply.send({
       success: true,
       data: {
         categoryId: id,
-        logs,
+        logs: isAdmin ? logs : logs.map(sellerSafeFields),
         total: logs.length
       }
     });

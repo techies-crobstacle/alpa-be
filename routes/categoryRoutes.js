@@ -28,9 +28,9 @@ async function categoryRoutes(fastify, options) {
     preHandler: [authMiddleware, checkRole('ADMIN')]
   }, categoryController.getAllCategoryLogs);
 
-  // GET audit logs for a specific category — Admin only
+  // GET audit logs for a specific category — Admin (any); Seller (own categories only)
   fastify.get("/:id/logs", {
-    preHandler: [authMiddleware, checkRole('ADMIN')]
+    preHandler: [authMiddleware, checkRole(['SELLER', 'ADMIN'])]
   }, categoryController.getCategoryLogs);
 
   // ── Create / Request ──────────────────────────────────────────────────────
