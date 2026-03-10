@@ -39,6 +39,7 @@ model User {
   addresses     UserAddress[]
   sellerCommissions   CommissionEarned[] @relation("SellerCommissions")
   customerCommissions CommissionEarned[] @relation("CustomerCommissions")
+  payoutRequests      PayoutRequest[]
 
   @@map("users")
 }
@@ -552,6 +553,34 @@ model CommissionEarned {
   @@index([sellerId])
   @@index([status])
   @@map("commission_earned")
+}
+
+enum PayoutRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+// PayoutRequest: seller-initiated payout request against their redeemable balance
+// Only commission_earned records older than 30 days are eligible (redeemable)
+model PayoutRequest {
+  id                   String              @id @default(cuid())
+  sellerId             String              @map("seller_id")
+  seller               User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  requestedAmount      Decimal             @db.Decimal(10, 2) @map("requested_amount")
+  redeemableAtRequest  Decimal             @db.Decimal(10, 2) @map("redeemable_at_request") // snapshot of redeemable amount at time of request
+  status               PayoutRequestStatus @default(PENDING)
+  sellerNote           String?             @map("seller_note")
+  adminNote            String?             @map("admin_note")
+  processedAt          DateTime?           @map("processed_at")
+  processedBy          String?             @map("processed_by")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("payout_requests")
 }
 
 model Coupon {

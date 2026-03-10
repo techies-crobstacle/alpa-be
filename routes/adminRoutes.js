@@ -123,6 +123,10 @@ async function adminRoutes(fastify, options) {
   fastify.get("/commissions/earned/order/:orderId",           { preHandler: adminAuth }, commissionController.getCommissionEarnedByOrder);
   fastify.put("/commissions/earned/:id/status",               { preHandler: adminAuth }, commissionController.updateCommissionEarnedStatus);
 
+  // Payout Requests (Admin)
+  fastify.get("/commissions/payout-requests",                 { preHandler: adminAuth }, commissionController.getAllPayoutRequests);
+  fastify.put("/commissions/payout-requests/:id/status",      { preHandler: adminAuth }, commissionController.updatePayoutRequestStatus);
+
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);
   fastify.delete("/feedback/:id", { preHandler: adminAuth }, feedbackController.deleteFeedback);
