@@ -129,6 +129,7 @@ async function adminRoutes(fastify, options) {
 
   // ---------------- BANK CHANGE REQUESTS ----------------
   fastify.get("/bank-change-requests", { preHandler: adminAuth }, adminController.getBankChangeRequests);
+  fastify.get("/bank-change-requests/:id", { preHandler: adminAuth }, adminController.getBankChangeRequest);
   fastify.post("/bank-change-requests/:id/approve", { preHandler: adminAuth }, adminController.approveBankChangeRequest);
   fastify.post("/bank-change-requests/:id/reject", { preHandler: adminAuth }, adminController.rejectBankChangeRequest);
 

@@ -3108,6 +3108,262 @@ const testEmailConfig = async () => {
   return true;
 };
 
+// ── Bank Details Change Request Emails ───────────────────────────────────────
+
+// Sent to SUPER_ADMIN users when a seller submits a bank change request.
+// details: { sellerName, storeName, requestId, newBankDetails: { bankName, accountName, bsb, accountNumber } }
+const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, details = {}) => {
+  const { sellerName, storeName, requestId, newBankDetails = {} } = details;
+
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Super Admin Bank Change Request");
+    console.log("=".repeat(50));
+    console.log(`To: ${adminEmail} | Seller: ${sellerName} | Request: ${requestId}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/bank-change-requests`;
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `Bank Details Change Request \u2014 ${sellerName || 'A Seller'} \u2014 MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace Admin</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127968; Bank Details Change Request</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review and approve or reject</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#9888;&#65039; Seller Bank Details Change &mdash; Pending Your Review</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted a request to update their bank details. Please review and approve or reject this change.</p>
+                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#1565C0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Request Details</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Seller:</strong> ${sellerName || 'Not specified'}</p>
+                    ${storeName ? `<p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Store:</strong> ${storeName}</p>` : ''}
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Request ID:</strong> ${requestId || 'N/A'}</p>
+                  </div>
+                  <div style="background:#FFF8E1;border-radius:8px;padding:22px;border-left:4px solid #F9A825;margin-bottom:28px;">
+                    <p style="margin:0 0 16px;color:#E65100;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Requested New Bank Details</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Bank Name:</strong> ${newBankDetails.bankName || 'N/A'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Account Name:</strong> ${newBankDetails.accountName || 'N/A'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>BSB:</strong> ${newBankDetails.bsb || 'N/A'}</p>
+                    <p style="margin:0;color:#333;font-size:15px;"><strong>Account Number:</strong> ${newBankDetails.accountNumber || 'N/A'}</p>
+                  </div>
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${adminDashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Review in Admin Dashboard</a>
+                  </p>
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">The seller's existing bank details remain unchanged until approved.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace Admin Panel &mdash; Administrative Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(buildMsg(msg));
+    console.log(`✅ Super admin bank change request email sent to ${adminEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Super admin bank change request email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Sent to the seller when their bank change request is APPROVED.
+// details: { requestId, newBankDetails: { bankName, accountName, bsb, accountNumber } }
+const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, details = {}) => {
+  const { requestId, newBankDetails = {} } = details;
+
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Bank Change Approved");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Request: ${requestId}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/settings/bank-details`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: "Your Bank Details Have Been Updated \u2014 MIA Marketplace",
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#10003; Bank Details Approved</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your bank details have been successfully updated</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10003; Change Request Approved &amp; Applied</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your bank details change request has been <strong style="color:#2E7D32;">approved</strong> by our admin team. Your account has been updated with the new bank details immediately.</p>
+                  <div style="background:#E8F5E9;border-radius:8px;padding:22px;border-left:4px solid #4CAF50;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#1B5E20;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Updated Bank Details</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Bank Name:</strong> ${newBankDetails.bankName || 'N/A'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Account Name:</strong> ${newBankDetails.accountName || 'N/A'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>BSB:</strong> ${newBankDetails.bsb || 'N/A'}</p>
+                    <p style="margin:0;color:#333;font-size:15px;"><strong>Account Number:</strong> ${newBankDetails.accountNumber || 'N/A'}</p>
+                  </div>
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:28px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; What this means</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">All future payouts will be made to your new bank account. If you did not request this change, please contact us immediately.</p>
+                  </div>
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">View Bank Details</a>
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Seller Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(buildMsg(msg));
+    console.log(`✅ Seller bank change approved email sent to ${sellerEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller bank change approved email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Sent to the seller when their bank change request is REJECTED.
+// details: { requestId, reviewNote }
+const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, details = {}) => {
+  const { requestId, reviewNote } = details;
+
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Seller Bank Change Rejected");
+    console.log("=".repeat(50));
+    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Request: ${requestId}`);
+    console.log(`Reason: ${reviewNote || 'No reason provided'}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/settings/bank-details`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: "Your Bank Details Change Request Was Not Approved \u2014 MIA Marketplace",
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#10007; Bank Details Request Not Approved</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your change request has been reviewed</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#D32F2F;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">&#10007; Change Request Rejected &mdash; Existing Details Unchanged</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your bank details change request has been reviewed by our admin team and was <strong style="color:#C62828;">not approved</strong> at this time. Your existing bank details remain unchanged.</p>
+                  ${reviewNote ? `
+                  <div style="background:#FFF3E0;border-radius:8px;padding:22px;border-left:4px solid #E65100;margin-bottom:24px;">
+                    <p style="margin:0 0 10px;color:#BF360C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Admin Note</p>
+                    <p style="margin:0;color:#4E342E;font-size:15px;line-height:1.7;">${reviewNote}</p>
+                  </div>` : ''}
+                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:28px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">&#128161; What to do next</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Please review the feedback above, correct any issues, and resubmit your bank details change request from your seller dashboard.</p>
+                  </div>
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">Go to Bank Details</a>
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Seller Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(buildMsg(msg));
+    console.log(`✅ Seller bank change rejected email sent to ${sellerEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Seller bank change rejected email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = { 
   generateOTP, 
   sendOTPEmail, 
@@ -3137,7 +3393,10 @@ module.exports = {
   sendSellerProductSelfDeactivatedEmail,
   sendSellerProductSubmitReviewConfirmEmail,
   sendSellerOrderStatusEmail,
-  sendAdminOrderStatusEmail
+  sendAdminOrderStatusEmail,
+  sendSuperAdminBankChangeRequestEmail,
+  sendSellerBankChangeApprovedEmail,
+  sendSellerBankChangeRejectedEmail
 };
 
 

@@ -62,6 +62,9 @@ async function sellerOnboardingRoutes(fastify, options) {
   // Dashboard: request a bank details change
   fastify.post("/bank-details/change-request", { preHandler: authenticateSeller }, sellerController.requestBankDetailsChange);
 
+  // Dashboard: full history of bank change requests for this seller
+  fastify.get("/bank-change-requests", { preHandler: authenticateSeller }, sellerController.getBankChangeHistory);
+
   // Submit Application for Review
   fastify.post("/submit-for-review", { preHandler: authenticateSeller }, sellerController.submitForReview);
 
