@@ -8,7 +8,7 @@ const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
 const { getDefaultCommission, getCommissionForSeller } = require("./commission");
-const { notifyAdminNewSellerApplication } = require("./notification");
+const { notifyAdminNewSellerApplication, notifyBankChangeRequested } = require("./notification");
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
@@ -1743,10 +1743,14 @@ exports.requestBankDetailsChange = async (request, reply) => {
       });
     }
 
-    // Verify current password
+    // Verify current password and fetch name for notification
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { password: true }
+      select: {
+        password: true,
+        name: true,
+        sellerProfile: { select: { storeName: true } }
+      }
     });
 
     if (!user) {
@@ -1779,6 +1783,13 @@ exports.requestBankDetailsChange = async (request, reply) => {
         status: 'PENDING'
       }
     });
+
+    // Fire notifications (non-blocking — does not affect the response)
+    notifyBankChangeRequested(changeRequest.id, {
+      sellerName: user.name,
+      storeName: user.sellerProfile?.storeName || null,
+      newBankDetails: { bankName, accountName, bsb, accountNumber }
+    }).catch(err => console.error('Bank change requested notification error (non-blocking):', err.message));
 
     return reply.status(201).send({
       success: true,

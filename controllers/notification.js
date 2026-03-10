@@ -463,6 +463,111 @@ const notifyAdminOrderStatusChange = async (orderId, status, orderDetails = {}) 
   return notifications;
 };
 
+// ── Bank Details Change Request Notifications ─────────────────────────────────
+
+// Triggered when a seller submits a bank change request.
+// All ADMIN users get an in-app notification only.
+// All SUPER_ADMIN users get an in-app notification + email.
+const notifyBankChangeRequested = async (requestId, details = {}) => {
+  const { sellerName, storeName, newBankDetails } = details;
+
+  const title = '🏦 Bank Details Change Request';
+  const message = `Seller ${sellerName || 'Unknown'} (${storeName || ''}) has submitted a bank details change request and is awaiting review`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+    select: { id: true, role: true, email: true, name: true }
+  });
+
+  const { sendSuperAdminBankChangeRequestEmail } = require('../utils/emailService');
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'BANK_CHANGE_REQUESTED',
+      requestId,
+      'bank_change_request',
+      { sellerName, storeName, newBankDetails }
+    );
+    if (notification) notifications.push(notification);
+
+    // Email only for SUPER_ADMIN
+    if (admin.role === 'SUPER_ADMIN') {
+      sendSuperAdminBankChangeRequestEmail(admin.email, admin.name, {
+        sellerName,
+        storeName,
+        requestId,
+        newBankDetails
+      }).catch(err => console.error('Bank change request email error (non-blocking):', err.message));
+    }
+  }
+
+  return notifications;
+};
+
+// Triggered when an admin approves a bank change request.
+// The seller gets an in-app notification + email.
+const notifySellerBankChangeApproved = async (sellerId, requestId, details = {}) => {
+  const { sellerName, sellerEmail, newBankDetails } = details;
+
+  const title = '✅ Bank Details Change Approved';
+  const message = 'Your bank details change request has been approved. Your new bank details are now active.';
+
+  const notification = await createNotification(
+    sellerId,
+    title,
+    message,
+    'BANK_CHANGE_APPROVED',
+    requestId,
+    'bank_change_request',
+    { newBankDetails }
+  );
+
+  if (sellerEmail) {
+    const { sendSellerBankChangeApprovedEmail } = require('../utils/emailService');
+    sendSellerBankChangeApprovedEmail(sellerEmail, sellerName || 'Seller', {
+      requestId,
+      newBankDetails
+    }).catch(err => console.error('Bank change approved email error (non-blocking):', err.message));
+  }
+
+  return notification;
+};
+
+// Triggered when an admin rejects a bank change request.
+// The seller gets an in-app notification + email.
+const notifySellerBankChangeRejected = async (sellerId, requestId, details = {}) => {
+  const { sellerName, sellerEmail, reviewNote } = details;
+
+  const title = '❌ Bank Details Change Request Not Approved';
+  const message = reviewNote
+    ? `Your bank details change request was not approved. Reason: ${reviewNote}`
+    : 'Your bank details change request was not approved. Your existing bank details remain unchanged.';
+
+  const notification = await createNotification(
+    sellerId,
+    title,
+    message,
+    'BANK_CHANGE_REJECTED',
+    requestId,
+    'bank_change_request',
+    { reviewNote }
+  );
+
+  if (sellerEmail) {
+    const { sendSellerBankChangeRejectedEmail } = require('../utils/emailService');
+    sendSellerBankChangeRejectedEmail(sellerEmail, sellerName || 'Seller', {
+      requestId,
+      reviewNote
+    }).catch(err => console.error('Bank change rejected email error (non-blocking):', err.message));
+  }
+
+  return notification;
+};
+
 // GENERAL NOTIFICATION APIs
 
 // Get notifications for user
@@ -660,5 +765,8 @@ module.exports = {
   notifyAdminOrderStatusChange,
   notifyAdminLowStockDeactivation,
   notifyAdminProductSubmitReview,
-  notifyAdminProductSellerDeactivated
+  notifyAdminProductSellerDeactivated,
+  notifyBankChangeRequested,
+  notifySellerBankChangeApproved,
+  notifySellerBankChangeRejected
 };

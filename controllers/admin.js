@@ -12,7 +12,9 @@ const {
   notifySellerProductRecommendation,
   notifySellerProductStatusChange,
   notifySellerLowStock,
-  notifyAdminLowStockDeactivation
+  notifyAdminLowStockDeactivation,
+  notifySellerBankChangeApproved,
+  notifySellerBankChangeRejected
 } = require("./notification");
 const { backfillOrderNotifications } = require("./orderNotification");
 const { getCommissionForSeller } = require("./commission");
@@ -2423,6 +2425,20 @@ exports.approveBankChangeRequest = async (request, reply) => {
       })
     ]);
 
+    // Notify seller (non-blocking)
+    prisma.user.findUnique({
+      where: { id: changeRequest.sellerId },
+      select: { name: true, email: true }
+    }).then(seller => {
+      if (seller) {
+        notifySellerBankChangeApproved(changeRequest.sellerId, id, {
+          sellerName: seller.name,
+          sellerEmail: seller.email,
+          newBankDetails: changeRequest.newBankDetails
+        }).catch(err => console.error('Bank change approved notification error (non-blocking):', err.message));
+      }
+    }).catch(err => console.error('Seller lookup for bank notification error:', err.message));
+
     return reply.status(200).send({
       success: true,
       message: "Bank details change request approved and applied"
@@ -2459,6 +2475,20 @@ exports.rejectBankChangeRequest = async (request, reply) => {
         reviewNote: reviewNote ? reviewNote.trim() : null
       }
     });
+
+    // Notify seller (non-blocking)
+    prisma.user.findUnique({
+      where: { id: changeRequest.sellerId },
+      select: { name: true, email: true }
+    }).then(seller => {
+      if (seller) {
+        notifySellerBankChangeRejected(changeRequest.sellerId, id, {
+          sellerName: seller.name,
+          sellerEmail: seller.email,
+          reviewNote: reviewNote ? reviewNote.trim() : null
+        }).catch(err => console.error('Bank change rejected notification error (non-blocking):', err.message));
+      }
+    }).catch(err => console.error('Seller lookup for bank notification error:', err.message));
 
     return reply.status(200).send({
       success: true,
