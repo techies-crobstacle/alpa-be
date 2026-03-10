@@ -1978,7 +1978,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/categories`;
+  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/categories`;
 
   const msg = {
     to: adminEmail,
