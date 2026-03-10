@@ -632,8 +632,13 @@ exports.getMyOrders = async (request, reply) => {
             seller: {
               select: {
                 id: true,
-                name: true,
-                businessName: true
+                name: true
+              }
+            },
+            sellerProfile: {
+              select: {
+                businessName: true,
+                storeName: true
               }
             },
             items: {
@@ -665,7 +670,7 @@ exports.getMyOrders = async (request, reply) => {
           subOrderId: subOrder.id,
           subOrderStatus: subOrder.status,
           sellerId: subOrder.sellerId,
-          sellerName: subOrder.seller?.businessName || subOrder.seller?.name || 'Unknown Seller',
+          sellerName: subOrder.sellerProfile?.businessName || subOrder.sellerProfile?.storeName || subOrder.seller?.name || 'Unknown Seller',
           trackingNumber: subOrder.trackingNumber,
           estimatedDelivery: subOrder.estimatedDelivery
         }))

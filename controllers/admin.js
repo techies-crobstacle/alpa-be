@@ -117,7 +117,7 @@ exports.scanLowStockProducts = async (request, reply) => {
   }
 };
 
-// GET ORDERS BY SELLER ID (ADMIN ONLY  )
+// GET ORDERS BY SELLER ID (ADMIN ONLY) - Updated to use SubOrder model
 exports.getOrdersBySellerId = async (request, reply) => {
   try {
     // Only admin can access (route preHandler should enforce, but double-check)
@@ -125,16 +125,11 @@ exports.getOrdersBySellerId = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
     const { sellerId } = request.params;
-    // Find all orders that contain at least one product from this seller
-    const orders = await prisma.order.findMany({
+    
+    // Get sub-orders for this specific seller only
+    const subOrders = await prisma.subOrder.findMany({
       where: {
-        items: {
-          some: {
-            product: {
-              sellerId: sellerId
-            }
-          }
-        }
+        sellerId: sellerId
       },
       orderBy: {
         createdAt: 'desc'
@@ -145,19 +140,71 @@ exports.getOrdersBySellerId = async (request, reply) => {
             product: true
           }
         },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            role: true,
-            createdAt: true
+        parentOrder: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                role: true,
+                createdAt: true
+              }
+            }
           }
         }
       }
     });
-    reply.send({ success: true, orders, count: orders.length });
+
+    // Transform sub-orders to include parent order info and seller-specific data
+    const transformedOrders = subOrders.map(subOrder => ({
+      // Sub-order specific fields
+      id: subOrder.id,
+      subOrderId: subOrder.id, // ✅ Clear indicator this is a sub-order
+      parentOrderId: subOrder.parentOrderId, // ✅ Reference to parent order
+      sellerId: subOrder.sellerId,
+      status: subOrder.status,
+      trackingNumber: subOrder.trackingNumber,
+      estimatedDelivery: subOrder.estimatedDelivery,  
+      statusReason: subOrder.statusReason,
+      subtotal: subOrder.subtotal, // ✅ Only this seller's portion
+      createdAt: subOrder.createdAt,
+      updatedAt: subOrder.updatedAt,
+      
+      // Parent order fields
+      totalAmount: subOrder.parentOrder.totalAmount, // Full order total (for context)
+      paymentMethod: subOrder.parentOrder.paymentMethod,
+      paymentStatus: subOrder.parentOrder.paymentStatus,
+      shippingAddress: subOrder.parentOrder.shippingAddress,
+      shippingAddressLine: subOrder.parentOrder.shippingAddressLine,
+      shippingCity: subOrder.parentOrder.shippingCity,
+      shippingState: subOrder.parentOrder.shippingState,
+      shippingZipCode: subOrder.parentOrder.shippingZipCode,
+      shippingCountry: subOrder.parentOrder.shippingCountry,
+      shippingPhone: subOrder.parentOrder.shippingPhone,
+      customerName: subOrder.parentOrder.customerName,
+      customerEmail: subOrder.parentOrder.customerEmail,
+      customerPhone: subOrder.parentOrder.customerPhone,
+      
+      // Customer info
+      user: subOrder.parentOrder.user,
+      
+      // ✅ Only this seller's items (no other sellers' products)
+      items: subOrder.items,
+      
+      // ✅ Metadata to indicate this is seller-filtered
+      isSubOrder: true,
+      sellerSpecific: true
+    }));
+
+    reply.send({ 
+      success: true, 
+      orders: transformedOrders, 
+      count: transformedOrders.length,
+      sellerId: sellerId,
+      note: "Showing only orders/products for this specific seller. Same parent order may appear for different sellers."
+    });
   } catch (error) {
     console.error('Get orders by sellerId error:', error);
     reply.status(500).send({ success: false, error: error.message });

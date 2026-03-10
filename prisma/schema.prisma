@@ -149,6 +149,7 @@ model SellerProfile {
   commissionId            String?       @map("commission_id")
   commission              Commission?   @relation(fields: [commissionId], references: [id])
   bankChangeRequests      BankChangeRequest[]
+  subOrders               SubOrder[]    // Sub-orders for this seller
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -268,6 +269,7 @@ model SubOrder {
   parentOrder       Order       @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
   sellerId          String      // Seller this sub-order belongs to
   seller            User        @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerProfile     SellerProfile? @relation(fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey") // Access to seller's business info
   items             OrderItem[] // Items specific to this seller
   subtotal          Decimal     @db.Decimal(10, 2) // Seller's portion of the order
   status            OrderStatus @default(CONFIRMED) // Seller-specific status
