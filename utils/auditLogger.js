@@ -19,6 +19,7 @@ const ENTITY_TYPES = {
   ORDER:    'ORDER',
   USER:     'USER',
   CATEGORY: 'CATEGORY',
+  COUPON:   'COUPON',
 };
 
 const AUDIT_ACTIONS = {
@@ -53,6 +54,13 @@ const AUDIT_ACTIONS = {
   CATEGORY_SOFT_DELETED: 'CATEGORY_SOFT_DELETED',   // Moved to recycle bin
   CATEGORY_RESTORED:     'CATEGORY_RESTORED',       // Recovered from recycle bin
   CATEGORY_HARD_DELETED: 'CATEGORY_HARD_DELETED',   // Permanently deleted (row gone; log entry remains)
+
+  // ── Coupon lifecycle ───────────────────────────────────────────────────────
+  COUPON_CREATED:      'COUPON_CREATED',       // Admin created a new coupon
+  COUPON_UPDATED:      'COUPON_UPDATED',       // Admin edited coupon fields
+  COUPON_SOFT_DELETED: 'COUPON_SOFT_DELETED',  // Moved to recycle bin
+  COUPON_RESTORED:     'COUPON_RESTORED',      // Recovered from recycle bin
+  COUPON_HARD_DELETED: 'COUPON_HARD_DELETED',  // Permanently deleted (row gone; log entry remains)
 
   // ── Future entities — add when ready ──────────────────────────────────────
   // ORDER_CREATED, ORDER_STATUS_CHANGED, ORDER_CANCELLED, ORDER_REFUNDED ...

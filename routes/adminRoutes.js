@@ -90,10 +90,14 @@ async function adminRoutes(fastify, options) {
   fastify.get("/coupons/active", adminController.getActiveCoupons);
 
   // Admin only: full coupon list + management
-  fastify.get("/coupons", adminController.getAllCoupons);
-  fastify.post("/coupons", { preHandler: adminAuth }, adminController.createCoupon);
-  fastify.put("/coupons/:id", { preHandler: adminAuth }, adminController.updateCoupon);
-  fastify.delete("/coupons/:id", { preHandler: adminAuth }, adminController.deleteCoupon);
+  fastify.get("/coupons",                                    adminController.getAllCoupons);
+  fastify.post("/coupons",            { preHandler: adminAuth }, adminController.createCoupon);
+  fastify.put("/coupons/:id",         { preHandler: adminAuth }, adminController.updateCoupon);
+
+  // Recycle bin: soft-delete, restore, hard-delete
+  fastify.delete("/coupons/:id",           { preHandler: adminAuth }, adminController.softDeleteCoupon);
+  fastify.patch("/coupons/:id/restore",    { preHandler: adminAuth }, adminController.restoreCoupon);
+  fastify.delete("/coupons/:id/permanent", { preHandler: adminAuth }, adminController.hardDeleteCoupon);
   // ---------------- SALES ANALYTICS & EXPORT ----------------
   
   fastify.get("/sales/analytics", { preHandler: adminAuth }, adminController.getSalesAnalytics);

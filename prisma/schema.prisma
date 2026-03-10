@@ -516,21 +516,28 @@ model CommissionEarned {
 }
 
 model Coupon {
-  id             String   @id @default(cuid())
-  code           String   @unique
-  discountType   String   @default("percentage") @map("discount_type") // "percentage" | "flat"
-  discountValue  Float    @map("discount_value")
-  maxDiscount    Float?   @map("max_discount")    // cap on discount amount (for percentage type)
-  minCartValue   Float?   @map("min_cart_value")  // minimum cart total to apply coupon
-  expiresAt      DateTime @map("expires_at")
-  usageLimit     Int?     @map("usage_limit")     // total times coupon can be used (null = unlimited)
-  usagePerUser   Int      @default(1) @map("usage_per_user") // max uses per user
-  usageCount     Int      @default(0) @map("usage_count")    // total times used so far
-  isActive       Boolean  @default(true) @map("is_active")
-  createdBy      String   @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id             String    @id @default(cuid())
+  code           String    @unique
+  discountType   String    @default("percentage") @map("discount_type") // "percentage" | "flat"
+  discountValue  Float     @map("discount_value")
+  maxDiscount    Float?    @map("max_discount")    // cap on discount amount (for percentage type)
+  minCartValue   Float?    @map("min_cart_value")  // minimum cart total to apply coupon
+  expiresAt      DateTime  @map("expires_at")
+  usageLimit     Int?      @map("usage_limit")     // total times coupon can be used (null = unlimited)
+  usagePerUser   Int       @default(1) @map("usage_per_user") // max uses per user
+  usageCount     Int       @default(0) @map("usage_count")    // total times used so far
+  isActive       Boolean   @default(true) @map("is_active")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
+  // Soft delete — row is kept for audit continuity; only gone when hard-deleted
+  softDeletedAt  DateTime? @map("soft_deleted_at") // null = active; set = in recycle bin
+  softDeletedBy  String?   @map("soft_deleted_by") // userId of admin who soft-deleted it
+  restoredAt     DateTime? @map("restored_at")     // last restore timestamp
+  restoredBy     String?   @map("restored_by")     // userId of admin who restored it
+
+  @@index([softDeletedAt])
   @@map("coupons")
 }
 
