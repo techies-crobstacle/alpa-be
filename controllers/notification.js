@@ -283,6 +283,35 @@ const notifyAdminNewCategoryRequest = async (categoryId, categoryDetails = {}) =
   return notifications;
 };
 
+const notifyAdminNewSellerApplication = async (sellerId, sellerDetails = {}) => {
+  const { sellerName, email, applicationId, businessName } = sellerDetails;
+  
+  const title = 'New Seller Application';
+  const message = `${sellerName || 'New Seller'} (${email}) has submitted a seller application${businessName ? ` for "${businessName}"` : ''} and is awaiting approval`;
+
+  // Get all admin users
+  const admins = await prisma.user.findMany({
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'NEW_SELLER_APPLICATION',
+      applicationId || sellerId,
+      'seller',
+      sellerDetails
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
 // ADMIN NOTIFICATIONS
 const notifyAdminNewOrder = async (orderId, orderDetails = {}) => {
   const { customerName, sellerName, totalAmount, itemCount, productNames } = orderDetails;
@@ -624,6 +653,7 @@ module.exports = {
   notifySellerCategoryApproved,
   notifySellerCategoryRejected,
   notifyAdminNewCategoryRequest,
+  notifyAdminNewSellerApplication,
   notifyAdminNewOrder,
   notifyAdminNewProduct,
   notifyAdminProductPending,

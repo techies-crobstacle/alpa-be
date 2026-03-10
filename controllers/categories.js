@@ -740,6 +740,48 @@ exports.resubmitCategory = async (request, reply) => {
       reason: `Category request re-edited and resubmitted for approval`,
     });
 
+    // GET SELLER INFORMATION FOR NOTIFICATIONS
+    const seller = await prisma.user.findUnique({
+      where: { id: category.requestedBy },
+      select: { name: true, email: true }
+    });
+
+    // Send notifications to all admins (admin + super admin)
+    const categoryDetails = {
+      categoryName: categoryName.trim(),
+      description: description ?? category.description,
+      sellerName: seller?.name || 'Unknown Seller'
+    };
+    
+    try {
+      await notifyAdminNewCategoryRequest(id, categoryDetails);
+      console.log(`🔔 Resubmit notifications sent to admins for category: ${categoryName.trim()}`);
+    } catch (notificationError) {
+      console.error('Failed to send resubmit notifications to admins:', notificationError);
+    }
+
+    // Send emails only to super admins
+    try {
+      const superAdmins = await prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN' },
+        select: { email: true, name: true }
+      });
+
+      for (const admin of superAdmins) {
+        if (admin.email) {
+          await sendSuperAdminCategoryRequestEmail(admin.email, admin.name, {
+            categoryName: categoryName.trim(),
+            description: description ?? category.description,
+            sellerName: seller?.name || 'Unknown Seller',
+            categoryId: id
+          });
+        }
+      }
+      console.log(`📧 Resubmit emails sent to ${superAdmins.length} super admins for category: ${categoryName.trim()}`);
+    } catch (emailError) {
+      console.error('Failed to send resubmit emails to super admins:', emailError);
+    }
+
     reply.send({
       success: true,
       message: 'Category request resubmitted for approval',

@@ -1,5 +1,5 @@
 ﻿const prisma = require("../config/prisma");
-const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail, sendSellerRegistrationEmail } = require("../utils/emailService");
+const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail, sendSellerRegistrationEmail, sendSuperAdminNewSellerEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
@@ -8,6 +8,7 @@ const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
 const { getDefaultCommission, getCommissionForSeller } = require("./commission");
+const { notifyAdminNewSellerApplication } = require("./notification");
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
@@ -318,6 +319,43 @@ exports.verifyOTP = async (request, reply) => {
       result.user.name || "Seller",
       result.sellerProfile.id
     ).catch(err => console.error("Registration email error (non-fatal):", err.message));
+
+    // Send notifications to all admins (admin + super admin)
+    const sellerDetails = {
+      sellerName: result.user.name || 'Unknown Seller',
+      email: result.user.email,
+      applicationId: result.sellerProfile.id,
+      businessName: pending.formData?.businessName || null
+    };
+    
+    try {
+      await notifyAdminNewSellerApplication(result.user.id, sellerDetails);
+      console.log(`🔔 Notifications sent to admins for new seller: ${result.user.name}`);
+    } catch (notificationError) {
+      console.error('Failed to send notifications to admins:', notificationError);
+    }
+
+    // Send emails only to super admins
+    try {
+      const superAdmins = await prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN' },
+        select: { email: true, name: true }
+      });
+
+      for (const admin of superAdmins) {
+        if (admin.email) {
+          await sendSuperAdminNewSellerEmail(admin.email, admin.name, {
+            sellerName: result.user.name || 'Unknown Seller',
+            email: result.user.email,
+            businessName: pending.formData?.businessName || null,
+            applicationId: result.sellerProfile.id
+          });
+        }
+      }
+      console.log(`📧 Emails sent to ${superAdmins.length} super admins for new seller: ${result.user.name}`);
+    } catch (emailError) {
+      console.error('Failed to send emails to super admins:', emailError);
+    }
 
     // Remove password from response
     const { password: _, ...userWithoutPassword } = result.user;

@@ -1978,7 +1978,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/categories`;
+  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/categories`;
 
   const msg = {
     to: adminEmail,
@@ -2050,6 +2050,95 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
     return { success: true };
   } catch (error) {
     console.error("❌ Super admin category request email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Super Admin New Seller Email ────────────────────────────────────────────────────
+// Sent to super admins when a new seller submits their application
+const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName, email, businessName, applicationId } = {}) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Super Admin New Seller");
+    console.log("=".repeat(50));
+    console.log(`To: ${adminEmail} | Seller: ${sellerName} | Business: ${businessName}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/sellers`;
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `New Seller Application: "${businessName || sellerName}" — MIA Marketplace`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace Admin</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">🏪 New Seller Application</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review seller application</p>
+                </td>
+              </tr>
+              <!-- Alert banner -->
+              <tr>
+                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">⚠️ Seller Application Approval Required</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A new seller has completed their application and is ready for review and approval.</p>
+
+                  <!-- Application details box -->
+                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#1565C0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Application Details</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Applicant:</strong> ${sellerName || 'Not specified'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Email:</strong> ${email || 'Not specified'}</p>
+                    <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Application ID:</strong> ${applicationId || 'Not specified'}</p>
+                    ${businessName ? `<p style="margin:0;color:#333;font-size:15px;"><strong>Business Name:</strong> ${businessName}</p>` : ''}
+                  </div>
+
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Please review the application details, including business information, KYC documents, and cultural background to determine approval status. You can provide feedback to help sellers improve future applications.</p>
+
+                  <p style="text-align:center;margin:32px 0;">
+                    <a href="${adminDashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Review Application</a>
+                  </p>
+
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">Please review this application promptly to maintain our seller onboarding standards.</p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace Admin Panel &mdash; Administrative Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 MIA Marketplace.</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`✅ Super admin new seller email sent to ${adminEmail} for seller: "${sellerName}"`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Super admin new seller email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -3039,6 +3128,7 @@ module.exports = {
   sendSellerCategoryApprovedEmail,
   sendSellerCategoryRejectedEmail,
   sendSuperAdminCategoryRequestEmail,
+  sendSuperAdminNewSellerEmail,
   sendSellerProductActivatedEmail,
   sendSellerProductDeactivatedEmail,
   sendAdminLowStockDeactivationEmail,
