@@ -2397,6 +2397,37 @@ exports.getBankChangeRequests = async (request, reply) => {
   }
 };
 
+// GET /admin/bank-change-requests/:id
+exports.getBankChangeRequest = async (request, reply) => {
+  try {
+    const { id } = request.params;
+
+    const changeRequest = await prisma.bankChangeRequest.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            userId: true,
+            storeName: true,
+            businessName: true,
+            bankDetails: true,
+            user: { select: { email: true, name: true } }
+          }
+        }
+      }
+    });
+
+    if (!changeRequest) {
+      return reply.status(404).send({ success: false, message: 'Bank change request not found' });
+    }
+
+    return reply.status(200).send({ success: true, request: changeRequest });
+  } catch (error) {
+    console.error('getBankChangeRequest error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 // POST /admin/bank-change-requests/:id/approve
 exports.approveBankChangeRequest = async (request, reply) => {
   try {

@@ -17,7 +17,7 @@ const createNotification = async (userId, title, message, type, relatedId = null
     console.log(`🔔 Notification created for user ${userId}: ${title}`);
     return notification;
   } catch (error) {
-    console.error("Error creating notification:", error);
+    console.error(`[Notification] Failed to create notification (type: ${type}, userId: ${userId}):`, error.message);
     return null;
   }
 };
