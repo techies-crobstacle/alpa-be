@@ -24,6 +24,7 @@ model User {
 
   products      Product[]
   orders        Order[]
+  subOrders     SubOrder[] @relation("SellerSubOrders") // Seller's sub-orders
   cart          Cart?
   ratings       Rating[]
   supportTickets SupportTicket[]
@@ -224,9 +225,14 @@ model Order {
   id                String      @id @default(cuid())
   userId            String?     // Made optional for guest orders
   user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items             OrderItem[]
+  items             OrderItem[] // Legacy items relation for existing orders
+  subOrders         SubOrder[]  // Child orders for each seller
   totalAmount       Decimal     @db.Decimal(10, 2)
-  status            OrderStatus @default(CONFIRMED)
+  status            OrderStatus? // Legacy status for existing orders
+  overallStatus     OrderStatus @default(CONFIRMED) // Overall order status
+  trackingNumber    String?     // Legacy tracking for existing orders
+  estimatedDelivery DateTime?   // Legacy delivery date for existing orders
+  statusReason      String?     // Legacy status reason for existing orders
   paymentMethod     String?
   stripePaymentIntentId String?   // Stripe PaymentIntent ID
   paypalOrderId         String?   // PayPal Order ID
@@ -241,9 +247,6 @@ model Order {
   shippingZipCode     String?
   shippingCountry     String?
   shippingPhone       String?
-  trackingNumber    String?
-  estimatedDelivery DateTime?
-  statusReason      String?
   customerName      String
   customerEmail     String
   customerPhone     String
@@ -255,13 +258,41 @@ model Order {
 
   @@index([userId])
   @@index([status])
+  @@index([overallStatus])
   @@map("orders")
+}
+
+model SubOrder {
+  id                String      @id @default(cuid())
+  parentOrderId     String      // Reference to parent order
+  parentOrder       Order       @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
+  sellerId          String      // Seller this sub-order belongs to
+  seller            User        @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  items             OrderItem[] // Items specific to this seller
+  subtotal          Decimal     @db.Decimal(10, 2) // Seller's portion of the order
+  status            OrderStatus @default(CONFIRMED) // Seller-specific status
+  trackingNumber    String?     // Seller-specific tracking
+  estimatedDelivery DateTime?   // Seller-specific delivery estimate
+  statusReason      String?     // Seller-specific status reason
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  orderNotifications OrderNotification[]
+  commissionEarned   CommissionEarned[]
+
+  @@index([parentOrderId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("sub_orders")
 }
 
 model OrderItem {
   id        String   @id @default(cuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // Keep both for backward compatibility - existing items have orderId, new items have subOrderId
+  orderId   String?  // For existing order items (legacy)
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subOrderId String? // For new order items (parent-child architecture)
+  subOrder  SubOrder? @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
   productId String
   product   Product  @relation(fields: [productId], references: [id])
   quantity  Int
@@ -492,8 +523,10 @@ enum CommissionStatus {
 // CommissionEarned: auto-created for every order, tracking the platform fee per seller
 model CommissionEarned {
   id               String           @id @default(cuid())
-  orderId          String           @map("order_id")
-  order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId          String?          @map("order_id") // Made optional for backward compatibility 
+  order            Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  subOrderId       String?          @map("sub_order_id") // New relation to SubOrder
+  subOrder         SubOrder?        @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
   sellerId         String           @map("seller_id")
   seller           User             @relation("SellerCommissions", fields: [sellerId], references: [id], onDelete: Cascade)
   customerId       String?          @map("customer_id")
@@ -558,7 +591,8 @@ model Wishlist {
 
 model OrderNotification {
   id              String               @id @default(cuid())
-  orderId         String
+  orderId         String?              // Made optional for backward compatibility
+  subOrderId      String?              // New relation to SubOrder 
   sellerId        String
   type            NotificationType
   priority        Priority             @default(MEDIUM)
@@ -571,14 +605,17 @@ model OrderNotification {
   completedAt     DateTime?
   acknowledgedAt  DateTime?
 
-  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  seller User  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  subOrder SubOrder? @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  seller   User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
   @@index([sellerId])
   @@index([status])
   @@index([priority])
   @@index([type])
   @@index([slaDeadline])
+  @@index([orderId])
+  @@index([subOrderId])
   @@map("order_notifications")
 }
 

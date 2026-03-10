@@ -278,8 +278,8 @@ exports.createOrder = async (request, reply) => {
         });
       }
 
-      // Create order with items and shipping/GST details
-      const newOrder = await tx.order.create({
+      // Create parent order (customer's overall order)
+      const parentOrder = await tx.order.create({
         data: {
           userId,
           totalAmount,
@@ -314,40 +314,59 @@ exports.createOrder = async (request, reply) => {
           shippingCountry: country,
           shippingPhone: mobileNumber,
           paymentMethod,
-          status: "CONFIRMED",
+          overallStatus: "CONFIRMED",
           customerName: user.name,
           customerEmail: user.email,
-          customerPhone: mobileNumber || user.phone || '',
-          items: {
-            create: orderItems
-          }
-        },
-        include: {
-          items: {
-            include: {
-              product: true
-            }
-          }
+          customerPhone: mobileNumber || user.phone || ''
         }
       });
+
+      // Create sub-orders for each seller with their specific products
+      const createdSubOrders = [];
+      for (const [sellerId, sellerData] of sellerNotifications) {
+        // Create sub-order for this seller
+        const subOrder = await tx.subOrder.create({
+          data: {
+            parentOrderId: parentOrder.id,
+            sellerId: sellerId,
+            subtotal: sellerData.totalAmount,
+            status: "CONFIRMED"
+          }
+        });
+
+        // Create order items for this sub-order
+        const sellerItemsToCreate = cart.items
+          .filter(item => item.product.sellerId === sellerId)
+          .map(item => ({
+            subOrderId: subOrder.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            price: Number(item.product.price)
+          }));
+
+        await tx.orderItem.createMany({
+          data: sellerItemsToCreate
+        });
+
+        createdSubOrders.push({
+          ...subOrder,
+          items: sellerItemsToCreate,
+          sellerId: sellerId
+        });
+      }
 
       // Clear cart
       await tx.cartItem.deleteMany({
         where: { cartId: cart.id }
       });
 
-      // Increment coupon usageCount if applied
-      if (appliedCoupon) {
-        await tx.coupon.update({
-          where: { id: appliedCoupon.id },
-          data: { usageCount: { increment: 1 } }
-        });
-      }
-
-      return newOrder;
+      return {
+        parentOrder,
+        subOrders: createdSubOrders
+      };
     });
 
-    console.log(`✅ Order created: ${order.id}`);
+    console.log(`✅ Parent Order created: ${order.parentOrder.id} with ${order.subOrders.length} sub-orders`);
     // Stock broadcasts are handled automatically by the Prisma middleware
     // in config/prisma.js — no manual broadcast needed here.
 
@@ -356,8 +375,10 @@ exports.createOrder = async (request, reply) => {
 
     // ── Commission Earned — record 10 % platform fee per seller (non-blocking) ─
     for (const [sellerId, sellerData] of sellerNotifications) {
+      // Find the sub-order for this seller
+      const sellerSubOrder = order.subOrders.find(sub => sub.sellerId === sellerId);
       createCommissionEarned({
-        orderId: order.id,
+        orderId: sellerSubOrder?.id, // Use sub-order ID for commission tracking
         sellerId,
         orderValue: sellerData.totalAmount,
         customerName: user.name,
@@ -386,18 +407,18 @@ exports.createOrder = async (request, reply) => {
       }
     }
 
-    // Create notifications
+    // Create notifications for parent order
     const orderNotificationData = {
       customerName: user.name,
       sellerName: sellerNameList.length > 0 ? sellerNameList.join(', ') : 'Unknown',
       totalAmount: totalAmount.toFixed(2),
-      itemCount: order.items.length,
+      itemCount: cart.items.length,
       productNames: allProductTitles,
-      orderId: order.id
+      orderId: order.parentOrder.id
     };
 
     // Notify admins about new order
-    notifyAdminNewOrder(order.id, orderNotificationData).catch(error => {
+    notifyAdminNewOrder(order.parentOrder.id, orderNotificationData).catch(error => {
       console.error("Admin notification error (non-blocking):", error.message);
     });
 
@@ -557,7 +578,13 @@ exports.createOrder = async (request, reply) => {
     return reply.status(200).send({
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
-      orderId: order.id,
+      orderId: order.parentOrder.id,
+      subOrders: order.subOrders.map(sub => ({
+        id: sub.id,
+        sellerId: sub.sellerId, 
+        subtotal: sub.subtotal,
+        status: sub.status
+      })),
       orderSummary: {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
@@ -600,29 +627,123 @@ exports.getMyOrders = async (request, reply) => {
     const orders = await prisma.order.findMany({
       where: { userId },
       include: {
-        items: {
+        subOrders: {
           include: {
-            product: {
+            seller: {
               select: {
                 id: true,
-                title: true,
-                images: true,
-                price: true
+                name: true,
+                businessName: true
+              }
+            },
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    title: true,
+                    images: true,
+                    price: true,
+                    sellerId: true
+                  }
+                }
               }
             }
-          }
+          },
+          orderBy: { createdAt: 'desc' }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    // Normalise legacy PENDING status → CONFIRMED
-    const normalised = orders.map(o => ({
-      ...o,
-      status: o.status === 'PENDING' ? 'CONFIRMED' : o.status
-    }));
+    // Transform to maintain backward compatibility while showing sub-order details
+    const transformedOrders = orders.map(order => {
+      // Aggregate all items from sub-orders
+      const allItems = order.subOrders.flatMap(subOrder => 
+        subOrder.items.map(item => ({
+          ...item,
+          subOrderId: subOrder.id,
+          subOrderStatus: subOrder.status,
+          sellerId: subOrder.sellerId,
+          sellerName: subOrder.seller?.businessName || subOrder.seller?.name || 'Unknown Seller',
+          trackingNumber: subOrder.trackingNumber,
+          estimatedDelivery: subOrder.estimatedDelivery
+        }))
+      );
 
-    return reply.status(200).send({ success: true, orders: normalised });
+      // Determine overall status based on sub-orders
+      let computedStatus;
+      
+      if (order.subOrders.length === 0) {
+        // No sub-orders yet (legacy orders) - use the overallStatus or status field
+        computedStatus = order.overallStatus || order.status || 'CONFIRMED';
+      } else {
+        // Has sub-orders - compute status from sub-orders
+        const subOrderStatuses = order.subOrders.map(sub => sub.status);
+        
+        if (subOrderStatuses.every(status => status === 'DELIVERED')) {
+          computedStatus = 'DELIVERED';
+        } else if (subOrderStatuses.every(status => status === 'CANCELLED')) {
+          computedStatus = 'CANCELLED';
+        } else if (subOrderStatuses.some(status => status === 'SHIPPED')) {
+          computedStatus = 'SHIPPED';  
+        } else if (subOrderStatuses.some(status => status === 'PROCESSING')) {
+          computedStatus = 'PROCESSING';
+        } else {
+          computedStatus = subOrderStatuses[0] || 'CONFIRMED';
+        }
+      }
+
+      return {
+        id: order.id,
+        userId: order.userId,
+        totalAmount: order.totalAmount,
+        status: computedStatus, // Use computed overall status, not database status
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        statusReason: order.statusReason,
+        paymentMethod: order.paymentMethod,
+        stripePaymentIntentId: order.stripePaymentIntentId,
+        paypalOrderId: order.paypalOrderId,
+        paymentStatus: order.paymentStatus,
+        couponCode: order.couponCode,
+        discountAmount: order.discountAmount,
+        originalTotal: order.originalTotal,
+        shippingAddress: order.shippingAddress,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        items: allItems,
+        subOrders: order.subOrders.map(sub => ({
+          id: sub.id,
+          sellerId: sub.sellerId,
+          sellerName: sub.seller?.businessName || sub.seller?.name || 'Unknown Seller',
+          status: sub.status,
+          trackingNumber: sub.trackingNumber,
+          estimatedDelivery: sub.estimatedDelivery,
+          subtotal: sub.subtotal,
+          itemCount: sub.items.length,
+          items: sub.items.map(item => ({
+            id: item.id,
+            productId: item.productId,
+            productTitle: item.product?.title || 'Product',
+            productImages: item.product?.images || [],
+            quantity: item.quantity,
+            price: item.price
+          }))
+        }))
+      };
+    });
+
+    return reply.status(200).send({ success: true, orders: transformedOrders });
   } catch (error) {
     console.error("Get my orders error:", error);
     return reply.status(500).send({ success: false, message: error.message });
