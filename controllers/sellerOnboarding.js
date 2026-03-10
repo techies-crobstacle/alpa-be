@@ -1753,6 +1753,58 @@ exports.requestBankDetailsChange = async (request, reply) => {
   }
 };
 
+// GET /seller-onboarding/bank-change-requests
+// Returns the authenticated seller's full history of bank change requests,
+// ordered most-recent first. Results are always scoped to the calling seller.
+exports.getBankChangeHistory = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
 
+    const page  = Math.max(1, parseInt(request.query.page  ?? 1,  10));
+    const limit = Math.min(100, Math.max(1, parseInt(request.query.limit ?? 20, 10)));
+    const skip  = (page - 1) * limit;
 
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId },
+      select: { userId: true }
+    });
+
+    if (!sellerProfile) {
+      return reply.status(404).send({ success: false, message: "Seller profile not found" });
+    }
+
+    const [total, requests] = await Promise.all([
+      prisma.bankChangeRequest.count({ where: { sellerId: userId } }),
+      prisma.bankChangeRequest.findMany({
+        where: { sellerId: userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          newBankDetails: true,
+          reason: true,
+          status: true,
+          reviewNote: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      })
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      requests,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error("getBankChangeHistory error:", error);
+    return reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
 
