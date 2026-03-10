@@ -602,14 +602,21 @@ exports.getMyCommissionEarned = async (request, reply) => {
       SELECT COUNT(*)::int AS total FROM commission_earned ce ${whereClause}
     `);
 
-    // Aggregate totals for the seller
+    // Aggregate totals for the seller (includes 30-day redeemable split)
     const totalsRows = await prisma.$queryRawUnsafe(`
       SELECT
         COALESCE(SUM(order_value), 0)::float             AS "totalOrderValue",
         COALESCE(SUM(commission_amount), 0)::float       AS "totalCommissionDeducted",
         COALESCE(SUM(net_payable), 0)::float             AS "totalNetPayable",
         COALESCE(SUM(CASE WHEN status = 'PAID'    THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
-        COALESCE(SUM(CASE WHEN status = 'PENDING' THEN net_payable ELSE 0 END), 0)::float AS "totalPending"
+        COALESCE(SUM(CASE WHEN status = 'PENDING' THEN net_payable ELSE 0 END), 0)::float AS "totalPending",
+        -- Redeemable: PENDING commissions from orders placed 30+ days ago
+        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days'
+                          THEN net_payable ELSE 0 END), 0)::float AS "redeemableAmount",
+        -- Locked: PENDING commissions from orders placed less than 30 days ago
+        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at > NOW() - INTERVAL '30 days'
+                          THEN net_payable ELSE 0 END), 0)::float AS "lockedAmount",
+        COUNT(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days' THEN 1 END)::int AS "eligibleOrderCount"
       FROM commission_earned
       WHERE seller_id = '${sellerId.replace(/'/g, "''")}'
     `);
@@ -627,6 +634,309 @@ exports.getMyCommissionEarned = async (request, reply) => {
     });
   } catch (err) {
     console.error("getMyCommissionEarned error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAYOUT REQUESTS — seller-initiated payouts against their redeemable balance
+// Eligibility rule: commission_earned records must be 30+ days old (PENDING)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── SELLER: get redeemable payout summary ───────────────────────────────────
+// GET /api/commissions/payout/redeemable
+exports.getRedeemableSummary = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        COALESCE(SUM(CASE WHEN status = 'PENDING'
+                          THEN net_payable ELSE 0 END), 0)::float AS "totalPending",
+        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days'
+                          THEN net_payable ELSE 0 END), 0)::float AS "redeemableAmount",
+        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at > NOW() - INTERVAL '30 days'
+                          THEN net_payable ELSE 0 END), 0)::float AS "lockedAmount",
+        COALESCE(SUM(CASE WHEN status = 'PAID'
+                          THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
+        COUNT(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days'
+                   THEN 1 END)::int                               AS "eligibleOrderCount"
+      FROM commission_earned
+      WHERE seller_id = ${sellerId}
+    `;
+
+    // Return any open (PENDING) payout request so the UI can block duplicate submissions
+    const pendingRequests = await prisma.$queryRaw`
+      SELECT id,
+             requested_amount      AS "requestedAmount",
+             redeemable_at_request AS "redeemableAtRequest",
+             created_at            AS "createdAt"
+      FROM payout_requests
+      WHERE seller_id = ${sellerId} AND status = 'PENDING'::"PayoutRequestStatus"
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    return reply.send({
+      success: true,
+      summary: rows[0],
+      pendingPayoutRequest: pendingRequests[0] || null
+    });
+  } catch (err) {
+    console.error("getRedeemableSummary error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── SELLER: request a payout ────────────────────────────────────────────────
+// POST /api/commissions/payout/request
+exports.requestPayout = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+    const { requestedAmount, note } = request.body || {};
+
+    // Block if a PENDING payout request already exists
+    const existing = await prisma.$queryRaw`
+      SELECT id FROM payout_requests
+      WHERE seller_id = ${sellerId} AND status = 'PENDING'::"PayoutRequestStatus"
+    `;
+    if (existing.length) {
+      return reply.status(400).send({
+        success: false,
+        message: "You already have a pending payout request. Please wait for it to be processed before submitting another."
+      });
+    }
+
+    // Calculate current redeemable amount (PENDING, 30+ days old)
+    const redeemRows = await prisma.$queryRaw`
+      SELECT COALESCE(SUM(net_payable), 0)::float AS "redeemableAmount"
+      FROM commission_earned
+      WHERE seller_id  = ${sellerId}
+        AND status     = 'PENDING'::"CommissionStatus"
+        AND created_at <= NOW() - INTERVAL '30 days'
+    `;
+    const redeemableAmount = parseFloat(redeemRows[0]?.redeemableAmount || 0);
+
+    if (redeemableAmount <= 0) {
+      return reply.status(400).send({
+        success: false,
+        message: "No redeemable amount available. Orders must be at least 30 days old to be eligible for payout."
+      });
+    }
+
+    // Determine the amount to request
+    let amountToRequest = redeemableAmount;
+    if (requestedAmount !== undefined && requestedAmount !== null) {
+      const parsed = parseFloat(requestedAmount);
+      if (isNaN(parsed) || parsed <= 0) {
+        return reply.status(400).send({ success: false, message: "requestedAmount must be a positive number" });
+      }
+      if (parsed > redeemableAmount) {
+        return reply.status(400).send({
+          success: false,
+          message: `Requested amount ($${parsed.toFixed(2)}) exceeds your redeemable balance ($${redeemableAmount.toFixed(2)})`
+        });
+      }
+      amountToRequest = parsed;
+    }
+
+    const id = cuid();
+    const now = new Date();
+
+    await prisma.$executeRaw`
+      INSERT INTO payout_requests
+        (id, seller_id, requested_amount, redeemable_at_request, status, seller_note, created_at, updated_at)
+      VALUES (
+        ${id},
+        ${sellerId},
+        ${parseFloat(amountToRequest.toFixed(2))},
+        ${parseFloat(redeemableAmount.toFixed(2))},
+        'PENDING'::"PayoutRequestStatus",
+        ${note || null},
+        ${now},
+        ${now}
+      )
+    `;
+
+    return reply.status(201).send({
+      success: true,
+      message: "Payout request submitted successfully.",
+      payoutRequest: {
+        id,
+        requestedAmount: amountToRequest.toFixed(2),
+        redeemableAtRequest: redeemableAmount.toFixed(2),
+        status: "PENDING",
+        createdAt: now
+      }
+    });
+  } catch (err) {
+    console.error("requestPayout error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── SELLER: view my payout requests ─────────────────────────────────────────
+// GET /api/commissions/payout/requests
+exports.getMyPayoutRequests = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+    const { page = "1", limit = "20" } = request.query || {};
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(50, parseInt(limit, 10) || 20);
+    const offset   = (pageNum - 1) * limitNum;
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        id,
+        requested_amount      AS "requestedAmount",
+        redeemable_at_request AS "redeemableAtRequest",
+        status::text          AS status,
+        seller_note           AS "sellerNote",
+        admin_note            AS "adminNote",
+        processed_at          AS "processedAt",
+        created_at            AS "createdAt",
+        updated_at            AS "updatedAt"
+      FROM payout_requests
+      WHERE seller_id = ${sellerId}
+      ORDER BY created_at DESC
+      LIMIT ${limitNum} OFFSET ${offset}
+    `;
+
+    const countRow = await prisma.$queryRaw`
+      SELECT COUNT(*)::int AS total FROM payout_requests WHERE seller_id = ${sellerId}
+    `;
+
+    return reply.send({
+      success: true,
+      data: rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: countRow[0]?.total || 0,
+        totalPages: Math.ceil((countRow[0]?.total || 0) / limitNum)
+      }
+    });
+  } catch (err) {
+    console.error("getMyPayoutRequests error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── ADMIN: list all payout requests ─────────────────────────────────────────
+// GET /api/admin/commissions/payout-requests
+exports.getAllPayoutRequests = async (request, reply) => {
+  try {
+    const { status, sellerId, from, to, page = "1", limit = "20" } = request.query || {};
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, parseInt(limit, 10) || 20);
+    const offset   = (pageNum - 1) * limitNum;
+
+    const conditions = [];
+    if (status)   conditions.push(`pr.status::text = '${status.toUpperCase().replace(/'/g, "''")}'`);
+    if (sellerId) conditions.push(`pr.seller_id = '${sellerId.replace(/'/g, "''")}'`);
+    if (from)     conditions.push(`pr.created_at >= '${from.replace(/'/g, "''")}'::timestamptz`);
+    if (to)       conditions.push(`pr.created_at <= '${to.replace(/'/g, "''")}'::timestamptz`);
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const rows = await prisma.$queryRawUnsafe(`
+      SELECT
+        pr.id,
+        pr.seller_id              AS "sellerId",
+        pr.requested_amount       AS "requestedAmount",
+        pr.redeemable_at_request  AS "redeemableAtRequest",
+        pr.status::text           AS status,
+        pr.seller_note            AS "sellerNote",
+        pr.admin_note             AS "adminNote",
+        pr.processed_at           AS "processedAt",
+        pr.processed_by           AS "processedBy",
+        pr.created_at             AS "createdAt",
+        pr.updated_at             AS "updatedAt",
+        u.name                    AS "sellerName",
+        sp."storeName"            AS "storeName",
+        sp."businessName"         AS "businessName",
+        sp."bankDetails"          AS "bankDetails"
+      FROM payout_requests pr
+      LEFT JOIN users u            ON u.id = pr.seller_id
+      LEFT JOIN seller_profiles sp ON sp."userId" = pr.seller_id
+      ${whereClause}
+      ORDER BY pr.created_at DESC
+      LIMIT ${limitNum} OFFSET ${offset}
+    `);
+
+    const countRow = await prisma.$queryRawUnsafe(`
+      SELECT COUNT(*)::int AS total FROM payout_requests pr ${whereClause}
+    `);
+
+    return reply.send({
+      success: true,
+      data: rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: countRow[0]?.total || 0,
+        totalPages: Math.ceil((countRow[0]?.total || 0) / limitNum)
+      }
+    });
+  } catch (err) {
+    console.error("getAllPayoutRequests error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── ADMIN: update payout request status ─────────────────────────────────────
+// PUT /api/admin/commissions/payout-requests/:id/status
+// Transitions: PENDING → APPROVED | REJECTED | COMPLETED
+// When set to COMPLETED: all eligible commission_earned rows for that seller are auto-PAID
+exports.updatePayoutRequestStatus = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const { status, adminNote } = request.body || {};
+    const adminId = request.user.userId;
+
+    const VALID = ["APPROVED", "REJECTED", "COMPLETED"];
+    if (!status || !VALID.includes(status.toUpperCase())) {
+      return reply.status(400).send({ success: false, message: `status must be one of: ${VALID.join(", ")}` });
+    }
+
+    const rows = await prisma.$queryRaw`
+      SELECT id, seller_id AS "sellerId" FROM payout_requests WHERE id = ${id}
+    `;
+    if (!rows.length) {
+      return reply.status(404).send({ success: false, message: "Payout request not found" });
+    }
+
+    const upperStatus = status.toUpperCase();
+    const now = new Date();
+
+    await prisma.$executeRaw`
+      UPDATE payout_requests
+      SET status       = ${upperStatus}::"PayoutRequestStatus",
+          admin_note   = COALESCE(${adminNote || null}, admin_note),
+          processed_at = ${now},
+          processed_by = ${adminId},
+          updated_at   = ${now}
+      WHERE id = ${id}
+    `;
+
+    // When COMPLETED, automatically mark all eligible commission_earned records as PAID
+    if (upperStatus === "COMPLETED") {
+      const { sellerId } = rows[0];
+      const updated = await prisma.$executeRaw`
+        UPDATE commission_earned
+        SET status     = 'PAID'::"CommissionStatus",
+            updated_at = ${now}
+        WHERE seller_id = ${sellerId}
+          AND status    = 'PENDING'::"CommissionStatus"
+          AND created_at <= NOW() - INTERVAL '30 days'
+      `;
+      console.log(`💳 Payout completed for seller ${sellerId} — ${updated} commission record(s) marked PAID`);
+    }
+
+    return reply.send({ success: true, message: `Payout request marked as ${upperStatus}` });
+  } catch (err) {
+    console.error("updatePayoutRequestStatus error:", err);
     return reply.status(500).send({ success: false, error: err.message });
   }
 };
