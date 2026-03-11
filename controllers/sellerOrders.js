@@ -40,7 +40,7 @@ exports.getSellerOrders = async (request, reply) => {
     const sellerId = request.user.userId; // From authenticateSeller middleware
     
     // Get both direct orders (single seller) and sub-orders (multi seller) for this seller
-    const [directOrders, subOrders, legacyOrders] = await Promise.all([
+    const [directOrders, subOrders] = await Promise.all([
       // Direct orders (single seller orders)
       prisma.order.findMany({
         where: {
@@ -89,46 +89,10 @@ exports.getSellerOrders = async (request, reply) => {
           }
         },
         orderBy: { createdAt: 'desc' }
-      }),
-
-      // Legacy orders (orders where seller has products but no sellerId/subOrders)
-      prisma.order.findMany({
-        where: {
-          sellerId: null, // No direct sellerId
-          items: {
-            some: {
-              product: {
-                sellerId: sellerId // But has items from this seller
-              }
-            }
-          }
-        },
-        include: {
-          items: {
-            where: {
-              product: {
-                sellerId: sellerId // Only include items from this seller
-              }
-            },
-            include: {
-              product: true
-            }
-          },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true
-            }
-          },
-          subOrders: true // Check if it has subOrders
-        },
-        orderBy: { createdAt: 'desc' }
       })
     ]);
 
-    console.log(`📋 Found ${directOrders.length} direct orders, ${subOrders.length} sub-orders, and ${legacyOrders.length} legacy orders`);
+    console.log(`📋 Found ${directOrders.length} direct orders and ${subOrders.length} sub-orders`);
 
     // Transform direct orders to unified format
     const transformedDirectOrders = directOrders.map(order => ({
@@ -158,42 +122,7 @@ exports.getSellerOrders = async (request, reply) => {
       updatedAt: order.updatedAt
     }));
 
-    // Transform legacy orders to unified format
-    const transformedLegacyOrders = legacyOrders
-      .filter(order => order.subOrders.length === 0) // Only include orders without sub-orders
-      .map(order => {
-        // Calculate subtotal for this seller's items only
-        const sellerSubtotal = order.items.reduce((sum, item) => {
-          return sum + (parseFloat(item.price || 0) * item.quantity);
-        }, 0);
 
-        return {
-          id: order.id,
-          parentOrderId: null, // No parent for legacy orders
-          type: 'LEGACY', // Indicate this is a legacy order
-          status: mapStatusForDisplay(order.status || order.overallStatus),
-          trackingNumber: order.trackingNumber,
-          estimatedDelivery: order.estimatedDelivery,
-          statusReason: order.statusReason,
-          subtotal: sellerSubtotal,
-          items: order.items, // Only this seller's items (filtered in query)
-          user: order.user,
-          customerName: order.customerName,
-          customerEmail: order.customerEmail,
-          customerPhone: order.customerPhone,
-          shippingAddress: order.shippingAddress,
-          shippingAddressLine: order.shippingAddressLine,
-          shippingCity: order.shippingCity,
-          shippingState: order.shippingState,
-          shippingZipCode: order.shippingZipCode,
-          shippingCountry: order.shippingCountry,
-          shippingPhone: order.shippingPhone,
-          paymentMethod: order.paymentMethod,
-          paymentStatus: order.paymentStatus,
-          createdAt: order.createdAt,
-          updatedAt: order.updatedAt
-        };
-      });
 
     // Transform sub-orders to unified format (backward compatibility)
     const transformedSubOrders = subOrders.map(subOrder => ({
@@ -224,7 +153,7 @@ exports.getSellerOrders = async (request, reply) => {
     }));
 
     // Combine and sort by creation date (newest first)
-    const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
+    const allOrders = [...transformedDirectOrders, ...transformedSubOrders]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     return reply.status(200).send({ 
@@ -234,7 +163,7 @@ exports.getSellerOrders = async (request, reply) => {
       breakdown: {
         directOrders: transformedDirectOrders.length,
         subOrders: transformedSubOrders.length,
-        legacyOrders: transformedLegacyOrders.length
+        total: allOrders.length
       }
     });
   } catch (error) {
