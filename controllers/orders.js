@@ -745,7 +745,10 @@ exports.getMyOrders = async (request, reply) => {
                 title: true,
                 images: true,
                 price: true,
-                sellerId: true
+                sellerId: true,
+                seller: {
+                  select: { id: true, name: true }
+                }
               }
             }
           }
@@ -778,7 +781,10 @@ exports.getMyOrders = async (request, reply) => {
                     title: true,
                     images: true,
                     price: true,
-                    sellerId: true
+                    sellerId: true,
+                    seller: {
+                      select: { id: true, name: true }
+                    }
                   }
                 }
               }
@@ -883,7 +889,7 @@ exports.getMyOrders = async (request, reply) => {
             trackingNumber: order.trackingNumber,
             estimatedDelivery: order.estimatedDelivery
           }));
-          
+
           computedStatus = order.overallStatus || order.status || 'CONFIRMED';
           subOrdersData = [];
           
@@ -902,7 +908,7 @@ exports.getMyOrders = async (request, reply) => {
             subOrderId: null,
             subOrderStatus: null,
             sellerId: item.product?.sellerId || null,
-            sellerName: 'Unknown Seller',
+            sellerName: item.product?.seller?.name || 'Unknown Seller',
             trackingNumber: order.trackingNumber,
             estimatedDelivery: order.estimatedDelivery
           }));
@@ -913,7 +919,7 @@ exports.getMyOrders = async (request, reply) => {
           subOrdersData = [...sellerItemsMap.entries()].map(([sid, items]) => ({
             id: null, // No real sub-order record exists
             sellerId: sid,
-            sellerName: 'Unknown Seller',
+            sellerName: items[0]?.product?.seller?.name || 'Unknown Seller',
             status: computedStatus,
             trackingNumber: order.trackingNumber,
             estimatedDelivery: order.estimatedDelivery,
