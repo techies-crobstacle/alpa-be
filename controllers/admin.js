@@ -117,7 +117,195 @@ exports.scanLowStockProducts = async (request, reply) => {
   }
 };
 
-// GET ORDERS BY SELLER ID (ADMIN ONLY) - Updated to use SubOrder model
+// GET ALL ORDERS (ADMIN ONLY) - Shows all orders across all sellers
+exports.getAllOrders = async (request, reply) => {
+  try {
+    // Only admin can access
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    // Get all direct orders, sub-orders, and legacy orders
+    const [directOrders, subOrders, legacyOrders] = await Promise.all([
+      // Direct orders (single seller orders)
+      prisma.order.findMany({
+        where: {
+          sellerId: { not: null } // Has direct seller assignment
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: {
+            include: {
+              product: {
+                include: {
+                  seller: {
+                    select: { id: true, name: true, email: true }
+                  }
+                }
+              }
+            }
+          },
+          user: {
+            select: { id: true, name: true, email: true, phone: true }
+          }
+        }
+      }),
+
+      // Sub-orders (multi-seller orders)
+      prisma.subOrder.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: {
+            include: {
+              product: {
+                include: {
+                  seller: {
+                    select: { id: true, name: true, email: true }
+                  }
+                }
+              }
+            }
+          },
+          seller: {
+            select: { id: true, name: true, email: true }
+          },
+          parentOrder: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, phone: true }
+              }
+            }
+          }
+        }
+      }),
+
+      // Legacy orders (old orders without sellerId but with items)
+      prisma.order.findMany({
+        where: {
+          sellerId: null, // No direct seller assignment
+          items: {
+            some: {} // Has items
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: {
+            include: {
+              product: {
+                include: {
+                  seller: {
+                    select: { id: true, name: true, email: true }
+                  }
+                }
+              }
+            }
+          },
+          user: {
+            select: { id: true, name: true, email: true, phone: true }
+          },
+          subOrders: true // Check if it has sub-orders
+        }
+      })
+    ]);
+
+    // Filter legacy orders to exclude those with sub-orders (avoid duplicates)
+    const filteredLegacyOrders = legacyOrders.filter(order => order.subOrders.length === 0);
+
+    // Transform direct orders
+    const transformedDirectOrders = directOrders.map(order => ({
+      id: order.id,
+      type: 'DIRECT',
+      sellerId: order.sellerId,
+      sellerName: order.items[0]?.product?.seller?.name || 'Unknown',
+      status: order.status || order.overallStatus,
+      totalAmount: order.totalAmount,
+      paymentStatus: order.paymentStatus,
+      customerName: order.user?.name || order.customerName,
+      customerEmail: order.user?.email || order.customerEmail,
+      itemCount: order.items.length,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt
+    }));
+
+    // Transform sub-orders
+    const transformedSubOrders = subOrders.map(subOrder => ({
+      id: subOrder.id,
+      parentOrderId: subOrder.parentOrderId,
+      type: 'SUB_ORDER',
+      sellerId: subOrder.sellerId,
+      sellerName: subOrder.seller?.name || 'Unknown',
+      status: subOrder.status,
+      totalAmount: subOrder.subtotal,
+      paymentStatus: subOrder.parentOrder?.paymentStatus,
+      customerName: subOrder.parentOrder?.user?.name || subOrder.parentOrder?.customerName,
+      customerEmail: subOrder.parentOrder?.user?.email || subOrder.parentOrder?.customerEmail,
+      itemCount: subOrder.items.length,
+      createdAt: subOrder.createdAt,
+      updatedAt: subOrder.updatedAt
+    }));
+
+    // Transform legacy orders
+    const transformedLegacyOrders = filteredLegacyOrders.map(order => {
+      // Group items by seller
+      const sellerGroups = {};
+      order.items.forEach(item => {
+        const sellerId = item.product?.sellerId;
+        if (sellerId) {
+          if (!sellerGroups[sellerId]) {
+            sellerGroups[sellerId] = {
+              sellerId: sellerId,
+              sellerName: item.product?.seller?.name || 'Unknown',
+              items: [],
+              subtotal: 0
+            };
+          }
+          sellerGroups[sellerId].items.push(item);
+          sellerGroups[sellerId].subtotal += parseFloat(item.price || 0) * item.quantity;
+        }
+      });
+
+      // Create separate entries for each seller in the legacy order
+      return Object.values(sellerGroups).map(group => ({
+        id: `${order.id}-legacy-${group.sellerId}`,
+        originalOrderId: order.id,
+        type: 'LEGACY',
+        sellerId: group.sellerId,
+        sellerName: group.sellerName,
+        status: order.status || order.overallStatus,
+        totalAmount: group.subtotal,
+        paymentStatus: order.paymentStatus,
+        customerName: order.user?.name || order.customerName,
+        customerEmail: order.user?.email || order.customerEmail,
+        itemCount: group.items.length,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt
+      }));
+    }).flat();
+
+    // Combine all orders and sort by creation date (newest first)
+    const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    console.log(`[Admin] Found ${allOrders.length} total orders: ${transformedDirectOrders.length} direct, ${transformedSubOrders.length} sub-orders, ${transformedLegacyOrders.length} legacy`);
+
+    return reply.status(200).send({
+      success: true,
+      orders: allOrders,
+      count: allOrders.length,
+      breakdown: {
+        direct: transformedDirectOrders.length,
+        subOrders: transformedSubOrders.length,
+        legacy: transformedLegacyOrders.length,
+        total: allOrders.length
+      }
+    });
+  } catch (error) {
+    console.error('Get all orders error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// GET ORDERS BY SELLER ID (ADMIN ONLY) - Updated to include legacy orders
 exports.getOrdersBySellerId = async (request, reply) => {
   try {
     // Only admin can access (route preHandler should enforce, but double-check)
@@ -126,39 +314,114 @@ exports.getOrdersBySellerId = async (request, reply) => {
     }
     const { sellerId } = request.params;
     
-    // Get sub-orders for this specific seller only
-    const subOrders = await prisma.subOrder.findMany({
-      where: {
-        sellerId: sellerId
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
+    // Get both sub-orders and legacy orders for this specific seller
+    const [subOrders, directOrders, legacyOrders] = await Promise.all([
+      // Sub-orders for this specific seller (multi-seller orders)
+      prisma.subOrder.findMany({
+        where: {
+          sellerId: sellerId
         },
-        parentOrder: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                phone: true,
-                role: true,
-                createdAt: true
+        orderBy: {
+          createdAt: 'desc'
+        },
+        include: {
+          items: {
+            include: {
+              product: true
+            }
+          },
+          parentOrder: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true,
+                  role: true,
+                  createdAt: true
+                }
               }
             }
           }
         }
-      }
-    });
+      }),
+
+      // Direct orders (single seller orders with sellerId)
+      prisma.order.findMany({
+        where: {
+          sellerId: sellerId
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        include: {
+          items: {
+            include: {
+              product: true
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              role: true,
+              createdAt: true
+            }
+          }
+        }
+      }),
+
+      // Legacy orders (orders where seller has products but no sellerId/subOrders)
+      prisma.order.findMany({
+        where: {
+          sellerId: null, // No direct sellerId
+          items: {
+            some: {
+              product: {
+                sellerId: sellerId // But has items from this seller
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        include: {
+          items: {
+            where: {
+              product: {
+                sellerId: sellerId // Only include items from this seller
+              }
+            },
+            include: {
+              product: true
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              role: true,
+              createdAt: true
+            }
+          },
+          subOrders: true // Check if it has subOrders
+        }
+      })
+    ]);
+
+    // Filter legacy orders to exclude those with sub-orders
+    const filteredLegacyOrders = legacyOrders.filter(order => order.subOrders.length === 0);
+
+    console.log(`[Admin] Found ${directOrders.length} direct orders, ${subOrders.length} sub-orders, and ${filteredLegacyOrders.length} legacy orders for seller ${sellerId}`);
 
     // Transform sub-orders to include parent order info and seller-specific data
-    const transformedOrders = subOrders.map(subOrder => ({
+    const transformedSubOrders = subOrders.map(subOrder => ({
       // Sub-order specific fields
       id: subOrder.id,
       subOrderId: subOrder.id, // ✅ Clear indicator this is a sub-order
@@ -171,6 +434,7 @@ exports.getOrdersBySellerId = async (request, reply) => {
       subtotal: subOrder.subtotal, // ✅ Only this seller's portion
       createdAt: subOrder.createdAt,
       updatedAt: subOrder.updatedAt,
+      type: 'SUB_ORDER',
       
       // Parent order fields
       totalAmount: subOrder.parentOrder.totalAmount, // Full order total (for context)
@@ -198,12 +462,108 @@ exports.getOrdersBySellerId = async (request, reply) => {
       sellerSpecific: true
     }));
 
+    // Transform direct orders
+    const transformedDirectOrders = directOrders.map(order => ({
+      id: order.id,
+      subOrderId: null,
+      parentOrderId: null,
+      sellerId: order.sellerId,
+      status: order.status || order.overallStatus,
+      trackingNumber: order.trackingNumber,
+      estimatedDelivery: order.estimatedDelivery,
+      statusReason: order.statusReason,
+      subtotal: order.totalAmount,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      type: 'DIRECT',
+      
+      // Order fields
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      shippingAddress: order.shippingAddress,
+      shippingAddressLine: order.shippingAddressLine,
+      shippingCity: order.shippingCity,
+      shippingState: order.shippingState,
+      shippingZipCode: order.shippingZipCode,
+      shippingCountry: order.shippingCountry,
+      shippingPhone: order.shippingPhone,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      
+      // Customer info
+      user: order.user,
+      
+      // All items belong to this seller
+      items: order.items,
+      
+      isSubOrder: false,
+      sellerSpecific: true
+    }));
+
+    // Transform legacy orders
+    const transformedLegacyOrders = filteredLegacyOrders.map(order => {
+      // Calculate subtotal for this seller's items only
+      const sellerSubtotal = order.items.reduce((sum, item) => {
+        return sum + (parseFloat(item.price || 0) * item.quantity);
+      }, 0);
+
+      return {
+        id: order.id,
+        subOrderId: null,
+        parentOrderId: null,
+        sellerId: sellerId, // Use the requested sellerId
+        status: order.status || order.overallStatus,
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        statusReason: order.statusReason,
+        subtotal: sellerSubtotal,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        type: 'LEGACY',
+        
+        // Order fields
+        totalAmount: order.totalAmount, // Full order total (for context)
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        shippingAddress: order.shippingAddress,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        
+        // Customer info
+        user: order.user,
+        
+        // ✅ Only this seller's items (filtered in query)
+        items: order.items,
+        
+        isSubOrder: false,
+        sellerSpecific: true
+      };
+    });
+
+    // Combine all order types and sort by creation date (newest first)
+    const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     reply.send({ 
       success: true, 
-      orders: transformedOrders, 
-      count: transformedOrders.length,
+      orders: allOrders, 
+      count: allOrders.length,
       sellerId: sellerId,
-      note: "Showing only orders/products for this specific seller. Same parent order may appear for different sellers."
+      breakdown: {
+        directOrders: transformedDirectOrders.length,
+        subOrders: transformedSubOrders.length,
+        legacyOrders: transformedLegacyOrders.length
+      },
+      note: "Showing direct, sub, and legacy orders for this specific seller. Legacy orders are from before the conditional order system."
     });
   } catch (error) {
     console.error('Get orders by sellerId error:', error);

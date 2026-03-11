@@ -248,12 +248,6 @@ exports.createOrder = async (request, reply) => {
       });
     }
 
-  console.log(`📊 Order Analysis: Found ${sellerNotifications.size} seller(s)`);
-  console.log(`📊 Seller IDs:`, Array.from(sellerNotifications.keys()));
-  for (const [sellerId, data] of sellerNotifications) {
-    console.log(`📊 Seller ${sellerId}: ${data.productCount} items, $${data.totalAmount}`);
-  }
-
     // Use transaction to ensure atomicity
     const order = await prisma.$transaction(async (tx) => {
       // Deduct stock — re-validate inside the transaction to prevent race conditions
@@ -286,10 +280,8 @@ exports.createOrder = async (request, reply) => {
 
       // Check if this is a single seller or multi-seller order
       const isMultiSeller = sellerNotifications.size > 1;
-      console.log(`📦 Order Type: ${isMultiSeller ? 'MULTI-SELLER' : 'SINGLE SELLER'} (${sellerNotifications.size} seller(s))`);
       
       if (isMultiSeller) {
-        console.log(`📦 Creating MULTI-SELLER order with parent + ${sellerNotifications.size} sub-orders`);
         // MULTI-SELLER ORDER: Create parent order + sub-orders
         const parentOrder = await tx.order.create({
           data: {
@@ -380,7 +372,6 @@ exports.createOrder = async (request, reply) => {
       } else {
         // SINGLE SELLER ORDER: Create simple order (no sub-orders needed)
         const [sellerId] = sellerNotifications.keys();
-        console.log(`📦 Creating SINGLE SELLER order with sellerId: ${sellerId}`);
         
         const singleOrder = await tx.order.create({
           data: {
@@ -892,6 +883,18 @@ exports.getMyOrders = async (request, reply) => {
         subOrdersData = [];
       }
 
+      // Calculate seller count properly for all order types
+      let sellerCount = 0;
+      if (isDirectOrder) {
+        sellerCount = 1; // Direct order has exactly one seller
+      } else if (isMultiSellerOrder) {
+        sellerCount = subOrdersData.length; // Number of sub-orders = number of sellers
+      } else {
+        // Legacy order - count unique sellers from items
+        const uniqueSellerIds = new Set(allItems.map(item => item.sellerId).filter(Boolean));
+        sellerCount = uniqueSellerIds.size;
+      }
+
       return {
         id: order.id,
         userId: order.userId,
@@ -923,7 +926,7 @@ exports.getMyOrders = async (request, reply) => {
         items: allItems,
         subOrders: subOrdersData,
         // Summary info
-        sellerCount: isDirectOrder ? 1 : subOrdersData.length,
+        sellerCount: sellerCount, // Use calculated seller count
         itemCount: allItems.length
       };
     });

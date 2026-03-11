@@ -38,10 +38,9 @@ const mapStatusForDisplay = (dbStatus) => {
 exports.getSellerOrders = async (request, reply) => {
   try {
     const sellerId = request.user.userId; // From authenticateSeller middleware
-    console.log(`📋 Fetching orders for seller: ${sellerId}`);
     
     // Get both direct orders (single seller) and sub-orders (multi seller) for this seller
-    const [directOrders, subOrders] = await Promise.all([
+    const [directOrders, subOrders, legacyOrders] = await Promise.all([
       // Direct orders (single seller orders)
       prisma.order.findMany({
         where: {
@@ -90,12 +89,46 @@ exports.getSellerOrders = async (request, reply) => {
           }
         },
         orderBy: { createdAt: 'desc' }
+      }),
+
+      // Legacy orders (orders where seller has products but no sellerId/subOrders)
+      prisma.order.findMany({
+        where: {
+          sellerId: null, // No direct sellerId
+          items: {
+            some: {
+              product: {
+                sellerId: sellerId // But has items from this seller
+              }
+            }
+          }
+        },
+        include: {
+          items: {
+            where: {
+              product: {
+                sellerId: sellerId // Only include items from this seller
+              }
+            },
+            include: {
+              product: true
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true
+            }
+          },
+          subOrders: true // Check if it has subOrders
+        },
+        orderBy: { createdAt: 'desc' }
       })
     ]);
 
-    console.log(`📋 Found ${directOrders.length} direct orders and ${subOrders.length} sub-orders`);
-    console.log(`📋 Direct order IDs:`, directOrders.map(o => o.id));
-    console.log(`📋 Sub-order IDs:`, subOrders.map(o => o.id));
+    console.log(`📋 Found ${directOrders.length} direct orders, ${subOrders.length} sub-orders, and ${legacyOrders.length} legacy orders`);
 
     // Transform direct orders to unified format
     const transformedDirectOrders = directOrders.map(order => ({
@@ -124,6 +157,43 @@ exports.getSellerOrders = async (request, reply) => {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt
     }));
+
+    // Transform legacy orders to unified format
+    const transformedLegacyOrders = legacyOrders
+      .filter(order => order.subOrders.length === 0) // Only include orders without sub-orders
+      .map(order => {
+        // Calculate subtotal for this seller's items only
+        const sellerSubtotal = order.items.reduce((sum, item) => {
+          return sum + (parseFloat(item.price || 0) * item.quantity);
+        }, 0);
+
+        return {
+          id: order.id,
+          parentOrderId: null, // No parent for legacy orders
+          type: 'LEGACY', // Indicate this is a legacy order
+          status: mapStatusForDisplay(order.status || order.overallStatus),
+          trackingNumber: order.trackingNumber,
+          estimatedDelivery: order.estimatedDelivery,
+          statusReason: order.statusReason,
+          subtotal: sellerSubtotal,
+          items: order.items, // Only this seller's items (filtered in query)
+          user: order.user,
+          customerName: order.customerName,
+          customerEmail: order.customerEmail,
+          customerPhone: order.customerPhone,
+          shippingAddress: order.shippingAddress,
+          shippingAddressLine: order.shippingAddressLine,
+          shippingCity: order.shippingCity,
+          shippingState: order.shippingState,
+          shippingZipCode: order.shippingZipCode,
+          shippingCountry: order.shippingCountry,
+          shippingPhone: order.shippingPhone,
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt
+        };
+      });
 
     // Transform sub-orders to unified format (backward compatibility)
     const transformedSubOrders = subOrders.map(subOrder => ({
@@ -154,7 +224,7 @@ exports.getSellerOrders = async (request, reply) => {
     }));
 
     // Combine and sort by creation date (newest first)
-    const allOrders = [...transformedDirectOrders, ...transformedSubOrders]
+    const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     return reply.status(200).send({ 
@@ -163,7 +233,8 @@ exports.getSellerOrders = async (request, reply) => {
       count: allOrders.length,
       breakdown: {
         directOrders: transformedDirectOrders.length,
-        subOrders: transformedSubOrders.length
+        subOrders: transformedSubOrders.length,
+        legacyOrders: transformedLegacyOrders.length
       }
     });
   } catch (error) {
@@ -195,10 +266,11 @@ exports.updateOrderStatus = async (request, reply) => {
       });
     }
 
-    // Try to find the order - could be a direct order or sub-order
+    // Try to find the order - could be a direct order, sub-order, or legacy order
     let orderRecord = null;
     let isDirectOrder = false;
     let isSubOrder = false;
+    let isLegacyOrder = false;
     
     // First try to find as a direct order (single seller)
     try {
@@ -233,6 +305,33 @@ exports.updateOrderStatus = async (request, reply) => {
           updatedAt: directOrder.updatedAt
         };
         isDirectOrder = true;
+      } else if (directOrder && !directOrder.sellerId) {
+        // This might be a legacy order, check if seller has items in it
+        const sellerItems = directOrder.items.filter(item => item.product.sellerId === userId);
+        if (sellerItems.length > 0) {
+          // This is a legacy order with seller's items
+          const sellerSubtotal = sellerItems.reduce((sum, item) => {
+            return sum + (parseFloat(item.price || 0) * item.quantity);
+          }, 0);
+          
+          orderRecord = {
+            id: directOrder.id,
+            sellerId: userId, // Set seller ID for validation
+            status: directOrder.status || directOrder.overallStatus,
+            trackingNumber: directOrder.trackingNumber,
+            estimatedDelivery: directOrder.estimatedDelivery,
+            statusReason: directOrder.statusReason,
+            subtotal: sellerSubtotal,
+            items: sellerItems, // Only seller's items
+            parentOrder: directOrder, // For unified structure
+            customer: directOrder.user,
+            customerName: directOrder.customerName,
+            customerEmail: directOrder.customerEmail,
+            createdAt: directOrder.createdAt,
+            updatedAt: directOrder.updatedAt
+          };
+          isLegacyOrder = true;
+        }
       }
     } catch (error) {
       console.log('Direct order query failed:', error.message);
@@ -334,6 +433,42 @@ exports.updateOrderStatus = async (request, reply) => {
       orderRecord = {
         ...orderRecord,
         status: updatedOrder.status,
+        trackingNumber: updatedOrder.trackingNumber,
+        estimatedDelivery: updatedOrder.estimatedDelivery,
+        statusReason: updatedOrder.statusReason,
+        updatedAt: updatedOrder.updatedAt
+      };
+    } else if (isLegacyOrder) {
+      // Update legacy order (update the main order's status and tracking)
+      updatedOrder = await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          status: normalizedStatus,
+          overallStatus: normalizedStatus,
+          trackingNumber: updateData.trackingNumber,
+          estimatedDelivery: updateData.estimatedDelivery,
+          statusReason: updateData.statusReason,
+          updatedAt: updateData.updatedAt
+        },
+        include: {
+          user: true,
+          items: {
+            where: {
+              product: {
+                sellerId: userId // Only seller's items
+              }
+            },
+            include: {
+              product: true
+            }
+          }
+        }
+      });
+      
+      // Update structure for unified response
+      orderRecord = {
+        ...orderRecord,
+        status: updatedOrder.status || updatedOrder.overallStatus,
         trackingNumber: updatedOrder.trackingNumber,
         estimatedDelivery: updatedOrder.estimatedDelivery,
         statusReason: updatedOrder.statusReason,
@@ -491,7 +626,7 @@ exports.updateOrderStatus = async (request, reply) => {
       updatedStatus: normalizedStatus,
       order: {
         id: orderRecord.id,
-        type: isDirectOrder ? 'DIRECT' : 'SUB_ORDER',
+        type: isDirectOrder ? 'DIRECT' : (isLegacyOrder ? 'LEGACY' : 'SUB_ORDER'),
         status: mapStatusForDisplay(orderRecord.status),
         trackingNumber: orderRecord.trackingNumber,
         estimatedDelivery: orderRecord.estimatedDelivery,

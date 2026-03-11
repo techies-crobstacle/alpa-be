@@ -27,6 +27,9 @@ async function adminRoutes(fastify, options) {
   // Get seller's products
   fastify.get("/sellers/:sellerId/products", { preHandler: adminAuth }, adminController.getProductsBySeller);
 
+  // Get all orders (admin only) - NEW
+  fastify.get("/orders", { preHandler: adminAuth }, adminController.getAllOrders);
+
   // Get all orders by seller ID (admin only)
   fastify.get("/orders/by-seller/:sellerId", { preHandler: adminAuth }, adminController.getOrdersBySellerId);
 
