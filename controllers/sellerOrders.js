@@ -154,6 +154,8 @@ exports.getSellerOrders = async (request, reply) => {
 
     // Combine direct orders with old direct orders
     const allDirectOrders = [...directOrders, ...processedOldOrders.filter(o => o.isDirectOrder)];
+    // Legacy multi-seller old orders (show only this seller's items, like a sub-order)
+    const legacyMultiSellerOrders = processedOldOrders.filter(o => !o.isDirectOrder);
 
     // Transform direct orders to unified format
     const transformedDirectOrders = allDirectOrders.map(order => ({
@@ -211,8 +213,36 @@ exports.getSellerOrders = async (request, reply) => {
       updatedAt: subOrder.updatedAt
     }));
 
+    // Transform legacy multi-seller old orders (show only this seller's items, like a sub-order)
+    const transformedLegacyOrders = legacyMultiSellerOrders.map(order => ({
+      id: order.id,
+      parentOrderId: null,
+      type: 'SUB_ORDER', // Show like a sub-order to seller
+      status: mapStatusForDisplay(order.status || order.overallStatus),
+      trackingNumber: order.trackingNumber,
+      estimatedDelivery: order.estimatedDelivery,
+      statusReason: order.statusReason,
+      subtotal: order.items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0),
+      items: order.items, // Already filtered to this seller's items only
+      user: order.user,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      shippingAddress: order.shippingAddress,
+      shippingAddressLine: order.shippingAddressLine,
+      shippingCity: order.shippingCity,
+      shippingState: order.shippingState,
+      shippingZipCode: order.shippingZipCode,
+      shippingCountry: order.shippingCountry,
+      shippingPhone: order.shippingPhone,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt
+    }));
+
     // Combine and sort by creation date (newest first)
-    const allOrders = [...transformedDirectOrders, ...transformedSubOrders]
+    const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     return reply.status(200).send({ 
@@ -221,7 +251,7 @@ exports.getSellerOrders = async (request, reply) => {
       count: allOrders.length,
       breakdown: {
         directOrders: transformedDirectOrders.length,
-        subOrders: transformedSubOrders.length,
+        subOrders: transformedSubOrders.length + transformedLegacyOrders.length,
         total: allOrders.length
       }
     });

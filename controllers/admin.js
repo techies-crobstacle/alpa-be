@@ -439,8 +439,9 @@ exports.getOrdersBySellerId = async (request, reply) => {
 
     // Combine direct orders with old direct orders
     const allDirectOrders = [...directOrders, ...processedOldOrders.filter(o => o.isDirectOrder)];
+    const legacyMultiSellerOrders = processedOldOrders.filter(o => !o.isDirectOrder);
 
-    console.log(`[Admin] Found ${allDirectOrders.length} direct orders and ${subOrders.length} sub-orders for seller ${sellerId}`);
+    console.log(`[Admin] Found ${allDirectOrders.length} direct orders, ${subOrders.length} sub-orders, and ${legacyMultiSellerOrders.length} legacy multi-seller orders for seller ${sellerId}`);
 
     // Transform sub-orders to include parent order info and seller-specific data
     const transformedSubOrders = subOrders.map(subOrder => ({
@@ -524,8 +525,41 @@ exports.getOrdersBySellerId = async (request, reply) => {
       sellerSpecific: true
     }));
 
+    // Transform legacy multi-seller old orders (show only this seller's items)
+    const transformedLegacyOrders = legacyMultiSellerOrders.map(order => ({
+      id: order.id,
+      subOrderId: null,
+      parentOrderId: null,
+      sellerId: sellerId,
+      status: order.status || order.overallStatus,
+      trackingNumber: order.trackingNumber,
+      estimatedDelivery: order.estimatedDelivery,
+      statusReason: order.statusReason,
+      subtotal: order.items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * item.quantity), 0),
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      type: 'SUB_ORDER',
+      totalAmount: order.totalAmount,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      shippingAddress: order.shippingAddress,
+      shippingAddressLine: order.shippingAddressLine,
+      shippingCity: order.shippingCity,
+      shippingState: order.shippingState,
+      shippingZipCode: order.shippingZipCode,
+      shippingCountry: order.shippingCountry,
+      shippingPhone: order.shippingPhone,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      user: order.user,
+      items: order.items, // Already filtered to this seller's items
+      isSubOrder: true,
+      sellerSpecific: true
+    }));
+
     // Combine all order types and sort by creation date (newest first)
-    const allOrders = [...transformedDirectOrders, ...transformedSubOrders]
+    const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     reply.send({ 
@@ -535,7 +569,7 @@ exports.getOrdersBySellerId = async (request, reply) => {
       sellerId: sellerId,
       breakdown: {
         directOrders: transformedDirectOrders.length,
-        subOrders: transformedSubOrders.length,
+        subOrders: transformedSubOrders.length + transformedLegacyOrders.length,
         total: allOrders.length
       },
       note: "Showing direct and sub-orders for this specific seller."

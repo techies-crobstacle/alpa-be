@@ -372,7 +372,6 @@ exports.createOrder = async (request, reply) => {
       } else {
         // SINGLE SELLER ORDER: Create simple order (no sub-orders needed)
         const [sellerId] = sellerNotifications.keys();
-        
         const singleOrder = await tx.order.create({
           data: {
             userId,
@@ -888,9 +887,50 @@ exports.getMyOrders = async (request, reply) => {
           computedStatus = order.overallStatus || order.status || 'CONFIRMED';
           subOrdersData = [];
           
+        } else if (uniqueSellerIds.size > 1) {
+          // Legacy multi-seller order with no sub-orders — group items by seller
+          const sellerItemsMap = new Map();
+          for (const item of order.items) {
+            const sid = item.product?.sellerId;
+            if (!sid) continue;
+            if (!sellerItemsMap.has(sid)) sellerItemsMap.set(sid, []);
+            sellerItemsMap.get(sid).push(item);
+          }
+
+          allItems = order.items.map(item => ({
+            ...item,
+            subOrderId: null,
+            subOrderStatus: null,
+            sellerId: item.product?.sellerId || null,
+            sellerName: 'Unknown Seller',
+            trackingNumber: order.trackingNumber,
+            estimatedDelivery: order.estimatedDelivery
+          }));
+
+          computedStatus = order.overallStatus || order.status || 'CONFIRMED';
+
+          // Build synthetic per-seller groupings so the frontend can show per-seller info
+          subOrdersData = [...sellerItemsMap.entries()].map(([sid, items]) => ({
+            id: null, // No real sub-order record exists
+            sellerId: sid,
+            sellerName: 'Unknown Seller',
+            status: computedStatus,
+            trackingNumber: order.trackingNumber,
+            estimatedDelivery: order.estimatedDelivery,
+            subtotal: items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0),
+            itemCount: items.length,
+            items: items.map(item => ({
+              id: item.id,
+              productId: item.productId,
+              productTitle: item.product?.title || 'Product',
+              productImages: item.product?.images || [],
+              quantity: item.quantity,
+              price: item.price
+            }))
+          }));
         } else {
-          // Multiple sellers but no sub-orders - this is actually invalid structure
-          console.warn(`⚠️ Order ${order.id} has ${uniqueSellerIds.size} sellers but no sub-orders - skipping`);
+          // No items have sellerId at all — skip
+          console.warn(`⚠️ Order ${order.id} has no recognisable sellers — skipping`);
           return null;
         }
       }
@@ -910,7 +950,7 @@ exports.getMyOrders = async (request, reply) => {
       return {
         id: order.id,
         userId: order.userId,
-        type: isDirectOrder ? 'DIRECT' : (isMultiSellerOrder ? 'MULTI_SELLER' : 'DIRECT'), // Old single-seller orders are DIRECT
+        type: isDirectOrder ? 'DIRECT' : (isMultiSellerOrder ? 'MULTI_SELLER' : (sellerCount > 1 ? 'MULTI_SELLER' : 'DIRECT')),
         totalAmount: order.totalAmount,
         status: computedStatus,
         trackingNumber: order.trackingNumber,
