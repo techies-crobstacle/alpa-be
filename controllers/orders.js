@@ -248,6 +248,12 @@ exports.createOrder = async (request, reply) => {
       });
     }
 
+  console.log(`📊 Order Analysis: Found ${sellerNotifications.size} seller(s)`);
+  console.log(`📊 Seller IDs:`, Array.from(sellerNotifications.keys()));
+  for (const [sellerId, data] of sellerNotifications) {
+    console.log(`📊 Seller ${sellerId}: ${data.productCount} items, $${data.totalAmount}`);
+  }
+
     // Use transaction to ensure atomicity
     const order = await prisma.$transaction(async (tx) => {
       // Deduct stock — re-validate inside the transaction to prevent race conditions
@@ -278,95 +284,180 @@ exports.createOrder = async (request, reply) => {
         });
       }
 
-      // Create parent order (customer's overall order)
-      const parentOrder = await tx.order.create({
-        data: {
-          userId,
-          totalAmount,
-          originalTotal,
-          couponCode: appliedCoupon ? appliedCoupon.code : null,
-          discountAmount: discountAmount > 0 ? discountAmount : null,
-          shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
-            ...shippingAddress,
-            // Include order breakdown for invoice purposes
-            orderSummary: {
-              subtotal: cartCalculations.subtotal,
-              shippingCost: cartCalculations.shippingCost,
-              gstPercentage: cartCalculations.gstPercentage,
-              gstAmount: cartCalculations.gstAmount,
-              grandTotal: cartCalculations.grandTotal,
-              couponCode: appliedCoupon ? appliedCoupon.code : null,
-              discountAmount,
-              finalTotal: totalAmount,
-              shippingMethod: {
-                id: shippingMethod.id,
-                name: shippingMethod.name,
-                cost: shippingMethod.cost,
-                estimatedDays: shippingMethod.estimatedDays
-              },
-              gstDetails: cartCalculations.gstDetails
-            }
-          },
-          shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
-          shippingCity: city,
-          shippingState: state,
-          shippingZipCode: zipCode,
-          shippingCountry: country,
-          shippingPhone: mobileNumber,
-          paymentMethod,
-          overallStatus: "CONFIRMED",
-          customerName: user.name,
-          customerEmail: user.email,
-          customerPhone: mobileNumber || user.phone || ''
-        }
-      });
-
-      // Create sub-orders for each seller with their specific products
-      const createdSubOrders = [];
-      for (const [sellerId, sellerData] of sellerNotifications) {
-        // Create sub-order for this seller
-        const subOrder = await tx.subOrder.create({
+      // Check if this is a single seller or multi-seller order
+      const isMultiSeller = sellerNotifications.size > 1;
+      console.log(`📦 Order Type: ${isMultiSeller ? 'MULTI-SELLER' : 'SINGLE SELLER'} (${sellerNotifications.size} seller(s))`);
+      
+      if (isMultiSeller) {
+        console.log(`📦 Creating MULTI-SELLER order with parent + ${sellerNotifications.size} sub-orders`);
+        // MULTI-SELLER ORDER: Create parent order + sub-orders
+        const parentOrder = await tx.order.create({
           data: {
-            parentOrderId: parentOrder.id,
-            sellerId: sellerId,
-            subtotal: sellerData.totalAmount,
-            status: "CONFIRMED"
+            userId,
+            totalAmount,
+            originalTotal,
+            couponCode: appliedCoupon ? appliedCoupon.code : null,
+            discountAmount: discountAmount > 0 ? discountAmount : null,
+            shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
+              ...shippingAddress,
+              // Include order breakdown for invoice purposes
+              orderSummary: {
+                subtotal: cartCalculations.subtotal,
+                shippingCost: cartCalculations.shippingCost,
+                gstPercentage: cartCalculations.gstPercentage,
+                gstAmount: cartCalculations.gstAmount,
+                grandTotal: cartCalculations.grandTotal,
+                couponCode: appliedCoupon ? appliedCoupon.code : null,
+                discountAmount,
+                finalTotal: totalAmount,
+                shippingMethod: {
+                  id: shippingMethod.id,
+                  name: shippingMethod.name,
+                  cost: shippingMethod.cost,
+                  estimatedDays: shippingMethod.estimatedDays
+                },
+                gstDetails: cartCalculations.gstDetails
+              }
+            },
+            shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
+            shippingCity: city,
+            shippingState: state,
+            shippingZipCode: zipCode,
+            shippingCountry: country,
+            shippingPhone: mobileNumber,
+            paymentMethod,
+            overallStatus: "CONFIRMED",
+            customerName: user.name,
+            customerEmail: user.email,
+            customerPhone: mobileNumber || user.phone || ''
           }
         });
 
-        // Create order items for this sub-order
-        const sellerItemsToCreate = cart.items
-          .filter(item => item.product.sellerId === sellerId)
-          .map(item => ({
-            subOrderId: subOrder.id,
+        // Create sub-orders for each seller with their specific products
+        const createdSubOrders = [];
+        for (const [sellerId, sellerData] of sellerNotifications) {
+          // Create sub-order for this seller
+          const subOrder = await tx.subOrder.create({
+            data: {
+              parentOrderId: parentOrder.id,
+              sellerId: sellerId,
+              subtotal: sellerData.totalAmount,
+              status: "CONFIRMED"
+            }
+          });
+
+          // Create order items for this sub-order
+          const sellerItemsToCreate = cart.items
+            .filter(item => item.product.sellerId === sellerId)
+            .map(item => ({
+              subOrderId: subOrder.id,
+              productId: item.productId,
+              quantity: item.quantity,
+              price: Number(item.product.price)
+            }));
+
+          await tx.orderItem.createMany({
+            data: sellerItemsToCreate
+          });
+
+          createdSubOrders.push({
+            ...subOrder,
+            items: sellerItemsToCreate,
+            sellerId: sellerId
+          });
+        }
+
+        // Clear cart
+        await tx.cartItem.deleteMany({
+          where: { cartId: cart.id }
+        });
+
+        return {
+          parentOrder,
+          subOrders: createdSubOrders,
+          isMultiSeller: true
+        };
+      } else {
+        // SINGLE SELLER ORDER: Create simple order (no sub-orders needed)
+        const [sellerId] = sellerNotifications.keys();
+        console.log(`📦 Creating SINGLE SELLER order with sellerId: ${sellerId}`);
+        
+        const singleOrder = await tx.order.create({
+          data: {
+            userId,
+            sellerId, // Link directly to seller
+            totalAmount,
+            originalTotal,
+            couponCode: appliedCoupon ? appliedCoupon.code : null,
+            discountAmount: discountAmount > 0 ? discountAmount : null,
+            shippingAddress: typeof shippingAddress === 'string' ? { address: shippingAddress } : {
+              ...shippingAddress,
+              // Include order breakdown for invoice purposes
+              orderSummary: {
+                subtotal: cartCalculations.subtotal,
+                shippingCost: cartCalculations.shippingCost,
+                gstPercentage: cartCalculations.gstPercentage,
+                gstAmount: cartCalculations.gstAmount,
+                grandTotal: cartCalculations.grandTotal,
+                couponCode: appliedCoupon ? appliedCoupon.code : null,
+                discountAmount,
+                finalTotal: totalAmount,
+                shippingMethod: {
+                  id: shippingMethod.id,
+                  name: shippingMethod.name,
+                  cost: shippingMethod.cost,
+                  estimatedDays: shippingMethod.estimatedDays
+                },
+                gstDetails: cartCalculations.gstDetails
+              }
+            },
+            shippingAddressLine: typeof shippingAddress === 'string' ? shippingAddress : shippingAddress?.addressLine,
+            shippingCity: city,
+            shippingState: state,
+            shippingZipCode: zipCode,
+            shippingCountry: country,
+            shippingPhone: mobileNumber,
+            paymentMethod,
+            overallStatus: "CONFIRMED",
+            status: "CONFIRMED", // Set individual status for single order
+            customerName: user.name,
+            customerEmail: user.email,
+            customerPhone: mobileNumber || user.phone || ''
+          }
+        });
+
+        // Create order items directly on the main order
+        await tx.orderItem.createMany({
+          data: orderItems.map(item => ({
+            orderId: singleOrder.id, // Link to main order, not sub-order
             productId: item.productId,
             quantity: item.quantity,
-            price: Number(item.product.price)
-          }));
-
-        await tx.orderItem.createMany({
-          data: sellerItemsToCreate
+            price: item.price
+          }))
         });
 
-        createdSubOrders.push({
-          ...subOrder,
-          items: sellerItemsToCreate,
-          sellerId: sellerId
+        // Clear cart
+        await tx.cartItem.deleteMany({
+          where: { cartId: cart.id }
         });
+
+        return {
+          singleOrder,
+          subOrders: [], // Empty for single seller
+          isMultiSeller: false
+        };
       }
-
-      // Clear cart
-      await tx.cartItem.deleteMany({
-        where: { cartId: cart.id }
-      });
-
-      return {
-        parentOrder,
-        subOrders: createdSubOrders
-      };
     });
 
-    console.log(`✅ Parent Order created: ${order.parentOrder.id} with ${order.subOrders.length} sub-orders`);
+    const mainOrder = order.isMultiSeller ? order.parentOrder : order.singleOrder;
+    const orderId = mainOrder.id;
+    
+    if (order.isMultiSeller) {
+      console.log(`✅ Multi-seller Order created: Parent ${orderId} with ${order.subOrders.length} sub-orders`);
+    } else {
+      console.log(`✅ Single-seller Order created: ${orderId} (direct order, no sub-orders)`);
+    }
+    
     // Stock broadcasts are handled automatically by the Prisma middleware
     // in config/prisma.js — no manual broadcast needed here.
 
@@ -375,10 +466,19 @@ exports.createOrder = async (request, reply) => {
 
     // ── Commission Earned — record 10 % platform fee per seller (non-blocking) ─
     for (const [sellerId, sellerData] of sellerNotifications) {
-      // Find the sub-order for this seller
-      const sellerSubOrder = order.subOrders.find(sub => sub.sellerId === sellerId);
+      let commissionOrderId;
+      
+      if (order.isMultiSeller) {
+        // Use sub-order ID for commission tracking
+        const sellerSubOrder = order.subOrders.find(sub => sub.sellerId === sellerId);
+        commissionOrderId = sellerSubOrder?.id;
+      } else {
+        // Use main order ID for single seller
+        commissionOrderId = orderId;
+      }
+      
       createCommissionEarned({
-        orderId: sellerSubOrder?.id, // Use sub-order ID for commission tracking
+        orderId: commissionOrderId,
         sellerId,
         orderValue: sellerData.totalAmount,
         customerName: user.name,
@@ -407,24 +507,29 @@ exports.createOrder = async (request, reply) => {
       }
     }
 
-    // Create notifications for parent order
+    // Create notifications for the main order (parent or single)
     const orderNotificationData = {
       customerName: user.name,
       sellerName: sellerNameList.length > 0 ? sellerNameList.join(', ') : 'Unknown',
       totalAmount: totalAmount.toFixed(2),
       itemCount: cart.items.length,
       productNames: allProductTitles,
-      orderId: order.parentOrder.id
+      orderId: orderId // Use the main order ID
     };
 
     // Notify admins about new order
-    notifyAdminNewOrder(order.parentOrder.id, orderNotificationData).catch(error => {
+    notifyAdminNewOrder(orderId, orderNotificationData).catch(error => {
       console.error("Admin notification error (non-blocking):", error.message);
     });
 
     // Notify each seller about the new order (fired before reply — guaranteed delivery)
     for (const [sellerId, sellerData] of sellerNotifications) {
-      notifySellerNewOrder(sellerId, order.id, {
+      // For multi-seller, use sub-order ID; for single seller, use main order ID
+      const sellerOrderId = order.isMultiSeller 
+        ? order.subOrders.find(sub => sub.sellerId === sellerId)?.id || orderId
+        : orderId;
+        
+      notifySellerNewOrder(sellerId, sellerOrderId, {
         customerName: user.name,
         totalAmount: sellerData.totalAmount.toFixed(2),
         itemCount: sellerData.productCount,
@@ -435,9 +540,9 @@ exports.createOrder = async (request, reply) => {
     }
 
     // Notify customer about their placed order (fired before reply — guaranteed delivery)
-    notifyCustomerOrderStatusChange(userId, order.id, 'confirmed', {
+    notifyCustomerOrderStatusChange(userId, orderId, 'confirmed', {
       totalAmount: totalAmount.toFixed(2),
-      itemCount: order.items.length,
+      itemCount: cart.items.length,
       productNames: allProductTitles
     }).catch(error => {
       console.error('Customer order placed notification error:', error.message);
@@ -453,16 +558,16 @@ exports.createOrder = async (request, reply) => {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
-              orderId: order.id,
+              orderId: orderId,
               totalAmount,
-              itemCount: order.items.length,
-              products: order.items.map(item => ({
+              itemCount: cart.items.length,
+              products: cart.items.map(item => ({
                 title: item.product.title,
                 quantity: item.quantity,
-                price: item.price
+                price: Number(item.product.price)
               })),
               shippingAddress,
-              customerPhone: order.customerPhone || mobileNumber,
+              customerPhone: mobileNumber || user.phone || '',
               orderSummary: {
                 subtotal: cartCalculations.subtotal,
                 subtotalExGST: cartCalculations.subtotalExGST,
@@ -496,7 +601,12 @@ exports.createOrder = async (request, reply) => {
               include: { sellerProfile: true }
             });
             if (seller) {
-              createOrderNotification(order.id, sellerId, 'ORDER_PROCESSING', 'HIGH', {
+              // For SLA notification, use the appropriate order ID
+              const sellerOrderId = order.isMultiSeller 
+                ? order.subOrders.find(sub => sub.sellerId === sellerId)?.id || orderId
+                : orderId;
+                
+              createOrderNotification(sellerOrderId, sellerId, 'ORDER_PROCESSING', 'HIGH', {
                 message: `New order received from ${user.name}`,
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
@@ -506,8 +616,12 @@ exports.createOrder = async (request, reply) => {
               const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
+                const sellerOrderId = order.isMultiSeller 
+                  ? order.subOrders.find(sub => sub.sellerId === sellerId)?.id || orderId
+                  : orderId;
+                  
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                  orderId: order.id,
+                  orderId: sellerOrderId,
                   productCount: sellerData.productCount,
                   totalAmount: sellerData.totalAmount,
                   products: sellerData.products,
@@ -515,7 +629,7 @@ exports.createOrder = async (request, reply) => {
                   paymentMethod,
                   customerName: user.name,
                   customerEmail: user.email,
-                  customerPhone: user.phone
+                  customerPhone: mobileNumber || user.phone || ''
                 });
                 if (sellerEmailResult?.success) {
                   console.log(`✅ Seller order email sent to ${seller.email}`);
@@ -539,19 +653,19 @@ exports.createOrder = async (request, reply) => {
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
-          const allItems = order.items.map(item => ({
+          const allItems = cart.items.map(item => ({
             title: item.product?.title || item.productId,
             quantity: item.quantity,
-            price: item.price
+            price: Number(item.product.price)
           }));
           for (const admin of admins) {
             if (admin.email) {
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  orderId: order.id,
+                  orderId: orderId,
                   customerName: user.name,
                   customerEmail: user.email,
-                  customerPhone: user.phone,
+                  customerPhone: mobileNumber || user.phone || '',
                   sellerNames: sellerNameList.join(', ') || 'Unknown',
                   totalAmount,
                   paymentMethod,
@@ -578,13 +692,19 @@ exports.createOrder = async (request, reply) => {
     return reply.status(200).send({
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
-      orderId: order.parentOrder.id,
-      subOrders: order.subOrders.map(sub => ({
-        id: sub.id,
-        sellerId: sub.sellerId, 
-        subtotal: sub.subtotal,
-        status: sub.status
-      })),
+      orderId: orderId,
+      isMultiSeller: order.isMultiSeller,
+      ...(order.isMultiSeller ? {
+        subOrders: order.subOrders.map(sub => ({
+          id: sub.id,
+          sellerId: sub.sellerId, 
+          subtotal: sub.subtotal,
+          status: sub.status
+        }))
+      } : {
+        sellerId: mainOrder.sellerId,
+        status: mainOrder.status
+      }),
       orderSummary: {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
@@ -627,6 +747,25 @@ exports.getMyOrders = async (request, reply) => {
     const orders = await prisma.order.findMany({
       where: { userId },
       include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                images: true,
+                price: true,
+                sellerId: true
+              }
+            }
+          }
+        },
+        seller: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
         subOrders: {
           include: {
             seller: {
@@ -661,29 +800,48 @@ exports.getMyOrders = async (request, reply) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Transform to maintain backward compatibility while showing sub-order details
+    // Transform to handle both direct orders and multi-seller orders
     const transformedOrders = orders.map(order => {
-      // Aggregate all items from sub-orders
-      const allItems = order.subOrders.flatMap(subOrder => 
-        subOrder.items.map(item => ({
-          ...item,
-          subOrderId: subOrder.id,
-          subOrderStatus: subOrder.status,
-          sellerId: subOrder.sellerId,
-          sellerName: subOrder.sellerProfile?.businessName || subOrder.sellerProfile?.storeName || subOrder.seller?.name || 'Unknown Seller',
-          trackingNumber: subOrder.trackingNumber,
-          estimatedDelivery: subOrder.estimatedDelivery
-        }))
-      );
+      const isDirectOrder = !!order.sellerId; // Order has sellerId means it's a direct order
+      const isMultiSellerOrder = order.subOrders && order.subOrders.length > 0;
 
-      // Determine overall status based on sub-orders
-      let computedStatus;
-      
-      if (order.subOrders.length === 0) {
-        // No sub-orders yet (legacy orders) - use the overallStatus or status field
-        computedStatus = order.overallStatus || order.status || 'CONFIRMED';
-      } else {
-        // Has sub-orders - compute status from sub-orders
+      let allItems = [];
+      let computedStatus = '';
+      let subOrdersData = [];
+
+      if (isDirectOrder) {
+        // DIRECT ORDER (single seller)
+        allItems = order.items.map(item => ({
+          ...item,
+          subOrderId: null, // No sub-order
+          subOrderStatus: null,
+          sellerId: order.sellerId,
+          sellerName: order.seller?.name || 'Unknown Seller',
+          trackingNumber: order.trackingNumber,
+          estimatedDelivery: order.estimatedDelivery
+        }));
+        
+        // Use the order's direct status
+        computedStatus = order.status || order.overallStatus || 'CONFIRMED';
+        
+        // No sub-orders for direct orders
+        subOrdersData = [];
+        
+      } else if (isMultiSellerOrder) {
+        // MULTI-SELLER ORDER (has sub-orders)
+        allItems = order.subOrders.flatMap(subOrder => 
+          subOrder.items.map(item => ({
+            ...item,
+            subOrderId: subOrder.id,
+            subOrderStatus: subOrder.status,
+            sellerId: subOrder.sellerId,
+            sellerName: subOrder.sellerProfile?.businessName || subOrder.sellerProfile?.storeName || subOrder.seller?.name || 'Unknown Seller',
+            trackingNumber: subOrder.trackingNumber,
+            estimatedDelivery: subOrder.estimatedDelivery
+          }))
+        );
+
+        // Compute overall status from sub-orders
         const subOrderStatuses = order.subOrders.map(sub => sub.status);
         
         if (subOrderStatuses.every(status => status === 'DELIVERED')) {
@@ -697,13 +855,49 @@ exports.getMyOrders = async (request, reply) => {
         } else {
           computedStatus = subOrderStatuses[0] || 'CONFIRMED';
         }
+
+        // Sub-orders data for multi-seller orders
+        subOrdersData = order.subOrders.map(sub => ({
+          id: sub.id,
+          sellerId: sub.sellerId,
+          sellerName: sub.sellerProfile?.businessName || sub.sellerProfile?.storeName || sub.seller?.name || 'Unknown Seller',
+          status: sub.status,
+          trackingNumber: sub.trackingNumber,
+          estimatedDelivery: sub.estimatedDelivery,
+          subtotal: sub.subtotal,
+          itemCount: sub.items.length,
+          items: sub.items.map(item => ({
+            id: item.id,
+            productId: item.productId,
+            productTitle: item.product?.title || 'Product',
+            productImages: item.product?.images || [],
+            quantity: item.quantity,
+            price: item.price
+          }))
+        }));
+        
+      } else {
+        // LEGACY ORDER (no sellerId, no sub-orders) - fallback
+        allItems = order.items.map(item => ({
+          ...item,
+          subOrderId: null,
+          subOrderStatus: null,
+          sellerId: item.product?.sellerId || null,
+          sellerName: 'Unknown Seller',
+          trackingNumber: order.trackingNumber,
+          estimatedDelivery: order.estimatedDelivery
+        }));
+        
+        computedStatus = order.overallStatus || order.status || 'CONFIRMED';
+        subOrdersData = [];
       }
 
       return {
         id: order.id,
         userId: order.userId,
+        type: isDirectOrder ? 'DIRECT' : (isMultiSellerOrder ? 'MULTI_SELLER' : 'LEGACY'),
         totalAmount: order.totalAmount,
-        status: computedStatus, // Use computed overall status, not database status
+        status: computedStatus,
         trackingNumber: order.trackingNumber,
         estimatedDelivery: order.estimatedDelivery,
         statusReason: order.statusReason,
@@ -727,28 +921,23 @@ exports.getMyOrders = async (request, reply) => {
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         items: allItems,
-        subOrders: order.subOrders.map(sub => ({
-          id: sub.id,
-          sellerId: sub.sellerId,
-          sellerName: sub.seller?.businessName || sub.seller?.name || 'Unknown Seller',
-          status: sub.status,
-          trackingNumber: sub.trackingNumber,
-          estimatedDelivery: sub.estimatedDelivery,
-          subtotal: sub.subtotal,
-          itemCount: sub.items.length,
-          items: sub.items.map(item => ({
-            id: item.id,
-            productId: item.productId,
-            productTitle: item.product?.title || 'Product',
-            productImages: item.product?.images || [],
-            quantity: item.quantity,
-            price: item.price
-          }))
-        }))
+        subOrders: subOrdersData,
+        // Summary info
+        sellerCount: isDirectOrder ? 1 : subOrdersData.length,
+        itemCount: allItems.length
       };
     });
 
-    return reply.status(200).send({ success: true, orders: transformedOrders });
+    return reply.status(200).send({ 
+      success: true, 
+      orders: transformedOrders,
+      summary: {
+        totalOrders: transformedOrders.length,
+        directOrders: transformedOrders.filter(o => o.type === 'DIRECT').length,
+        multiSellerOrders: transformedOrders.filter(o => o.type === 'MULTI_SELLER').length,
+        legacyOrders: transformedOrders.filter(o => o.type === 'LEGACY').length
+      }
+    });
   } catch (error) {
     console.error("Get my orders error:", error);
     return reply.status(500).send({ success: false, message: error.message });

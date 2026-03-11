@@ -24,6 +24,7 @@ model User {
 
   products      Product[]
   orders        Order[]
+  sellerOrders  Order[] @relation("SellerOrders") // Direct orders for single-seller purchases
   subOrders     SubOrder[] @relation("SellerSubOrders") // Seller's sub-orders
   cart          Cart?
   ratings       Rating[]
@@ -227,6 +228,8 @@ model Order {
   id                String      @id @default(cuid())
   userId            String?     // Made optional for guest orders
   user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sellerId          String?     // For single-seller orders
+  seller            User?       @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: SetNull)
   items             OrderItem[] // Legacy items relation for existing orders
   subOrders         SubOrder[]  // Child orders for each seller
   totalAmount       Decimal     @db.Decimal(10, 2)
@@ -259,6 +262,7 @@ model Order {
   commissionEarned   CommissionEarned[]
 
   @@index([userId])
+  @@index([sellerId])
   @@index([status])
   @@index([overallStatus])
   @@map("orders")
