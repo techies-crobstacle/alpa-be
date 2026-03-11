@@ -868,19 +868,31 @@ exports.getMyOrders = async (request, reply) => {
         }));
         
       } else {
-        // LEGACY ORDER (no sellerId, no sub-orders) - fallback
-        allItems = order.items.map(item => ({
-          ...item,
-          subOrderId: null,
-          subOrderStatus: null,
-          sellerId: item.product?.sellerId || null,
-          sellerName: 'Unknown Seller',
-          trackingNumber: order.trackingNumber,
-          estimatedDelivery: order.estimatedDelivery
-        }));
+        // OLD ORDER (no sellerId, no sub-orders) - determine if DIRECT based on seller count
+        const uniqueSellerIds = new Set(order.items.map(item => item.product?.sellerId).filter(Boolean));
         
-        computedStatus = order.overallStatus || order.status || 'CONFIRMED';
-        subOrdersData = [];
+        if (uniqueSellerIds.size === 1) {
+          // Only one seller involved - treat as DIRECT order
+          const sellerId = Array.from(uniqueSellerIds)[0];
+          
+          allItems = order.items.map(item => ({
+            ...item,
+            subOrderId: null,
+            subOrderStatus: null,
+            sellerId: sellerId,
+            sellerName: item.product?.seller?.name || 'Unknown Seller',
+            trackingNumber: order.trackingNumber,
+            estimatedDelivery: order.estimatedDelivery
+          }));
+          
+          computedStatus = order.overallStatus || order.status || 'CONFIRMED';
+          subOrdersData = [];
+          
+        } else {
+          // Multiple sellers but no sub-orders - this is actually invalid structure
+          console.warn(`⚠️ Order ${order.id} has ${uniqueSellerIds.size} sellers but no sub-orders - skipping`);
+          return null;
+        }
       }
 
       // Calculate seller count properly for all order types
@@ -890,7 +902,7 @@ exports.getMyOrders = async (request, reply) => {
       } else if (isMultiSellerOrder) {
         sellerCount = subOrdersData.length; // Number of sub-orders = number of sellers
       } else {
-        // Legacy order - count unique sellers from items
+        // Old order - count unique sellers from items
         const uniqueSellerIds = new Set(allItems.map(item => item.sellerId).filter(Boolean));
         sellerCount = uniqueSellerIds.size;
       }
@@ -898,7 +910,7 @@ exports.getMyOrders = async (request, reply) => {
       return {
         id: order.id,
         userId: order.userId,
-        type: isDirectOrder ? 'DIRECT' : (isMultiSellerOrder ? 'MULTI_SELLER' : 'LEGACY'),
+        type: isDirectOrder ? 'DIRECT' : (isMultiSellerOrder ? 'MULTI_SELLER' : 'DIRECT'), // Old single-seller orders are DIRECT
         totalAmount: order.totalAmount,
         status: computedStatus,
         trackingNumber: order.trackingNumber,
@@ -931,14 +943,16 @@ exports.getMyOrders = async (request, reply) => {
       };
     });
 
+    // Filter out any null orders (invalid structure)
+    const validOrders = transformedOrders.filter(order => order !== null);
+
     return reply.status(200).send({ 
       success: true, 
-      orders: transformedOrders,
+      orders: validOrders,
       summary: {
-        totalOrders: transformedOrders.length,
-        directOrders: transformedOrders.filter(o => o.type === 'DIRECT').length,
-        multiSellerOrders: transformedOrders.filter(o => o.type === 'MULTI_SELLER').length,
-        legacyOrders: transformedOrders.filter(o => o.type === 'LEGACY').length
+        totalOrders: validOrders.length,
+        directOrders: validOrders.filter(o => o.type === 'DIRECT').length,
+        multiSellerOrders: validOrders.filter(o => o.type === 'MULTI_SELLER').length
       }
     });
   } catch (error) {

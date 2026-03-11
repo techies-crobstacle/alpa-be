@@ -40,7 +40,7 @@ exports.getSellerOrders = async (request, reply) => {
     const sellerId = request.user.userId; // From authenticateSeller middleware
     
     // Get both direct orders (single seller) and sub-orders (multi seller) for this seller
-    const [directOrders, subOrders] = await Promise.all([
+    const [directOrders, subOrders, oldOrders] = await Promise.all([
       // Direct orders (single seller orders)
       prisma.order.findMany({
         where: {
@@ -89,13 +89,74 @@ exports.getSellerOrders = async (request, reply) => {
           }
         },
         orderBy: { createdAt: 'desc' }
+      }),
+
+      // Old orders (sellerId=null) - treat as DIRECT if only this seller's products
+      prisma.order.findMany({
+        where: {
+          sellerId: null,
+          items: {
+            some: {
+              product: {
+                sellerId: sellerId
+              }
+            }
+          }
+        },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  title: true,
+                  images: true,
+                  price: true,
+                  sellerId: true
+                }
+              }
+            }
+          },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
       })
     ]);
 
-    console.log(`📋 Found ${directOrders.length} direct orders and ${subOrders.length} sub-orders`);
+    // Filter old orders to only include this seller's items and determine if DIRECT
+    const processedOldOrders = oldOrders
+      .map(order => {
+        // Get only this seller's items
+        const sellerItems = order.items.filter(item => item.product?.sellerId === sellerId);
+        
+        // Check if this order involves only this seller
+        const uniqueSellerIds = new Set(order.items.map(item => item.product?.sellerId).filter(Boolean));
+        const isDirectOrder = uniqueSellerIds.size === 1 && uniqueSellerIds.has(sellerId);
+        
+        if (sellerItems.length === 0) return null; // No items for this seller
+        
+        return {
+          ...order,
+          items: sellerItems,
+          isDirectOrder
+        };
+      })
+      .filter(Boolean);
+
+    console.log(`📋 Found ${directOrders.length} direct orders, ${subOrders.length} sub-orders, and ${processedOldOrders.length} old orders`);
+
+    // Combine direct orders with old direct orders
+    const allDirectOrders = [...directOrders, ...processedOldOrders.filter(o => o.isDirectOrder)];
 
     // Transform direct orders to unified format
-    const transformedDirectOrders = directOrders.map(order => ({
+    const transformedDirectOrders = allDirectOrders.map(order => ({
       id: order.id,
       parentOrderId: null, // No parent for direct orders
       type: 'DIRECT', // Indicate this is a direct order
@@ -121,8 +182,6 @@ exports.getSellerOrders = async (request, reply) => {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt
     }));
-
-
 
     // Transform sub-orders to unified format (backward compatibility)
     const transformedSubOrders = subOrders.map(subOrder => ({
