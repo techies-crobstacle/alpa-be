@@ -215,12 +215,6 @@ exports.createOrder = async (request, reply) => {
     const approveUrl = approveLink?.href || null;
 
     // ── Create PENDING DB Order ───────────────────────────────────────────────
-    const orderItems = cart.items.map((item) => ({
-      productId: item.product.id,
-      quantity: item.quantity,
-      price: Number(item.product.price),
-    }));
-
     const shippingAddressData =
       typeof shippingAddress === "string"
         ? { address: shippingAddress }
@@ -242,30 +236,62 @@ exports.createOrder = async (request, reply) => {
             },
           };
 
-    const order = await prisma.order.create({
-      data: {
-        userId,
-        totalAmount,
-        shippingAddress: shippingAddressData,
-        shippingAddressLine:
-          typeof shippingAddress === "string"
-            ? shippingAddress
-            : shippingAddress?.addressLine,
-        shippingCity: city,
-        shippingState: state,
-        shippingZipCode: zipCode,
-        shippingCountry: country,
-        shippingPhone: mobileNumber,
-        paymentMethod: "PAYPAL",
-        status: "CONFIRMED",
-        paymentStatus: "PENDING",
-        paypalOrderId, // store PayPal order ID
-        customerName: user.name,
-        customerEmail: user.email,
-        customerPhone: mobileNumber || user.phone || "",
-        items: { create: orderItems },
-      },
-    });
+    // Build per-seller map to determine single vs multi-seller
+    const sellerItemsMap = new Map();
+    for (const item of cart.items) {
+      const sid = item.product.sellerId;
+      if (!sellerItemsMap.has(sid)) sellerItemsMap.set(sid, []);
+      sellerItemsMap.get(sid).push(item);
+    }
+    const isMultiSeller = sellerItemsMap.size > 1;
+
+    const orderBaseData = {
+      userId,
+      totalAmount,
+      shippingAddress: shippingAddressData,
+      shippingAddressLine:
+        typeof shippingAddress === "string"
+          ? shippingAddress
+          : shippingAddress?.addressLine,
+      shippingCity: city,
+      shippingState: state,
+      shippingZipCode: zipCode,
+      shippingCountry: country,
+      shippingPhone: mobileNumber,
+      paymentMethod: "PAYPAL",
+      status: "CONFIRMED",
+      paymentStatus: "PENDING",
+      paypalOrderId,
+      customerName: user.name,
+      customerEmail: user.email,
+      customerPhone: mobileNumber || user.phone || "",
+    };
+
+    let order;
+    if (isMultiSeller) {
+      order = await prisma.$transaction(async (tx) => {
+        const parentOrder = await tx.order.create({ data: orderBaseData });
+        for (const [sellerId, items] of sellerItemsMap) {
+          const subtotal = items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const subOrder = await tx.subOrder.create({
+            data: { parentOrderId: parentOrder.id, sellerId, subtotal, status: "CONFIRMED" }
+          });
+          await tx.orderItem.createMany({
+            data: items.map(i => ({ subOrderId: subOrder.id, productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) }))
+          });
+        }
+        return parentOrder;
+      });
+    } else {
+      const [sellerId] = sellerItemsMap.keys();
+      order = await prisma.order.create({
+        data: {
+          ...orderBaseData,
+          sellerId,
+          items: { create: cart.items.map(i => ({ productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) })) }
+        }
+      });
+    }
 
     return reply.status(200).send({
       success: true,

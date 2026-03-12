@@ -325,7 +325,7 @@ exports.updateOrderStatus = async (request, reply) => {
         isDirectOrder = true;
       } else if (directOrder && !directOrder.sellerId) {
         // This might be a legacy order, check if seller has items in it
-        const sellerItems = directOrder.items.filter(item => item.product.sellerId === userId);
+        const sellerItems = directOrder.items.filter(item => item.product?.sellerId === userId);
         if (sellerItems.length > 0) {
           // This is a legacy order with seller's items
           const sellerSubtotal = sellerItems.reduce((sum, item) => {

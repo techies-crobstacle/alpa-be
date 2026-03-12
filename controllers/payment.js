@@ -98,12 +98,14 @@ exports.createPaymentIntent = async (request, reply) => {
       automatic_payment_methods: { enabled: true },
     });
 
-    // Prepare order items
-    const orderItems = cart.items.map((item) => ({
-      productId: item.product.id,
-      quantity: item.quantity,
-      price: Number(item.product.price),
-    }));
+    // Build per-seller map to determine single vs multi-seller
+    const sellerItemsMap = new Map();
+    for (const item of cart.items) {
+      const sid = item.product.sellerId;
+      if (!sellerItemsMap.has(sid)) sellerItemsMap.set(sid, []);
+      sellerItemsMap.get(sid).push(item);
+    }
+    const isMultiSeller = sellerItemsMap.size > 1;
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
@@ -129,32 +131,55 @@ exports.createPaymentIntent = async (request, reply) => {
             },
           };
 
-    // Create PENDING order (no stock deduction yet — happens on payment success)
-    const order = await prisma.order.create({
-      data: {
-        userId,
-        totalAmount,
-        shippingAddress: shippingAddressData,
-        shippingAddressLine:
-          typeof shippingAddress === "string"
-            ? shippingAddress
-            : shippingAddress?.addressLine,
-        shippingCity: city,
-        shippingState: state,
-        shippingZipCode: zipCode,
-        shippingCountry: country,
-        shippingPhone: mobileNumber,
-        paymentMethod: "STRIPE",
-        status: "CONFIRMED",
-        paymentStatus: "PENDING",
-        stripePaymentIntentId: paymentIntent.id,
-        customerName: user.name,
-        customerEmail: user.email,
-        customerPhone: mobileNumber || user.phone || "",
-        items: { create: orderItems },
-      },
-      include: { items: { include: { product: true } } },
-    });
+    const orderBaseData = {
+      userId,
+      totalAmount,
+      shippingAddress: shippingAddressData,
+      shippingAddressLine:
+        typeof shippingAddress === "string"
+          ? shippingAddress
+          : shippingAddress?.addressLine,
+      shippingCity: city,
+      shippingState: state,
+      shippingZipCode: zipCode,
+      shippingCountry: country,
+      shippingPhone: mobileNumber,
+      paymentMethod: "STRIPE",
+      status: "CONFIRMED",
+      paymentStatus: "PENDING",
+      stripePaymentIntentId: paymentIntent.id,
+      customerName: user.name,
+      customerEmail: user.email,
+      customerPhone: mobileNumber || user.phone || "",
+    };
+
+    // Create PENDING order — single seller sets sellerId directly; multi-seller uses sub-orders
+    let order;
+    if (isMultiSeller) {
+      order = await prisma.$transaction(async (tx) => {
+        const parentOrder = await tx.order.create({ data: orderBaseData });
+        for (const [sellerId, items] of sellerItemsMap) {
+          const subtotal = items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const subOrder = await tx.subOrder.create({
+            data: { parentOrderId: parentOrder.id, sellerId, subtotal, status: "CONFIRMED" }
+          });
+          await tx.orderItem.createMany({
+            data: items.map(i => ({ subOrderId: subOrder.id, productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) }))
+          });
+        }
+        return parentOrder;
+      });
+    } else {
+      const [sellerId] = sellerItemsMap.keys();
+      order = await prisma.order.create({
+        data: {
+          ...orderBaseData,
+          sellerId,
+          items: { create: cart.items.map(i => ({ productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) })) }
+        },
+        include: { items: { include: { product: true } } },
+      });
+    }
 
     return reply.status(200).send({
       success: true,
