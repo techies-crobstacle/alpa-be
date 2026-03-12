@@ -266,9 +266,9 @@ exports.getAllOrders = async (request, reply) => {
 
       // Create separate entries for each seller in the legacy order
       return Object.values(sellerGroups).map(group => ({
-        id: `${order.id}-legacy-${group.sellerId}`,
+        id: order.id,                    // real order ID — use this for update-status calls
         originalOrderId: order.id,
-        type: 'LEGACY',
+        type: 'SUB_ORDER',               // treat as SUB_ORDER so frontend uses same update path
         sellerId: group.sellerId,
         sellerName: group.sellerName,
         status: order.status || order.overallStatus,
@@ -294,8 +294,7 @@ exports.getAllOrders = async (request, reply) => {
       count: allOrders.length,
       breakdown: {
         direct: transformedDirectOrders.length,
-        subOrders: transformedSubOrders.length,
-        legacy: transformedLegacyOrders.length,
+        subOrders: transformedSubOrders.length + transformedLegacyOrders.length,
         total: allOrders.length
       }
     });
