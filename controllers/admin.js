@@ -2946,6 +2946,310 @@ exports.rejectBankChangeRequest = async (request, reply) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /admin/orders/detailed
+// Comprehensive order list for the admin dashboard.
+// Returns every parent order with:
+//   - Full customer info + shipping address
+//   - Payment details (method, status, amounts, coupon)
+//   - For MULTI_SELLER orders: sub-orders with seller profile + items
+//   - For DIRECT orders:        seller info + items
+//   - For LEGACY orders:        items grouped per seller
+//
+// Query params:
+//   page            (default 1)
+//   limit           (default 20, max 100)
+//   status          OrderStatus filter on overallStatus
+//   paymentStatus   PaymentStatus filter
+//   search          Customer name or e-mail (case-insensitive)
+//   from / to       ISO date range  (e.g. 2026-01-01 / 2026-03-31)
+//   orderType       MULTI_SELLER | DIRECT | LEGACY  (omit for all)
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getAllOrdersDetailed = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ success: false, message: 'Access denied. Admins only.' });
+    }
+
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      paymentStatus,
+      search,
+      from,
+      to,
+      orderType,
+    } = request.query;
+
+    const take = Math.min(parseInt(limit, 10) || 20, 100);
+    const skip = (Math.max(parseInt(page, 10) || 1, 1) - 1) * take;
+
+    // ── Build where clause ───────────────────────────────────────────────────
+    const where = {};
+
+    if (status)        where.overallStatus  = status;
+    if (paymentStatus) where.paymentStatus  = paymentStatus;
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from);
+      if (to)   where.createdAt.lte = new Date(to);
+    }
+
+    if (search) {
+      where.OR = [
+        { customerName:  { contains: search, mode: 'insensitive' } },
+        { customerEmail: { contains: search, mode: 'insensitive' } },
+        { user: { name:  { contains: search, mode: 'insensitive' } } },
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    if (orderType === 'MULTI_SELLER') {
+      where.subOrders = { some: {} };
+    } else if (orderType === 'DIRECT') {
+      where.sellerId  = { not: null };
+      where.subOrders = { none: {} };
+    } else if (orderType === 'LEGACY') {
+      where.sellerId  = null;
+      where.subOrders = { none: {} };
+    }
+
+    // ── Fetch orders + count ─────────────────────────────────────────────────
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          seller: {
+            select: { id: true, name: true, email: true },
+          },
+          // Legacy / direct items
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  title: true,
+                  featuredImage: true,
+                  sellerId: true,
+                  seller: { select: { id: true, name: true, email: true } },
+                },
+              },
+            },
+          },
+          // Multi-seller sub-orders
+          subOrders: {
+            orderBy: { createdAt: 'asc' },
+            include: {
+              seller: {
+                select: { id: true, name: true, email: true },
+              },
+              sellerProfile: {
+                select: { storeName: true, businessName: true, storeLogo: true },
+              },
+              items: {
+                include: {
+                  product: {
+                    select: { id: true, title: true, featuredImage: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    // ── Transform ────────────────────────────────────────────────────────────
+    const transformed = orders.map(order => {
+      const hasSubOrders    = order.subOrders.length > 0;
+      const hasDirectSeller = !!order.sellerId;
+
+      const detectedType = hasSubOrders
+        ? 'MULTI_SELLER'
+        : hasDirectSeller
+          ? 'DIRECT'
+          : 'LEGACY';
+
+      // ── Customer ──
+      const customer = order.user
+        ? { id: order.user.id,  name: order.user.name,  email: order.user.email,  phone: order.user.phone  }
+        : { id: null,           name: order.customerName, email: order.customerEmail, phone: order.customerPhone };
+
+      // ── Shipping address ──
+      const shippingAddress = {
+        line:    order.shippingAddressLine
+                   || (order.shippingAddress && typeof order.shippingAddress === 'object'
+                         ? order.shippingAddress.line || order.shippingAddress.address
+                         : null),
+        city:    order.shippingCity,
+        state:   order.shippingState,
+        zipCode: order.shippingZipCode,
+        country: order.shippingCountry,
+        phone:   order.shippingPhone,
+      };
+
+      // ── Shared base fields ──
+      const base = {
+        id:                    order.id,
+        orderType:             detectedType,
+        overallStatus:         order.overallStatus,
+        legacyStatus:          order.status || null,
+        paymentStatus:         order.paymentStatus,
+        paymentMethod:         order.paymentMethod || null,
+        totalAmount:           order.totalAmount,
+        originalTotal:         order.originalTotal  || null,
+        discountAmount:        order.discountAmount  || null,
+        couponCode:            order.couponCode      || null,
+        stripePaymentIntentId: order.stripePaymentIntentId || null,
+        paypalOrderId:         order.paypalOrderId        || null,
+        customer,
+        shippingAddress,
+        createdAt:  order.createdAt,
+        updatedAt:  order.updatedAt,
+      };
+
+      // ── MULTI_SELLER: return sub-orders ──
+      if (hasSubOrders) {
+        return {
+          ...base,
+          sellerCount: order.subOrders.length,
+          subOrders: order.subOrders.map(sub => ({
+            // Identification fields — parent + sub-order + seller
+            subOrderId:        sub.id,
+            parentOrderId:     sub.parentOrderId,
+            sellerId:          sub.sellerId,
+            sellerName:        sub.seller?.name  || null,
+            sellerEmail:       sub.seller?.email || null,
+            // Status & amounts
+            status:            sub.status,
+            subtotal:          sub.subtotal,
+            trackingNumber:    sub.trackingNumber    || null,
+            estimatedDelivery: sub.estimatedDelivery || null,
+            statusReason:      sub.statusReason      || null,
+            // Full seller profile
+            seller: {
+              id:           sub.seller.id,
+              name:         sub.seller.name,
+              email:        sub.seller.email,
+              storeName:    sub.sellerProfile?.storeName    || null,
+              businessName: sub.sellerProfile?.businessName || null,
+              storeLogo:    sub.sellerProfile?.storeLogo    || null,
+            },
+            items: sub.items.map(item => ({
+              id:       item.id,
+              quantity: item.quantity,
+              price:    item.price,
+              product:  item.product
+                ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
+                : null,
+            })),
+            itemCount:  sub.items.length,
+            createdAt:  sub.createdAt,
+            updatedAt:  sub.updatedAt,
+          })),
+        };
+      }
+
+      // ── DIRECT: single seller ──
+      if (hasDirectSeller) {
+        const sellerInfo = order.seller
+          || order.items[0]?.product?.seller
+          || null;
+
+        return {
+          ...base,
+          // Identification fields — order + seller
+          orderId:    order.id,
+          sellerId:   order.sellerId,
+          sellerName: sellerInfo?.name  || null,
+          sellerEmail: sellerInfo?.email || null,
+          seller: sellerInfo
+            ? { id: sellerInfo.id, name: sellerInfo.name, email: sellerInfo.email }
+            : null,
+          trackingNumber:    order.trackingNumber    || null,
+          estimatedDelivery: order.estimatedDelivery || null,
+          statusReason:      order.statusReason      || null,
+          items: order.items.map(item => ({
+            id:       item.id,
+            quantity: item.quantity,
+            price:    item.price,
+            product:  item.product
+              ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
+              : null,
+          })),
+          itemCount: order.items.length,
+          subOrders: [],
+        };
+      }
+
+      // ── LEGACY: group items by seller ──
+      const sellerMap = {};
+      order.items.forEach(item => {
+        const sid    = item.product?.sellerId;
+        const sData  = item.product?.seller;
+        if (!sid) return;
+        if (!sellerMap[sid]) {
+          sellerMap[sid] = {
+            seller:   sData ? { id: sData.id, name: sData.name, email: sData.email } : { id: sid },
+            items:    [],
+            subtotal: 0,
+          };
+        }
+        sellerMap[sid].items.push({
+          id:       item.id,
+          quantity: item.quantity,
+          price:    item.price,
+          product:  item.product
+            ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
+            : null,
+        });
+        sellerMap[sid].subtotal += parseFloat(item.price || 0) * item.quantity;
+      });
+
+      return {
+        ...base,
+        trackingNumber:    order.trackingNumber    || null,
+        estimatedDelivery: order.estimatedDelivery || null,
+        statusReason:      order.statusReason      || null,
+        sellers:   Object.values(sellerMap),
+        items: order.items.map(item => ({
+          id:       item.id,
+          quantity: item.quantity,
+          price:    item.price,
+          product:  item.product
+            ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
+            : null,
+        })),
+        itemCount: order.items.length,
+        subOrders: [],
+      };
+    });
+
+    return reply.status(200).send({
+      success: true,
+      orders: transformed,
+      pagination: {
+        total,
+        page:  Number(page),
+        limit: take,
+        pages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('getAllOrdersDetailed error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
 
 
 
