@@ -314,7 +314,7 @@ exports.getOrdersBySellerId = async (request, reply) => {
     const { sellerId } = request.params;
     
     // Get orders for this seller from multiple sources
-    const [directOrders, subOrders, oldOrders] = await Promise.all([
+    const [subOrders, directOrders, oldOrders] = await Promise.all([
       // Sub-orders for this specific seller (multi-seller orders)
       prisma.subOrder.findMany({
         where: {

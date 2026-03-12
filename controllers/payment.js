@@ -388,17 +388,31 @@ async function handlePaymentSucceeded(paymentIntentId) {
   // Fetch the now-PAID order for stock deduction, email, and notifications.
   const order = await prisma.order.findFirst({
     where: { stripePaymentIntentId: paymentIntentId },
-    include: { items: { include: { product: true } } },
+    include: {
+      items: { include: { product: true } },
+      subOrders: {
+        include: {
+          items: { include: { product: true } },
+          seller: { select: { id: true, name: true } }
+        }
+      }
+    },
   });
 
   if (!order) return false;
+
+  // Build a flat list of all items (direct items + sub-order items)
+  const allItems = [
+    ...(order.items || []),
+    ...(order.subOrders?.flatMap(sub => sub.items) || [])
+  ];
 
   const cart = order.userId
     ? await prisma.cart.findUnique({ where: { userId: order.userId } })
     : null;
 
   await prisma.$transaction(async (tx) => {
-    for (const item of order.items) {
+    for (const item of allItems) {
       await tx.product.update({
         where: { id: item.productId },
         data: { stock: { decrement: item.quantity } },
@@ -441,8 +455,8 @@ async function handlePaymentSucceeded(paymentIntentId) {
     sendOrderConfirmationEmail(toEmail, toName, {
       orderId:       order.id,
       totalAmount:   Number(order.totalAmount),
-      itemCount:     order.items.length,
-      products:      order.items.map((item) => ({
+      itemCount:     allItems.length,
+      products:      allItems.map((item) => ({
         title:    item.product.title,
         quantity: item.quantity,
         price:    Number(item.price),
@@ -465,26 +479,26 @@ async function handlePaymentSucceeded(paymentIntentId) {
   }
 
   // ── Notify admins ───────────────────────────────────────────────────────
-  // Resolve seller display names and product titles from order items
-  const sellerIdSet = [...new Set(order.items.map(i => i.product?.sellerId).filter(Boolean))];
+  // Resolve seller display names and product titles from all items (direct + sub-order)
+  const sellerIdSet = [...new Set(allItems.map(i => i.product?.sellerId).filter(Boolean))];
   const sellerDisplayNames = await Promise.all(sellerIdSet.map(async sid => {
     const s = await prisma.user.findUnique({ where: { id: sid }, select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } } });
     return s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown';
   }));
-  const productTitles = order.items.map(i => i.product?.title).filter(Boolean);
+  const productTitles = allItems.map(i => i.product?.title).filter(Boolean);
 
   notifyAdminNewOrder(order.id, {
     customerName: toName,
     sellerName:   sellerDisplayNames.join(', ') || 'Unknown',
     totalAmount:  Number(order.totalAmount).toFixed(2),
-    itemCount:    order.items.length,
+    itemCount:    allItems.length,
     productNames: productTitles,
     orderId:      order.id,
   }).catch((e) => console.error('Admin notification error (non-blocking):', e.message));
 
   // ── Create SLA + in-app notifications for each seller ──────────────────
   for (const sid of sellerIdSet) {
-    const sellerItems = order.items.filter(i => i.product?.sellerId === sid);
+    const sellerItems = allItems.filter(i => i.product?.sellerId === sid);
     const itemCount = sellerItems.reduce((s, i) => s + i.quantity, 0);
     const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
     const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
