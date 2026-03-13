@@ -1107,72 +1107,94 @@ exports.getSalesAnalytics = async (request, reply) => {
 
     console.log(`📊 Fetching sales analytics for seller: ${sellerId}`);
 
-    // Build Prisma query for orders containing seller's products
-    const orderWhere = {
-      items: {
-        some: {
-          product: {
-            sellerId: sellerId
-          }
-        }
-      }
-    };
+    // Build optional date filter
+    const dateFilter = {};
     if (startDate || endDate) {
-      orderWhere.createdAt = {};
+      dateFilter.createdAt = {};
       if (startDate) {
-        orderWhere.createdAt.gte = new Date(startDate);
+        dateFilter.createdAt.gte = new Date(startDate);
       }
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        orderWhere.createdAt.lte = end;
+        dateFilter.createdAt.lte = end;
       }
     }
 
-    const orders = await prisma.order.findMany({
-      where: orderWhere,
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        }
-      }
-    });
+    const itemInclude = { include: { product: true } };
+
+    // Query all three order sources — same strategy as getSellerOrders
+    const [directOrders, subOrders, oldOrders] = await Promise.all([
+      // 1. Direct orders assigned to this seller
+      prisma.order.findMany({
+        where: { sellerId: sellerId, ...dateFilter },
+        include: { items: itemInclude }
+      }),
+      // 2. Sub-orders (multi-seller checkout)
+      prisma.subOrder.findMany({
+        where: { sellerId: sellerId, ...dateFilter },
+        include: { items: itemInclude }
+      }),
+      // 3. Legacy orders (no sellerId) that contain this seller's products
+      prisma.order.findMany({
+        where: {
+          sellerId: null,
+          items: { some: { product: { sellerId: sellerId } } },
+          ...dateFilter
+        },
+        include: { items: itemInclude }
+      })
+    ]);
 
     let totalRevenue = 0;
     let totalOrders = 0;
     let totalItemsSold = 0;
     const statusBreakdown = {
       PENDING: 0,
-      CONFIRMED: 0,  // Legacy status
-      PROCESSING: 0,  // New status
+      CONFIRMED: 0,
+      PROCESSING: 0,
       SHIPPED: 0,
       DELIVERED: 0,
       CANCELLED: 0
     };
     const productPerformance = new Map();
 
-    for (const order of orders) {
-      const sellerProducts = order.items.filter(item => item.product.sellerId === sellerId);
-      if (sellerProducts.length > 0) {
-        totalOrders += 1;
-        statusBreakdown[order.status] = (statusBreakdown[order.status] || 0) + 1;
-        for (const item of sellerProducts) {
-          totalRevenue += Number(item.price) * item.quantity;
-          totalItemsSold += item.quantity;
-          // Track product performance
-          if (!productPerformance.has(item.productId)) {
-            productPerformance.set(item.productId, {
-              title: item.product.title,
-              quantitySold: 0,
-              revenue: 0
-            });
-          }
-          const perfData = productPerformance.get(item.productId);
-          perfData.quantitySold += item.quantity;
-          perfData.revenue += Number(item.price) * item.quantity;
+    const trackItems = (items, status) => {
+      for (const item of items) {
+        totalRevenue += Number(item.price) * item.quantity;
+        totalItemsSold += item.quantity;
+        if (!productPerformance.has(item.productId)) {
+          productPerformance.set(item.productId, {
+            title: item.product.title,
+            quantitySold: 0,
+            revenue: 0
+          });
         }
+        const perfData = productPerformance.get(item.productId);
+        perfData.quantitySold += item.quantity;
+        perfData.revenue += Number(item.price) * item.quantity;
+      }
+      totalOrders += 1;
+      statusBreakdown[status] = (statusBreakdown[status] || 0) + 1;
+    };
+
+    // Process direct orders (all items belong to this seller)
+    for (const order of directOrders) {
+      const status = order.status || order.overallStatus;
+      trackItems(order.items, status);
+    }
+
+    // Process sub-orders (items are already scoped to this seller)
+    for (const subOrder of subOrders) {
+      trackItems(subOrder.items, subOrder.status);
+    }
+
+    // Process legacy orders (filter to only this seller's items)
+    for (const order of oldOrders) {
+      const sellerItems = order.items.filter(item => item.product?.sellerId === sellerId);
+      if (sellerItems.length > 0) {
+        const status = order.status || order.overallStatus;
+        trackItems(sellerItems, status);
       }
     }
 
@@ -1198,7 +1220,7 @@ exports.getSalesAnalytics = async (request, reply) => {
       }
     };
 
-    console.log(`✅ Analytics generated for seller: ${sellerId}`);
+    console.log(`✅ Analytics generated for seller: ${sellerId} — direct: ${directOrders.length}, sub: ${subOrders.length}, legacy: ${oldOrders.length}`);
 
     return reply.status(200).send({
       success: true,
