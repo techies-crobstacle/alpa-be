@@ -78,13 +78,18 @@ app.register(require("@fastify/cors"), {
 app.register(require("@fastify/cookie"));
 
 // Register Session (Required for Passport)
+// Use a direct 32-byte key (base64) stored in SESSION_KEY — avoids the
+// crypto_pwhash (Argon2) key-derivation step that requires 256 MB RAM at startup.
+// Generate a new key with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 app.register(require("@fastify/secure-session"), {
-  secret: process.env.SESSION_SECRET || "averylogphrasebiggerthanthirtytwochars", 
-  salt: process.env.SESSION_SALT || "mq9hDxBq5Jmq9hDx",
+  key: Buffer.from(
+    process.env.SESSION_KEY || "4tkuZPbyzruDHKSenHxO4NaY/Hr46aKUumAG8aziX2Y=",
+    "base64"
+  ),
   cookie: {
-    path: '/',
-    httpOnly: true // Use httpOnly for security
-  }
+    path: "/",
+    httpOnly: true,
+  },
 });
 
 // Register Passport

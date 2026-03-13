@@ -12,6 +12,34 @@ const {
   generateSalesSummaryCSV 
 } = require("../utils/csvExport");
 
+// ── Order display-ID helpers ─────────────────────────────────────────────────
+// Last 6 alphanumeric chars of the CUID (from the END), uppercased → e.g. "XHB5PK"
+// Using slice(-6) so the code visually matches the tail of the raw ID the user sees.
+const _sc = (id = '') => id.replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase();
+// DIRECT / parent:  #ABC123
+const toDisplayId = (id) => `#${_sc(id)}`;
+// Sub-order suffix: A, B … Z, AA … (Excel-column style, 0-based index)
+const toSubDisplayId = (parentId, idx) => {
+  let suffix = '', n = idx;
+  do { suffix = String.fromCharCode(65 + (n % 26)) + suffix; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return `#${_sc(parentId)}-${suffix}`;
+};
+
+// Trim item objects — keep only fields the frontend needs
+const trimItems = (items = []) =>
+  items.map(item => ({
+    id:        item.id,
+    productId: item.productId,
+    quantity:  item.quantity,
+    price:     item.price,
+    product:   item.product ? {
+      id:     item.product.id,
+      title:  item.product.title,
+      images: item.product.images,
+      price:  item.product.price
+    } : null
+  }));
+
 // Helper function to map database status to display status
 const mapStatusForDisplay = (dbStatus) => {
   // Handle undefined/null values
@@ -157,17 +185,32 @@ exports.getSellerOrders = async (request, reply) => {
     // Legacy multi-seller old orders (show only this seller's items, like a sub-order)
     const legacyMultiSellerOrders = processedOldOrders.filter(o => !o.isDirectOrder);
 
+    // Fetch ALL siblings for every parent so A/B/C index is globally stable
+    const parentIds = [...new Set(subOrders.map(s => s.parentOrderId))];
+    const globalSubsByParent = {};
+    if (parentIds.length > 0) {
+      const allSiblings = await prisma.subOrder.findMany({
+        where: { parentOrderId: { in: parentIds } },
+        select: { id: true, parentOrderId: true },
+        orderBy: { createdAt: 'asc' }
+      });
+      allSiblings.forEach(s => {
+        if (!globalSubsByParent[s.parentOrderId]) globalSubsByParent[s.parentOrderId] = [];
+        globalSubsByParent[s.parentOrderId].push(s.id);
+      });
+    }
+
     // Transform direct orders to unified format
     const transformedDirectOrders = allDirectOrders.map(order => ({
-      id: order.id,
-      parentOrderId: null, // No parent for direct orders
-      type: 'DIRECT', // Indicate this is a direct order
+      id:        order.id,
+      displayId: toDisplayId(order.id),   // e.g. #ABC123
+      parentOrderId: null,
+      type: 'DIRECT',
       status: mapStatusForDisplay(order.status || order.overallStatus),
       trackingNumber: order.trackingNumber,
       estimatedDelivery: order.estimatedDelivery,
-      statusReason: order.statusReason,
       subtotal: order.totalAmount,
-      items: order.items, // All items belong to this seller
+      items: trimItems(order.items),
       user: order.user,
       customerName: order.customerName,
       customerEmail: order.customerEmail,
@@ -186,16 +229,20 @@ exports.getSellerOrders = async (request, reply) => {
     }));
 
     // Transform sub-orders to unified format (backward compatibility)
-    const transformedSubOrders = subOrders.map(subOrder => ({
-      id: subOrder.id,
-      parentOrderId: subOrder.parentOrderId,
-      type: 'SUB_ORDER', // Indicate this is part of multi-seller order
+    const transformedSubOrders = subOrders.map(subOrder => {
+      const siblings = globalSubsByParent[subOrder.parentOrderId] || [];
+      const idx      = siblings.indexOf(subOrder.id);
+      return ({
+      id:              subOrder.id,
+      displaySubId:    toSubDisplayId(subOrder.parentOrderId, idx), // e.g. #XHB5PK-A
+      parentOrderId:   subOrder.parentOrderId,
+      parentDisplayId: toDisplayId(subOrder.parentOrderId),         // e.g. #XHB5PK
+      type: 'SUB_ORDER',
       status: mapStatusForDisplay(subOrder.status),
       trackingNumber: subOrder.trackingNumber,
       estimatedDelivery: subOrder.estimatedDelivery,
-      statusReason: subOrder.statusReason,
       subtotal: subOrder.subtotal,
-      items: subOrder.items, // Only this seller's items
+      items: trimItems(subOrder.items),
       user: subOrder.parentOrder.user,
       customerName: subOrder.parentOrder.customerName,
       customerEmail: subOrder.parentOrder.customerEmail,
@@ -211,19 +258,20 @@ exports.getSellerOrders = async (request, reply) => {
       paymentStatus: subOrder.parentOrder.paymentStatus,
       createdAt: subOrder.createdAt,
       updatedAt: subOrder.updatedAt
-    }));
+    });});
 
     // Transform legacy multi-seller old orders (show only this seller's items, like a sub-order)
-    const transformedLegacyOrders = legacyMultiSellerOrders.map(order => ({
-      id: order.id,
-      parentOrderId: null,
-      type: 'SUB_ORDER', // Show like a sub-order to seller
+    const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => ({
+      id:              order.id,
+      displaySubId:    toSubDisplayId(order.id, idx), // e.g. #XHB5PK-A (treated as sub)
+      parentOrderId:   order.id,
+      parentDisplayId: toDisplayId(order.id),
+      type: 'SUB_ORDER',
       status: mapStatusForDisplay(order.status || order.overallStatus),
       trackingNumber: order.trackingNumber,
       estimatedDelivery: order.estimatedDelivery,
-      statusReason: order.statusReason,
       subtotal: order.items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0),
-      items: order.items, // Already filtered to this seller's items only
+      items: trimItems(order.items),
       user: order.user,
       customerName: order.customerName,
       customerEmail: order.customerEmail,

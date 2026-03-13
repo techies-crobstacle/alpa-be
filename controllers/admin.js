@@ -8,8 +8,9 @@ const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductAppro
 const isAdminRole = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
 
 // ── Order display-ID helpers (used by all admin order endpoints) ──────────────
-// Converts a CUID like "cm8abc123xyz" → "ABC123" (6 uppercase alphanumeric chars)
-const _toShortCode = (id = '') => id.replace(/[^a-z0-9]/gi, '').slice(2, 8).toUpperCase();
+// Last 6 alphanumeric chars of the CUID (from the END), uppercased → e.g. "XHB5PK"
+// Using slice(-6) so the code visually matches the tail of the raw ID the user sees.
+const _toShortCode = (id = '') => id.replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase();
 // Parent display: #ABC123
 const toDisplayId = (id) => `#${_toShortCode(id)}`;
 // Sub-order display: #ABC123-A, #ABC123-B … #ABC123-Z, #ABC123-AA …
@@ -22,6 +23,21 @@ const toSubDisplayId = (parentId, idx) => {
   } while (n >= 0);
   return `#${_toShortCode(parentId)}-${suffix}`;
 };
+
+// Trim item objects — keep only fields the frontend needs
+const trimItems = (items = []) =>
+  items.map(item => ({
+    id:        item.id,
+    productId: item.productId,
+    quantity:  item.quantity,
+    price:     item.price,
+    product:   item.product ? {
+      id:     item.product.id,
+      title:  item.product.title,
+      images: item.product.images,
+      price:  item.product.price
+    } : null
+  }));
 
 const {
   notifySellerApproved,
@@ -258,7 +274,7 @@ exports.getAllOrders = async (request, reply) => {
       const idx      = siblings.indexOf(subOrder);
       return {
         id:              subOrder.id,
-        displayId:       toSubDisplayId(subOrder.parentOrderId, idx),
+        displaySubId:    toSubDisplayId(subOrder.parentOrderId, idx),
         parentOrderId:   subOrder.parentOrderId,
         parentDisplayId: toDisplayId(subOrder.parentOrderId),
         type:            'SUB_ORDER',
@@ -298,7 +314,7 @@ exports.getAllOrders = async (request, reply) => {
       // Assign A/B/C suffix per seller within this legacy order
       return Object.values(sellerGroups).map((group, idx) => ({
         id:              order.id,
-        displayId:       toSubDisplayId(order.id, idx),
+        displaySubId:    toSubDisplayId(order.id, idx),
         parentOrderId:   order.id,
         parentDisplayId: toDisplayId(order.id),
         originalOrderId: order.id,
@@ -476,18 +492,36 @@ exports.getOrdersBySellerId = async (request, reply) => {
 
     console.log(`[Admin] Found ${allDirectOrders.length} direct orders, ${subOrders.length} sub-orders, and ${legacyMultiSellerOrders.length} legacy multi-seller orders for seller ${sellerId}`);
 
+    // Fetch ALL siblings for every parent so A/B/C index is globally stable
+    const parentIds = [...new Set(subOrders.map(s => s.parentOrderId))];
+    const globalSubsByParent = {};
+    if (parentIds.length > 0) {
+      const allSiblings = await prisma.subOrder.findMany({
+        where: { parentOrderId: { in: parentIds } },
+        select: { id: true, parentOrderId: true },
+        orderBy: { createdAt: 'asc' }
+      });
+      allSiblings.forEach(s => {
+        if (!globalSubsByParent[s.parentOrderId]) globalSubsByParent[s.parentOrderId] = [];
+        globalSubsByParent[s.parentOrderId].push(s.id);
+      });
+    }
+
     // Transform sub-orders to include parent order info and seller-specific data
-    const transformedSubOrders = subOrders.map(subOrder => ({
-      // Sub-order specific fields
+    const transformedSubOrders = subOrders.map(subOrder => {
+      const siblings = globalSubsByParent[subOrder.parentOrderId] || [];
+      const idx      = siblings.indexOf(subOrder.id);
+      return ({
       id: subOrder.id,
-      subOrderId: subOrder.id, // ✅ Clear indicator this is a sub-order
-      parentOrderId: subOrder.parentOrderId, // ✅ Reference to parent order
+      displaySubId:    toSubDisplayId(subOrder.parentOrderId, idx),
+      subOrderId: subOrder.id,
+      parentOrderId: subOrder.parentOrderId,
+      parentDisplayId: toDisplayId(subOrder.parentOrderId),
       sellerId: subOrder.sellerId,
       status: subOrder.status,
       trackingNumber: subOrder.trackingNumber,
-      estimatedDelivery: subOrder.estimatedDelivery,  
-      statusReason: subOrder.statusReason,
-      subtotal: subOrder.subtotal, // ✅ Only this seller's portion
+      estimatedDelivery: subOrder.estimatedDelivery,
+      subtotal: subOrder.subtotal,
       createdAt: subOrder.createdAt,
       updatedAt: subOrder.updatedAt,
       type: 'SUB_ORDER',
@@ -510,24 +544,21 @@ exports.getOrdersBySellerId = async (request, reply) => {
       // Customer info
       user: subOrder.parentOrder.user,
       
-      // ✅ Only this seller's items (no other sellers' products)
-      items: subOrder.items,
-      
-      // ✅ Metadata to indicate this is seller-filtered
+      items: trimItems(subOrder.items),
       isSubOrder: true,
       sellerSpecific: true
-    }));
+    });});
 
     // Transform direct orders
     const transformedDirectOrders = allDirectOrders.map(order => ({
       id: order.id,
+      displayId: toDisplayId(order.id),
       subOrderId: null,
       parentOrderId: null,
-      sellerId: order.sellerId || sellerId, // Use order's sellerId or requested one for old orders
+      sellerId: order.sellerId || sellerId,
       status: order.status || order.overallStatus,
       trackingNumber: order.trackingNumber,
       estimatedDelivery: order.estimatedDelivery,
-      statusReason: order.statusReason,
       subtotal: order.totalAmount || order.items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * item.quantity), 0),
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
@@ -548,26 +579,23 @@ exports.getOrdersBySellerId = async (request, reply) => {
       customerEmail: order.customerEmail,
       customerPhone: order.customerPhone,
       
-      // Customer info
       user: order.user,
-      
-      // All items belong to this seller
-      items: order.items,
-      
+      items: trimItems(order.items),
       isSubOrder: false,
       sellerSpecific: true
     }));
 
     // Transform legacy multi-seller old orders (show only this seller's items)
-    const transformedLegacyOrders = legacyMultiSellerOrders.map(order => ({
+    const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => ({
       id: order.id,
+      displaySubId: toSubDisplayId(order.id, idx),
       subOrderId: null,
-      parentOrderId: null,
+      parentOrderId: order.id,
+      parentDisplayId: toDisplayId(order.id),
       sellerId: sellerId,
       status: order.status || order.overallStatus,
       trackingNumber: order.trackingNumber,
       estimatedDelivery: order.estimatedDelivery,
-      statusReason: order.statusReason,
       subtotal: order.items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * item.quantity), 0),
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
@@ -586,7 +614,7 @@ exports.getOrdersBySellerId = async (request, reply) => {
       customerEmail: order.customerEmail,
       customerPhone: order.customerPhone,
       user: order.user,
-      items: order.items, // Already filtered to this seller's items
+      items: trimItems(order.items),
       isSubOrder: true,
       sellerSpecific: true
     }));
@@ -3171,7 +3199,6 @@ exports.getAllOrdersDetailed = async (request, reply) => {
             subtotal:          sub.subtotal,
             trackingNumber:    sub.trackingNumber    || null,
             estimatedDelivery: sub.estimatedDelivery || null,
-            statusReason:      sub.statusReason      || null,
             // Full seller profile
             seller: {
               id:           sub.seller.id,
@@ -3215,7 +3242,6 @@ exports.getAllOrdersDetailed = async (request, reply) => {
             : null,
           trackingNumber:    order.trackingNumber    || null,
           estimatedDelivery: order.estimatedDelivery || null,
-          statusReason:      order.statusReason      || null,
           items: order.items.map(item => ({
             id:       item.id,
             quantity: item.quantity,
@@ -3257,7 +3283,6 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         ...base,
         trackingNumber:    order.trackingNumber    || null,
         estimatedDelivery: order.estimatedDelivery || null,
-        statusReason:      order.statusReason      || null,
         sellers:   Object.values(sellerMap),
         items: order.items.map(item => ({
           id:       item.id,
