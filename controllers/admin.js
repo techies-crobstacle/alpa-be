@@ -6,6 +6,23 @@ const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductAppro
 // SUPER_ADMIN has all the same operational rights as ADMIN.
 // Use this everywhere instead of hardcoding role === 'ADMIN'.
 const isAdminRole = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
+
+// ── Order display-ID helpers (used by all admin order endpoints) ──────────────
+// Converts a CUID like "cm8abc123xyz" → "ABC123" (6 uppercase alphanumeric chars)
+const _toShortCode = (id = '') => id.replace(/[^a-z0-9]/gi, '').slice(2, 8).toUpperCase();
+// Parent display: #ABC123
+const toDisplayId = (id) => `#${_toShortCode(id)}`;
+// Sub-order display: #ABC123-A, #ABC123-B … #ABC123-Z, #ABC123-AA …
+const toSubDisplayId = (parentId, idx) => {
+  let suffix = '';
+  let n = idx;
+  do {
+    suffix = String.fromCharCode(65 + (n % 26)) + suffix;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return `#${_toShortCode(parentId)}-${suffix}`;
+};
+
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
@@ -213,36 +230,50 @@ exports.getAllOrders = async (request, reply) => {
 
     // Transform direct orders
     const transformedDirectOrders = directOrders.map(order => ({
-      id: order.id,
-      type: 'DIRECT',
-      sellerId: order.sellerId,
-      sellerName: order.items[0]?.product?.seller?.name || 'Unknown',
-      status: order.status || order.overallStatus,
-      totalAmount: order.totalAmount,
-      paymentStatus: order.paymentStatus,
-      customerName: order.user?.name || order.customerName,
-      customerEmail: order.user?.email || order.customerEmail,
-      itemCount: order.items.length,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt
+      id:           order.id,
+      displayId:    toDisplayId(order.id),
+      type:         'DIRECT',
+      sellerId:     order.sellerId,
+      sellerName:   order.items[0]?.product?.seller?.name || 'Unknown',
+      status:       order.status || order.overallStatus,
+      totalAmount:  order.totalAmount,
+      paymentStatus:  order.paymentStatus,
+      customerName:   order.user?.name  || order.customerName,
+      customerEmail:  order.user?.email || order.customerEmail,
+      itemCount:    order.items.length,
+      createdAt:    order.createdAt,
+      updatedAt:    order.updatedAt,
     }));
 
+    // Group sub-orders by parentOrderId so we can assign A/B/C suffixes correctly
+    const subOrdersByParent = {};
+    subOrders.forEach(sub => {
+      if (!subOrdersByParent[sub.parentOrderId]) subOrdersByParent[sub.parentOrderId] = [];
+      subOrdersByParent[sub.parentOrderId].push(sub);
+    });
+
     // Transform sub-orders
-    const transformedSubOrders = subOrders.map(subOrder => ({
-      id: subOrder.id,
-      parentOrderId: subOrder.parentOrderId,
-      type: 'SUB_ORDER',
-      sellerId: subOrder.sellerId,
-      sellerName: subOrder.seller?.name || 'Unknown',
-      status: subOrder.status,
-      totalAmount: subOrder.subtotal,
-      paymentStatus: subOrder.parentOrder?.paymentStatus,
-      customerName: subOrder.parentOrder?.user?.name || subOrder.parentOrder?.customerName,
-      customerEmail: subOrder.parentOrder?.user?.email || subOrder.parentOrder?.customerEmail,
-      itemCount: subOrder.items.length,
-      createdAt: subOrder.createdAt,
-      updatedAt: subOrder.updatedAt
-    }));
+    const transformedSubOrders = subOrders.map(subOrder => {
+      const siblings = subOrdersByParent[subOrder.parentOrderId];
+      const idx      = siblings.indexOf(subOrder);
+      return {
+        id:              subOrder.id,
+        displayId:       toSubDisplayId(subOrder.parentOrderId, idx),
+        parentOrderId:   subOrder.parentOrderId,
+        parentDisplayId: toDisplayId(subOrder.parentOrderId),
+        type:            'SUB_ORDER',
+        sellerId:        subOrder.sellerId,
+        sellerName:      subOrder.seller?.name || 'Unknown',
+        status:          subOrder.status,
+        totalAmount:     subOrder.subtotal,
+        paymentStatus:   subOrder.parentOrder?.paymentStatus,
+        customerName:    subOrder.parentOrder?.user?.name  || subOrder.parentOrder?.customerName,
+        customerEmail:   subOrder.parentOrder?.user?.email || subOrder.parentOrder?.customerEmail,
+        itemCount:       subOrder.items.length,
+        createdAt:       subOrder.createdAt,
+        updatedAt:       subOrder.updatedAt,
+      };
+    });
 
     // Transform legacy orders
     const transformedLegacyOrders = filteredLegacyOrders.map(order => {
@@ -253,10 +284,10 @@ exports.getAllOrders = async (request, reply) => {
         if (sellerId) {
           if (!sellerGroups[sellerId]) {
             sellerGroups[sellerId] = {
-              sellerId: sellerId,
+              sellerId:   sellerId,
               sellerName: item.product?.seller?.name || 'Unknown',
-              items: [],
-              subtotal: 0
+              items:      [],
+              subtotal:   0,
             };
           }
           sellerGroups[sellerId].items.push(item);
@@ -264,21 +295,24 @@ exports.getAllOrders = async (request, reply) => {
         }
       });
 
-      // Create separate entries for each seller in the legacy order
-      return Object.values(sellerGroups).map(group => ({
-        id: order.id,                    // real order ID — use this for update-status calls
+      // Assign A/B/C suffix per seller within this legacy order
+      return Object.values(sellerGroups).map((group, idx) => ({
+        id:              order.id,
+        displayId:       toSubDisplayId(order.id, idx),
+        parentOrderId:   order.id,
+        parentDisplayId: toDisplayId(order.id),
         originalOrderId: order.id,
-        type: 'SUB_ORDER',               // treat as SUB_ORDER so frontend uses same update path
-        sellerId: group.sellerId,
-        sellerName: group.sellerName,
-        status: order.status || order.overallStatus,
-        totalAmount: group.subtotal,
-        paymentStatus: order.paymentStatus,
-        customerName: order.user?.name || order.customerName,
-        customerEmail: order.user?.email || order.customerEmail,
-        itemCount: group.items.length,
-        createdAt: order.createdAt,
-        updatedAt: order.updatedAt
+        type:            'SUB_ORDER',
+        sellerId:        group.sellerId,
+        sellerName:      group.sellerName,
+        status:          order.status || order.overallStatus,
+        totalAmount:     group.subtotal,
+        paymentStatus:   order.paymentStatus,
+        customerName:    order.user?.name  || order.customerName,
+        customerEmail:   order.user?.email || order.customerEmail,
+        itemCount:       group.items.length,
+        createdAt:       order.createdAt,
+        updatedAt:       order.updatedAt,
       }));
     }).flat();
 
@@ -3067,24 +3101,6 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       }),
       prisma.order.count({ where }),
     ]);
-
-    // ── Human-readable display ID helpers ───────────────────────────────────
-    // Converts a CUID like "cm8abc123xyz" → "ABC123"  (6 uppercase alphanumeric chars)
-    const toShortCode = (id = '') =>
-      id.replace(/[^a-z0-9]/gi, '').slice(2, 8).toUpperCase();
-
-    // Parent:   #ABC123
-    // Sub A:    #ABC123-A  (index 0 → A, 1 → B, …, 25 → Z, 26 → AA, …)
-    const toDisplayId = (id) => `#${toShortCode(id)}`;
-    const toSubDisplayId = (parentId, idx) => {
-      let suffix = '';
-      let n = idx;
-      do {
-        suffix = String.fromCharCode(65 + (n % 26)) + suffix;
-        n = Math.floor(n / 26) - 1;
-      } while (n >= 0);
-      return `#${toShortCode(parentId)}-${suffix}`;
-    };
 
     // ── Transform ────────────────────────────────────────────────────────────
     const transformed = orders.map(order => {

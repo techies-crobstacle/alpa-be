@@ -874,89 +874,165 @@ exports.bulkUpdateStock = async (request, reply) => {
 
 
 
-// SELLER — EXPORT SALES REPORT (CSV) [PRISMA VERSION]
+// SELLER — EXPORT SALES REPORT (CSV)
 exports.exportSalesReport = async (request, reply) => {
   try {
     const sellerId = request.user.userId;
     const { startDate, endDate, reportType } = request.query;
 
-    console.log(`📊 Generating ${reportType || 'detailed'} sales report for seller: ${sellerId}`);
-
-    // Build Prisma query for orders containing seller's products
-    const orderWhere = {
-      items: {
-        some: {
-          product: {
-            sellerId: sellerId
-          }
-        }
-      }
-    };
-    if (startDate || endDate) {
-      orderWhere.createdAt = {};
-      if (startDate) {
-        orderWhere.createdAt.gte = new Date(startDate);
-      }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        orderWhere.createdAt.lte = end;
-      }
+    const dateFilter = {};
+    if (startDate) dateFilter.gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateFilter.lte = end;
     }
+    const hasDateFilter = Object.keys(dateFilter).length > 0;
 
-    const orders = await prisma.order.findMany({
-      where: orderWhere,
-      include: {
-        items: {
-          include: {
-            product: true
+    // Fetch all three order types in parallel
+    const [subOrders, directOrders, legacyOrders] = await Promise.all([
+
+      // 1. Sub-orders (multi-seller architecture)
+      prisma.subOrder.findMany({
+        where: { sellerId, ...(hasDateFilter ? { createdAt: dateFilter } : {}) },
+        include: {
+          items: { include: { product: true } },
+          parentOrder: {
+            include: { user: { select: { id: true, name: true, email: true, phone: true } } }
           }
         },
-        user: true
-      },
-      orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' }
+      }),
+
+      // 2. Direct orders (sellerId set on order)
+      prisma.order.findMany({
+        where: { sellerId, ...(hasDateFilter ? { createdAt: dateFilter } : {}) },
+        include: {
+          items: { include: { product: true } },
+          user: { select: { id: true, name: true, email: true, phone: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      }),
+
+      // 3. Legacy orders (sellerId=null, items reference this seller)
+      prisma.order.findMany({
+        where: {
+          sellerId: null,
+          subOrders: { none: {} },
+          items: { some: { product: { sellerId } } },
+          ...(hasDateFilter ? { createdAt: dateFilter } : {})
+        },
+        include: {
+          items: { include: { product: true } },
+          user: { select: { id: true, name: true, email: true, phone: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
+
+    // Helper: map items to the shape csvExport expects
+    const toProducts = (items) =>
+      items
+        .filter(item => item.product?.sellerId === sellerId)
+        .map(item => ({
+          productId: item.product.id,          // ← fix: was spreading as 'id'
+          title:     item.product.title || 'N/A',
+          quantity:  item.quantity,
+          price:     parseFloat(item.price),   // ← fix: Prisma Decimal → number
+          sellerId:  item.product.sellerId,
+        }));
+
+    const sellerOrders = [];
+
+    // Sub-orders
+    subOrders.forEach(sub => {
+      const p = sub.parentOrder;
+      sellerOrders.push({
+        id:                  sub.id,
+        status:              sub.status || 'N/A',
+        paymentMethod:       p.paymentMethod       || 'N/A',
+        trackingNumber:      sub.trackingNumber     || null,
+        estimatedDelivery:   sub.estimatedDelivery  || null,
+        customerName:        p.user?.name  || p.customerName  || 'N/A',
+        customerEmail:       p.user?.email || p.customerEmail || 'N/A',
+        customerPhone:       p.user?.phone || p.customerPhone || 'N/A',
+        shippingAddressLine: p.shippingAddressLine  || null,
+        shippingCity:        p.shippingCity         || null,
+        shippingState:       p.shippingState        || null,
+        shippingZipCode:     p.shippingZipCode      || null,
+        shippingCountry:     p.shippingCountry      || null,
+        shippingPhone:       p.shippingPhone        || p.customerPhone || 'N/A',
+        shippingAddress:     p.shippingAddress      || null,
+        createdAt:           sub.createdAt,
+        products: sub.items.map(item => ({
+          productId: item.product?.id    || 'N/A',
+          title:     item.product?.title || 'N/A',
+          quantity:  item.quantity,
+          price:     parseFloat(item.price),
+          sellerId:  item.product?.sellerId,
+        })),
+      });
     });
 
-    // Filter and format orders to only include seller's products
-    const sellerOrders = orders.map(order => {
-      const sellerProducts = order.items.filter(item => item.product.sellerId === sellerId);
-      if (sellerProducts.length === 0) return null;
-      // Enrich order with customer details
-      const customerName = order.user?.name || 'N/A';
-      const customerEmail = order.user?.email || 'N/A';
-      const customerPhone = order.user?.phone || 'N/A';
-      // If shippingAddress is an object, add phone if missing
-      let shippingAddress = order.shippingAddress;
-      if (shippingAddress && typeof shippingAddress === 'object' && !shippingAddress.phone) {
-        shippingAddress.phone = customerPhone;
-      }
-      return {
-        ...order,
-        products: sellerProducts.map(item => ({
-          ...item.product,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        customerName,
-        customerEmail,
-        customerPhone,
-        shippingAddress
-      };
-    }).filter(Boolean);
+    // Direct orders
+    directOrders.forEach(order => {
+      const products = toProducts(order.items);
+      if (!products.length) return;
+      sellerOrders.push({
+        id:                  order.id,
+        status:              order.status || order.overallStatus || 'N/A', // ← fix: overallStatus fallback
+        paymentMethod:       order.paymentMethod       || 'N/A',
+        trackingNumber:      order.trackingNumber      || null,
+        estimatedDelivery:   order.estimatedDelivery   || null,
+        customerName:        order.user?.name  || order.customerName  || 'N/A',
+        customerEmail:       order.user?.email || order.customerEmail || 'N/A',
+        customerPhone:       order.user?.phone || order.customerPhone || 'N/A',
+        shippingAddressLine: order.shippingAddressLine || null,
+        shippingCity:        order.shippingCity        || null,
+        shippingState:       order.shippingState       || null,
+        shippingZipCode:     order.shippingZipCode     || null,
+        shippingCountry:     order.shippingCountry     || null,
+        shippingPhone:       order.shippingPhone       || order.customerPhone || 'N/A',
+        shippingAddress:     order.shippingAddress     || null,
+        createdAt:           order.createdAt,
+        products,
+      });
+    });
+
+    // Legacy orders
+    legacyOrders.forEach(order => {
+      const products = toProducts(order.items);
+      if (!products.length) return;
+      sellerOrders.push({
+        id:                  order.id,
+        status:              order.status || order.overallStatus || 'N/A',
+        paymentMethod:       order.paymentMethod       || 'N/A',
+        trackingNumber:      order.trackingNumber      || null,
+        estimatedDelivery:   order.estimatedDelivery   || null,
+        customerName:        order.user?.name  || order.customerName  || 'N/A',
+        customerEmail:       order.user?.email || order.customerEmail || 'N/A',
+        customerPhone:       order.user?.phone || order.customerPhone || 'N/A',
+        shippingAddressLine: order.shippingAddressLine || null,
+        shippingCity:        order.shippingCity        || null,
+        shippingState:       order.shippingState       || null,
+        shippingZipCode:     order.shippingZipCode     || null,
+        shippingCountry:     order.shippingCountry     || null,
+        shippingPhone:       order.shippingPhone       || order.customerPhone || 'N/A',
+        shippingAddress:     order.shippingAddress     || null,
+        createdAt:           order.createdAt,
+        products,
+      });
+    });
+
+    sellerOrders.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     if (sellerOrders.length === 0) {
-      return reply.status(404).send({
-        success: false,
-        message: "No sales data found for the specified period"
-      });
+      return reply.status(404).send({ success: false, message: "No sales data found for the specified period" });
     }
 
-    console.log(`✅ Found ${sellerOrders.length} orders for seller`);
+    console.log(`✅ Found ${sellerOrders.length} orders (${subOrders.length} sub, ${directOrders.length} direct, ${legacyOrders.length} legacy)`);
 
-    // Generate CSV based on report type
-    let csv;
-    let filename;
-
+    let csv, filename;
     if (reportType === 'summary') {
       csv = generateSalesSummaryCSV(sellerOrders, sellerId);
       filename = `sales-summary-${sellerId}-${Date.now()}.csv`;
@@ -965,20 +1041,13 @@ exports.exportSalesReport = async (request, reply) => {
       filename = `sales-report-${sellerId}-${Date.now()}.csv`;
     }
 
-    // Set headers for CSV download
     reply.header('Content-Type', 'text/csv');
     reply.header('Content-Disposition', `attachment; filename="${filename}"`);
-
-    console.log(`📥 Sending CSV file: ${filename}`);
-
     return reply.send(csv);
 
   } catch (error) {
     console.error("Export sales report error:", error);
-    return reply.status(500).send({ 
-      success: false, 
-      message: error.message || "Failed to generate sales report" 
-    });
+    return reply.status(500).send({ success: false, message: error.message || "Failed to generate sales report" });
   }
 };
 
