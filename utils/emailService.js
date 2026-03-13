@@ -28,7 +28,7 @@ if (process.env.SENDGRID_API_KEY) {
 
 const isDevelopmentMode = !emailConfigured;
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
-const senderName = process.env.SENDER_NAME || 'MIA Marketplace';
+const senderName = process.env.SENDER_NAME || 'Made in Arnhem Land';
 
 /**
  * Enhances every outgoing SendGrid message with:
@@ -109,7 +109,7 @@ const sendOTPEmail = async (email, otp, name) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:1px;">Email Verification</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Verify your identity to continue</p>
                 </td>
@@ -136,7 +136,7 @@ const sendOTPEmail = async (email, otp, name) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email â€” please do not reply.</p>
-                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;© 2026 MIA Marketplace. All rights reserved.</p>
+                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;© 2026 Made in Arnhem Land. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -232,7 +232,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">  Order Confirmed!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">Thank you for your purchase, ${customerName}!</p>
                 </td>
@@ -387,7 +387,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -508,7 +508,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-        subject: `Order Update: #${orderDetails.orderId?.slice(-8)} — MIA Marketplace`,
+        subject: `Order Update: #${orderDetails.orderId?.slice(-8)} — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -520,7 +520,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- Brand Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
-                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">  Order Update</h1>
                 </td>
               </tr>
@@ -625,7 +625,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &#8212; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &#8212; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
 
@@ -682,7 +682,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `New Order Received: #${orderDetails.orderId} — MIA Marketplace`,
+    subject: `New Order Received: #${orderDetails.orderId} — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -773,8 +773,8 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued MIA Marketplace seller! &#128188;</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller! &#128188;</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -824,7 +824,7 @@ const sendContactFormEmail = async (email, name, subject, message) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">&#128140; Message Received</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We'll be in touch soon!</p>
                 </td>
@@ -851,8 +851,8 @@ const sendContactFormEmail = async (email, name, subject, message) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace â€” Customer Support</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land â€” Customer Support</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation â€” please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -899,7 +899,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `Action Required: ${notificationType} — Order #${orderId?.slice(-8)} — MIA Marketplace`,
+      subject: `Action Required: ${notificationType} — Order #${orderId?.slice(-8)} — Made in Arnhem Land`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -911,7 +911,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 <!-- Brand Header -->
                 <tr>
                   <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:20px 40px;text-align:center;">
-                    <p style="margin:0;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                    <p style="margin:0;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   </td>
                 </tr>
                 <!-- Urgency Banner -->
@@ -969,8 +969,8 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 <!-- Footer -->
                 <tr>
                   <td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace â€” Automated SLA Monitor</p>
-                    <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 MIA Marketplace.</p>
+                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land â€” Automated SLA Monitor</p>
+                    <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Made in Arnhem Land.</p>
                   </td>
                 </tr>
               </table>
@@ -1005,7 +1005,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: "Your Seller Application Has Been Submitted — MIA Marketplace",
+        subject: "Your Seller Application Has Been Submitted — Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1016,7 +1016,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#128203; Application Submitted!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We've received your seller application</p>
                 </td>
@@ -1025,7 +1025,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for completing your seller application on MIA Marketplace! Your application has been received and is now under review by our team.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for completing your seller application on Made in Arnhem Land! Your application has been received and is now under review by our team.</p>
 
                   <!-- Status box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
@@ -1070,8 +1070,8 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1108,7 +1108,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Created — MIA Marketplace",
+    subject: "Your Seller Account Has Been Created — Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1120,7 +1120,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127881; Account Created!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready &mdash; let's get started</p>
                 </td>
@@ -1129,7 +1129,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to MIA Marketplace! Your email has been verified and your seller account has been successfully created. Please keep your application number safe &mdash; you'll need it when contacting our support team.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to Made in Arnhem Land! Your email has been verified and your seller account has been successfully created. Please keep your application number safe &mdash; you'll need it when contacting our support team.</p>
 
                   <!-- Application Number Box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;text-align:center;">
@@ -1178,8 +1178,8 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining MIA Marketplace!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1216,7 +1216,7 @@ const sendSellerApprovedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Approved — MIA Marketplace",
+    subject: "Your Seller Account Has Been Approved — Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1228,9 +1228,9 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; You're Approved!</h1>
-                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Welcome to the MIA Marketplace seller community</p>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Welcome to the Made in Arnhem Land seller community</p>
                 </td>
               </tr>
               <!-- Approved banner -->
@@ -1292,8 +1292,8 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the MIA Marketplace family!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Made in Arnhem Land family!   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email â€” please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1340,7 +1340,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: `Low Stock Alert: "${productTitle}" — MIA Marketplace`,
+        subject: `Low Stock Alert: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1352,7 +1352,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">⚠️ Stock Alert</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required for one of your products</p>
                 </td>
@@ -1428,8 +1428,8 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1466,7 +1466,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Pending Review: "${productTitle}" — MIA Marketplace`,
+        subject: `Product Pending Review: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1478,7 +1478,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#128276; Product Pending Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has updated a product that requires your approval</p>
                 </td>
@@ -1530,8 +1530,8 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1568,7 +1568,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Approved: "${productTitle}" is Now Live — MIA Marketplace`,
+        subject: `Product Approved: "${productTitle}" is Now Live — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1580,7 +1580,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; Product Approved!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your artwork is now live on the marketplace</p>
                 </td>
@@ -1595,7 +1595,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! Your product has been reviewed and <strong style="color:#4CAF50;">approved</strong> by our team. It is now visible to customers on the MIA Marketplace.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! Your product has been reviewed and <strong style="color:#4CAF50;">approved</strong> by our team. It is now visible to customers on the Made in Arnhem Land.</p>
 
                   <!-- Product box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #4CAF50;margin-bottom:24px;">
@@ -1642,8 +1642,8 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1681,7 +1681,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Review: "${productTitle}" Requires Changes — MIA Marketplace`,
+        subject: `Product Review: "${productTitle}" Requires Changes — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1693,7 +1693,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Review Update</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product listing requires some changes</p>
                 </td>
@@ -1762,8 +1762,8 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1800,7 +1800,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Approved: "${categoryName}" — MIA Marketplace`,
+    subject: `Category Approved: "${categoryName}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1812,7 +1812,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#127881; Category Approved!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your category request has been approved</p>
                 </td>
@@ -1848,14 +1848,14 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
                     <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Go to Dashboard</a>
                   </p>
 
-                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">&mdash; Thank you for being part of the MIA Marketplace community! &mdash;</p>
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">&mdash; Thank you for being part of the Made in Arnhem Land community! &mdash;</p>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1892,7 +1892,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Request Update: "${categoryName}" — MIA Marketplace`,
+    subject: `Category Request Update: "${categoryName}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1904,7 +1904,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Category Request Update</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your category request requires review</p>
                 </td>
@@ -1945,8 +1945,8 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -1983,7 +1983,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Category Request: "${categoryName}" — MIA Marketplace`,
+    subject: `New Category Request: "${categoryName}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1995,7 +1995,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">📝 New Category Request</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review category request</p>
                 </td>
@@ -2032,8 +2032,8 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace Admin Panel &mdash; Administrative Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel &mdash; Administrative Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -2071,7 +2071,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Seller Application: "${businessName || sellerName}" — MIA Marketplace`,
+    subject: `New Seller Application: "${businessName || sellerName}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2083,7 +2083,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">🏪 New Seller Application</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review seller application</p>
                 </td>
@@ -2121,8 +2121,8 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace Admin Panel &mdash; Administrative Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel &mdash; Administrative Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -2172,7 +2172,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Order Placed: #${orderDetails.orderId} — MIA Marketplace`,
+    subject: `New Order Placed: #${orderDetails.orderId} — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2285,8 +2285,8 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Admin Notification</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Admin Notification</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -2336,7 +2336,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} — MIA Marketplace`,
+    subject: `Order Status Updated: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -2369,7 +2369,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <a href="${baseUrl}/seller/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
               </td></tr>
               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
               </td></tr>
             </table>
           </td></tr>
@@ -2413,7 +2413,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   const msg = {
     to: adminEmail,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated by ${updatedBy}: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} — MIA Marketplace`,
+    subject: `Order Status Updated by ${updatedBy}: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -2447,7 +2447,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <a href="${baseUrl}/admin/orders/${orderDetails.orderId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
               </td></tr>
               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 MIA Marketplace.</p>
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
               </td></tr>
             </table>
           </td></tr>
@@ -2484,7 +2484,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Great News! Your Product "${productTitle}" Is Now Live — MIA Marketplace`,
+    subject: `Great News! Your Product "${productTitle}" Is Now Live — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2496,7 +2496,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Activated</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your listing is now live on the marketplace</p>
                 </td>
@@ -2511,7 +2511,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! An admin has manually activated your product listing. It is now live and visible to buyers on the MIA Marketplace.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! An admin has manually activated your product listing. It is now live and visible to buyers on the Made in Arnhem Land.</p>
                   <!-- Product box -->
                   <div style="background:#F0FBF2;border-radius:8px;padding:22px;border-top:3px solid #2E7D32;margin-bottom:24px;">
                     <p style="margin:0 0 12px;color:#1B5E20;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Activated Product</p>
@@ -2532,8 +2532,8 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -2572,7 +2572,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Deactivated: "${productTitle}" — MIA Marketplace`,
+    subject: `Product Deactivated: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2584,7 +2584,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your listing has been taken offline by an admin</p>
                 </td>
@@ -2627,8 +2627,8 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Supporting Aboriginal Artists   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -2667,7 +2667,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `[Low Stock] Product Auto-Deactivated: "${productTitle}" — MIA Marketplace`,
+    subject: `[Low Stock] Product Auto-Deactivated: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2679,7 +2679,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin Alert</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin Alert</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Low Stock Auto-Deactivation</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A product has been automatically taken offline</p>
                 </td>
@@ -2732,8 +2732,8 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Admin Notifications   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Admin Notifications   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -2772,7 +2772,7 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Deactivated by Seller: "${productTitle}" — MIA Marketplace`,
+    subject: `Product Deactivated by Seller: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2783,7 +2783,7 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated by Seller</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has taken their product offline</p>
                 </td>
@@ -2820,7 +2820,7 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -2859,7 +2859,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Submitted for Review: "${productTitle}" — MIA Marketplace`,
+    subject: `Product Submitted for Review: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2870,7 +2870,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace — Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Submitted for Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has requested product re-activation</p>
                 </td>
@@ -2907,7 +2907,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -2946,7 +2946,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Your Product Has Been Deactivated: "${productTitle}" — MIA Marketplace`,
+    subject: `Your Product Has Been Deactivated: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2957,7 +2957,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product is no longer visible to buyers</p>
                 </td>
@@ -2989,7 +2989,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -3028,7 +3028,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Submitted for Review: "${productTitle}" — MIA Marketplace`,
+    subject: `Product Submitted for Review: "${productTitle}" — Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3039,7 +3039,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Submitted for Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product is awaiting admin approval</p>
                 </td>
@@ -3076,7 +3076,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 MIA Marketplace. All rights reserved.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                 </td>
               </tr>
             </table>
@@ -3129,7 +3129,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Bank Details Change Request \u2014 ${sellerName || 'A Seller'} \u2014 MIA Marketplace`,
+    subject: `Bank Details Change Request \u2014 ${sellerName || 'A Seller'} \u2014 Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3140,7 +3140,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#127968; Bank Details Change Request</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review and approve or reject</p>
                 </td>
@@ -3175,8 +3175,8 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace Admin Panel &mdash; Administrative Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel &mdash; Administrative Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -3216,7 +3216,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Bank Details Have Been Updated \u2014 MIA Marketplace",
+    subject: "Your Bank Details Have Been Updated \u2014 Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3227,7 +3227,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">&#10003; Bank Details Approved</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your bank details have been successfully updated</p>
                 </td>
@@ -3259,8 +3259,8 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Seller Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Seller Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -3301,7 +3301,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Bank Details Change Request Was Not Approved \u2014 MIA Marketplace",
+    subject: "Your Bank Details Change Request Was Not Approved \u2014 Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3312,7 +3312,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">MIA Marketplace</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">&#10007; Bank Details Request Not Approved</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your change request has been reviewed</p>
                 </td>
@@ -3342,8 +3342,8 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">MIA Marketplace &mdash; Seller Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 MIA Marketplace.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land &mdash; Seller Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>

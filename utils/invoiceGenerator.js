@@ -33,7 +33,7 @@ const generateInvoiceBuffer = (order) => {
     doc.on('error', reject);
 
     // ── Header ──────────────────────────────────────────────────────────────
-    doc.fontSize(20).text('MIA MARKETPLACE', 50, 50)
+    doc.fontSize(20).text('Made in Arnhem Land', 50, 50)
        .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
 
     // ── Invoice meta ────────────────────────────────────────────────────────
