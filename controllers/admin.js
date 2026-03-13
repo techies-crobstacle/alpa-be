@@ -3068,6 +3068,24 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       prisma.order.count({ where }),
     ]);
 
+    // ── Human-readable display ID helpers ───────────────────────────────────
+    // Converts a CUID like "cm8abc123xyz" → "ABC123"  (6 uppercase alphanumeric chars)
+    const toShortCode = (id = '') =>
+      id.replace(/[^a-z0-9]/gi, '').slice(2, 8).toUpperCase();
+
+    // Parent:   #ABC123
+    // Sub A:    #ABC123-A  (index 0 → A, 1 → B, …, 25 → Z, 26 → AA, …)
+    const toDisplayId = (id) => `#${toShortCode(id)}`;
+    const toSubDisplayId = (parentId, idx) => {
+      let suffix = '';
+      let n = idx;
+      do {
+        suffix = String.fromCharCode(65 + (n % 26)) + suffix;
+        n = Math.floor(n / 26) - 1;
+      } while (n >= 0);
+      return `#${toShortCode(parentId)}-${suffix}`;
+    };
+
     // ── Transform ────────────────────────────────────────────────────────────
     const transformed = orders.map(order => {
       const hasSubOrders    = order.subOrders.length > 0;
@@ -3100,6 +3118,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       // ── Shared base fields ──
       const base = {
         id:                    order.id,
+        displayId:             toDisplayId(order.id),
         orderType:             detectedType,
         overallStatus:         order.overallStatus,
         legacyStatus:          order.status || null,
@@ -3122,10 +3141,12 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         return {
           ...base,
           sellerCount: order.subOrders.length,
-          subOrders: order.subOrders.map(sub => ({
+          subOrders: order.subOrders.map((sub, idx) => ({
             // Identification fields — parent + sub-order + seller
             subOrderId:        sub.id,
+            subDisplayId:      toSubDisplayId(order.id, idx),
             parentOrderId:     sub.parentOrderId,
+            parentDisplayId:   toDisplayId(order.id),
             sellerId:          sub.sellerId,
             sellerName:        sub.seller?.name  || null,
             sellerEmail:       sub.seller?.email || null,
@@ -3169,6 +3190,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
           ...base,
           // Identification fields — order + seller
           orderId:    order.id,
+          displayId:  toDisplayId(order.id),
           sellerId:   order.sellerId,
           sellerName: sellerInfo?.name  || null,
           sellerEmail: sellerInfo?.email || null,
