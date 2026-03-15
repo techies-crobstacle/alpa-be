@@ -4,7 +4,9 @@ const { notifyCustomerOrderStatusChange, notifyAdminOrderStatusChange, notifySel
 const {
   normalizeOrderStatus,
   validateStatusTransition,
-  VALID_TARGET_STATUSES
+  VALID_TARGET_STATUSES,
+  ORDER_STATUS_SEQUENCE,
+  TERMINAL_STATUSES
 } = require("../utils/orderStatusRules");
 
 const { 
@@ -460,15 +462,22 @@ exports.updateOrderStatus = async (request, reply) => {
       });
     }
 
-    // Validate status transition  
-    if (!validateStatusTransition(orderRecord.status, normalizedStatus)) {
+    // Validate status transition
+    const transitionCheck = validateStatusTransition({
+      currentStatus: orderRecord.status,
+      nextStatus: normalizedStatus,
+      trackingNumber,
+      estimatedDelivery,
+      reason: reason || statusReason
+    });
+    if (!transitionCheck.isValid) {
       return reply.status(400).send({
         success: false,
-        message: `Invalid status transition from ${orderRecord.status} to ${normalizedStatus}`
+        message: transitionCheck.message
       });
     }
 
-    // Prepare update data
+    // Prepare update data (only fields that exist on both Order and SubOrder)
     const updateData = {
       status: normalizedStatus,
       updatedAt: new Date()
@@ -484,7 +493,7 @@ exports.updateOrderStatus = async (request, reply) => {
       // Update direct order
       updatedOrder = await prisma.order.update({
         where: { id: orderId },
-        data: updateData,
+        data: { ...updateData, overallStatus: normalizedStatus },
         include: {
           user: true,
           items: {
@@ -568,6 +577,46 @@ exports.updateOrderStatus = async (request, reply) => {
         statusReason: updatedOrder.statusReason,
         updatedAt: updatedOrder.updatedAt
       };
+
+      // ── Aggregate parent order status from all sibling sub-orders ────────
+      // Rule: parent advances to a status only when ALL sub-orders have reached it.
+      // Example: if sub-A=PROCESSING and sub-B=CONFIRMED → parent stays CONFIRMED.
+      //          if sub-A=PROCESSING and sub-B=PROCESSING → parent becomes PROCESSING.
+      const allSiblings = await prisma.subOrder.findMany({
+        where: { parentOrderId: updatedOrder.parentOrder.id },
+        select: { status: true }
+      });
+
+      const siblingStatuses = allSiblings.map(s => s.status);
+      let newParentStatus = updatedOrder.parentOrder.status; // default: no change
+
+      const allTerminal = siblingStatuses.every(s => TERMINAL_STATUSES.includes(s));
+      if (allTerminal) {
+        // If every sub-order is cancelled/refunded, surface the most common terminal status
+        const allCancelled = siblingStatuses.every(s => s === 'CANCELLED');
+        newParentStatus = allCancelled ? 'CANCELLED' : 'PARTIAL_REFUND';
+      } else {
+        // For the normal progression, use the minimum (lowest) status among active sub-orders
+        const activeStatuses = siblingStatuses.filter(s => !TERMINAL_STATUSES.includes(s));
+        if (activeStatuses.length > 0) {
+          const minIndex = Math.min(...activeStatuses.map(s => {
+            const idx = ORDER_STATUS_SEQUENCE.indexOf(s);
+            return idx === -1 ? Infinity : idx;
+          }));
+          if (minIndex !== Infinity) {
+            newParentStatus = ORDER_STATUS_SEQUENCE[minIndex];
+          }
+        }
+      }
+
+      if (newParentStatus !== updatedOrder.parentOrder.status) {
+        await prisma.order.update({
+          where: { id: updatedOrder.parentOrder.id },
+          data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
+        });
+        console.log(`📦 Parent order ${updatedOrder.parentOrder.id} status updated: ${updatedOrder.parentOrder.status} → ${newParentStatus}`);
+      }
+      // ── End aggregation ───────────────────────────────────────────────────
     }
 
     // Send notifications and emails for the order status update
@@ -709,33 +758,77 @@ exports.updateOrderStatus = async (request, reply) => {
 // SELLER/ADMIN — UPDATE TRACKING INFO (with SMS notification)
 exports.updateTrackingInfo = async (request, reply) => {
   try {
-    const userId = request.user.userId; // From auth middleware
-    const userRole = request.user.role; // From auth middleware
+    const userId = request.user.userId;
+    const userRole = request.user.role;
     const { orderId } = request.params;
     const { trackingNumber, estimatedDelivery } = request.body;
 
-    const order = await prisma.order.findUnique({
+    // ── Try direct order first ────────────────────────────────────────────
+    let order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: {
-        items: {
-          include: {
-            product: true
-          }
-        },
-        user: true
-      }
+      include: { items: { include: { product: true } }, user: true }
     });
 
-    if (!order) return reply.status(404).send({ success: false, message: "Order not found" });
+    let isSubOrder = false;
+    let subOrderRecord = null;
 
-    // Check authorization: admin can update any order, seller can only update orders containing their products
+    // ── Fall back to sub-order lookup ─────────────────────────────────────
+    if (!order) {
+      subOrderRecord = await prisma.subOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          parentOrder: { include: { user: true } },
+          items: { include: { product: true } }
+        }
+      });
+
+      if (!subOrderRecord) {
+        return reply.status(404).send({ success: false, message: "Order not found" });
+      }
+
+      isSubOrder = true;
+
+      // Build a unified shape so the rest of the function works the same way
+      order = {
+        id: subOrderRecord.id,
+        sellerId: subOrderRecord.sellerId,
+        status: subOrderRecord.status,
+        trackingNumber: subOrderRecord.trackingNumber,
+        estimatedDelivery: subOrderRecord.estimatedDelivery,
+        subtotal: subOrderRecord.subtotal,
+        totalAmount: subOrderRecord.subtotal,
+        items: subOrderRecord.items,
+        user: subOrderRecord.parentOrder.user,
+        customerName: subOrderRecord.parentOrder.customerName,
+        customerEmail: subOrderRecord.parentOrder.customerEmail,
+        paymentMethod: subOrderRecord.parentOrder.paymentMethod,
+        shippingAddressLine: subOrderRecord.parentOrder.shippingAddressLine,
+        shippingCity: subOrderRecord.parentOrder.shippingCity,
+        shippingState: subOrderRecord.parentOrder.shippingState,
+        shippingZipCode: subOrderRecord.parentOrder.shippingZipCode,
+        shippingCountry: subOrderRecord.parentOrder.shippingCountry,
+        shippingPhone: subOrderRecord.parentOrder.shippingPhone,
+        userId: subOrderRecord.parentOrder.userId,
+        createdAt: subOrderRecord.createdAt,
+        parentOrderId: subOrderRecord.parentOrderId
+      };
+    }
+
+    // ── Authorization ─────────────────────────────────────────────────────
     if (userRole !== "ADMIN") {
-      const containsSellerItem = order.items.some((item) => item.product.sellerId === userId);
-      if (!containsSellerItem) {
-        return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+      if (isSubOrder) {
+        if (order.sellerId !== userId) {
+          return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't belong to you" });
+        }
+      } else {
+        const containsSellerItem = order.items.some((item) => item.product.sellerId === userId);
+        if (!containsSellerItem) {
+          return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
+        }
       }
     }
 
+    // ── Validate transition to SHIPPED ────────────────────────────────────
     const transitionValidation = validateStatusTransition({
       currentStatus: order.status,
       nextStatus: 'SHIPPED',
@@ -745,27 +838,65 @@ exports.updateTrackingInfo = async (request, reply) => {
     });
 
     if (!transitionValidation.isValid) {
-      return reply.status(400).send({
-        success: false,
-        message: transitionValidation.message
+      return reply.status(400).send({ success: false, message: transitionValidation.message });
+    }
+
+    // ── Persist the update ────────────────────────────────────────────────
+    if (isSubOrder) {
+      await prisma.subOrder.update({
+        where: { id: orderId },
+        data: {
+          trackingNumber,
+          estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
+          status: "SHIPPED"
+        }
+      });
+
+      // Aggregate parent order status (same rule as updateOrderStatus)
+      const allSiblings = await prisma.subOrder.findMany({
+        where: { parentOrderId: order.parentOrderId },
+        select: { status: true }
+      });
+      const siblingStatuses = allSiblings.map(s => s.status);
+      const allTerminal = siblingStatuses.every(s => TERMINAL_STATUSES.includes(s));
+      let newParentStatus;
+      if (allTerminal) {
+        newParentStatus = siblingStatuses.every(s => s === 'CANCELLED') ? 'CANCELLED' : 'PARTIAL_REFUND';
+      } else {
+        const activeStatuses = siblingStatuses.filter(s => !TERMINAL_STATUSES.includes(s));
+        const minIndex = Math.min(...activeStatuses.map(s => {
+          const idx = ORDER_STATUS_SEQUENCE.indexOf(s);
+          return idx === -1 ? Infinity : idx;
+        }));
+        newParentStatus = minIndex !== Infinity ? ORDER_STATUS_SEQUENCE[minIndex] : null;
+      }
+      if (newParentStatus) {
+        const parentOrder = await prisma.order.findUnique({ where: { id: order.parentOrderId }, select: { status: true } });
+        if (parentOrder && newParentStatus !== parentOrder.status) {
+          await prisma.order.update({
+            where: { id: order.parentOrderId },
+            data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
+          });
+          console.log(`📦 Parent order ${order.parentOrderId} status updated → ${newParentStatus}`);
+        }
+      }
+    } else {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          trackingNumber,
+          estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
+          status: "SHIPPED"
+        }
       });
     }
 
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        trackingNumber,
-        estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
-        status: "SHIPPED" // Auto-update to shipped when tracking is added
-      }
-    });
-
-    // Send email with tracking info (supports both logged-in and guest orders)
+    // ── Notifications & emails ────────────────────────────────────────────
     const customerEmail = order.user?.email || order.customerEmail;
     const customerName  = order.user?.name  || order.customerName || 'Customer';
+
     if (customerEmail) {
       console.log(`📧 Sending tracking info email to customer: ${customerEmail}`);
-      
       sendOrderStatusEmail(customerEmail, customerName, {
         orderId,
         status: "shipped",
@@ -773,7 +904,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         orderDate: order.createdAt,
-        estimatedDelivery: estimatedDelivery,
+        estimatedDelivery,
         shippingName: order.customerName,
         shippingAddress: order.shippingAddressLine,
         shippingCity: order.shippingCity,
@@ -787,30 +918,24 @@ exports.updateTrackingInfo = async (request, reply) => {
           quantity: item.quantity,
           price: parseFloat(item.price)
         }))
-      }).catch(error => {
-        console.error("Email error (non-blocking):", error.message);
-      });
+      }).catch(error => { console.error("Email error (non-blocking):", error.message); });
 
-      // Create in-app notification for customer about shipped status (only for logged-in users)
       if (order.user?.id) {
         console.log(`🔔 Creating shipped notification for customer ${order.user.id}`);
         notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
           totalAmount: order.totalAmount.toString(),
           itemCount: order.items.length,
           trackingNumber
-        }).catch(error => {
-          console.error("Customer notification error (non-blocking):", error.message);
-        });
+        }).catch(error => { console.error("Customer notification error (non-blocking):", error.message); });
       }
 
-      // When SELLER updates tracking → in-app + email to ALL admins
       if (userRole === "SELLER") {
         const seller = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
         notifyAdminOrderStatusChange(orderId, "shipped", {
           customerName, sellerName: seller?.name || 'Unknown',
           totalAmount: order.totalAmount.toString(), itemCount: order.items.length, trackingNumber
         }).catch(err => console.error("Admin in-app notification error (non-blocking):", err.message));
-        prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true, name: true } })
+        prisma.user.findMany({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } }, select: { email: true, name: true } })
           .then(admins => {
             for (const admin of admins) {
               if (admin.email) {
@@ -824,9 +949,10 @@ exports.updateTrackingInfo = async (request, reply) => {
           }).catch(err => console.error("Admin email lookup error (non-blocking):", err.message));
       }
 
-      // When ADMIN updates tracking → in-app + email to seller(s)
       if (userRole === "ADMIN") {
-        const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
+        const sellerIds = isSubOrder
+          ? [order.sellerId].filter(Boolean)
+          : [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
         for (const sellerId of sellerIds) {
           notifySellerOrderStatusChange(sellerId, orderId, "shipped", {
             customerName, totalAmount: order.totalAmount.toString(), trackingNumber

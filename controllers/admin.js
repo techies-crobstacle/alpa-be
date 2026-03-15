@@ -3160,12 +3160,15 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       };
 
       // ── Shared base fields ──
+      // Prefer order.status (written by seller updates) then fall back to overallStatus
+      const resolvedStatus = order.status || order.overallStatus || 'CONFIRMED';
+
       const base = {
         id:                    order.id,
         displayId:             toDisplayId(order.id),
         orderType:             detectedType,
-        overallStatus:         order.overallStatus,
-        legacyStatus:          order.status || null,
+        status:                resolvedStatus,
+        overallStatus:         resolvedStatus,
         paymentStatus:         order.paymentStatus,
         paymentMethod:         order.paymentMethod || null,
         totalAmount:           order.totalAmount,

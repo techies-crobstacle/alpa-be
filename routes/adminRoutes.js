@@ -1,10 +1,11 @@
-const { isAdmin } = require("../middlewares/authMiddleware");
+const { isAdmin, authenticateUser } = require("../middlewares/authMiddleware");
 const authMiddleware = require("../middlewares/auth");
 const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
 const productController = require("../controllers/product");
 const feedbackController = require("../controllers/feedback");
 const commissionController = require("../controllers/commission");
+const sellerOrderController = require("../controllers/sellerOrders");
 
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
@@ -92,6 +93,12 @@ async function adminRoutes(fastify, options) {
   // Backfill order notifications for all existing orders that have no notification record
   fastify.post("/orders/backfill-notifications", { preHandler: adminAuth }, adminController.backfillOrderNotifications);
 
+  // Update order / sub-order status (admin can update any order)
+  fastify.put("/orders/update-status/:orderId", { preHandler: [authenticateUser, checkRole(['ADMIN', 'SUPER_ADMIN'])] }, sellerOrderController.updateOrderStatus);
+
+  // Update tracking info for order / sub-order (admin)
+  fastify.put("/orders/tracking/:orderId", { preHandler: [authenticateUser, checkRole(['ADMIN', 'SUPER_ADMIN'])] }, sellerOrderController.updateTrackingInfo);
+
   // ---------------- COUPON MANAGEMENT ----------------
   // Public: active coupons visible to all users (no auth required)
   fastify.get("/coupons/active", adminController.getActiveCoupons);
@@ -149,7 +156,6 @@ async function adminRoutes(fastify, options) {
   fastify.get("/audit-logs", { preHandler: adminAuth }, adminController.getAuditLogs);
   // GET /admin/audit-logs/products/:productId  — full history for one product
   // Accessible by ADMIN (any product) or SELLER (own products only)
-  const { authenticateUser } = require("../middlewares/authMiddleware");
   fastify.get("/audit-logs/products/:productId", { preHandler: authenticateUser }, adminController.getProductAuditHistory);
 } 
 
