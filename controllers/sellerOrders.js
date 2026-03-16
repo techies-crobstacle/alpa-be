@@ -579,24 +579,30 @@ exports.updateOrderStatus = async (request, reply) => {
       };
 
       // ── Aggregate parent order status from all sibling sub-orders ────────
-      // Rule: parent advances to a status only when ALL sub-orders have reached it.
-      // Example: if sub-A=PROCESSING and sub-B=CONFIRMED → parent stays CONFIRMED.
-      //          if sub-A=PROCESSING and sub-B=PROCESSING → parent becomes PROCESSING.
-      const allSiblings = await prisma.subOrder.findMany({
-        where: { parentOrderId: updatedOrder.parentOrder.id },
-        select: { status: true }
-      });
+      // Rule: parent advances only when ALL sub-orders have reached that status.
+      // Fetch the parent's CURRENT status fresh from DB (the include data can be stale,
+      // and for MULTI_SELLER orders `status` is nullable while `overallStatus` is not).
+      const [parentRecord, allSiblings] = await Promise.all([
+        prisma.order.findUnique({
+          where: { id: updatedOrder.parentOrder.id },
+          select: { status: true, overallStatus: true }
+        }),
+        prisma.subOrder.findMany({
+          where: { parentOrderId: updatedOrder.parentOrder.id },
+          select: { status: true }
+        })
+      ]);
+
+      // Resolve actual current parent status (prefer status over overallStatus)
+      const currentParentStatus = parentRecord?.status || parentRecord?.overallStatus || 'CONFIRMED';
 
       const siblingStatuses = allSiblings.map(s => s.status);
-      let newParentStatus = updatedOrder.parentOrder.status; // default: no change
+      let newParentStatus = currentParentStatus; // default: no change
 
       const allTerminal = siblingStatuses.every(s => TERMINAL_STATUSES.includes(s));
       if (allTerminal) {
-        // If every sub-order is cancelled/refunded, surface the most common terminal status
-        const allCancelled = siblingStatuses.every(s => s === 'CANCELLED');
-        newParentStatus = allCancelled ? 'CANCELLED' : 'PARTIAL_REFUND';
+        newParentStatus = siblingStatuses.every(s => s === 'CANCELLED') ? 'CANCELLED' : 'PARTIAL_REFUND';
       } else {
-        // For the normal progression, use the minimum (lowest) status among active sub-orders
         const activeStatuses = siblingStatuses.filter(s => !TERMINAL_STATUSES.includes(s));
         if (activeStatuses.length > 0) {
           const minIndex = Math.min(...activeStatuses.map(s => {
@@ -609,12 +615,12 @@ exports.updateOrderStatus = async (request, reply) => {
         }
       }
 
-      if (newParentStatus !== updatedOrder.parentOrder.status) {
+      if (newParentStatus !== currentParentStatus) {
         await prisma.order.update({
           where: { id: updatedOrder.parentOrder.id },
           data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
         });
-        console.log(`📦 Parent order ${updatedOrder.parentOrder.id} status updated: ${updatedOrder.parentOrder.status} → ${newParentStatus}`);
+        console.log(`📦 Parent order ${updatedOrder.parentOrder.id} status updated: ${currentParentStatus} → ${newParentStatus}`);
       }
       // ── End aggregation ───────────────────────────────────────────────────
     }
@@ -853,11 +859,12 @@ exports.updateTrackingInfo = async (request, reply) => {
       });
 
       // Aggregate parent order status (same rule as updateOrderStatus)
-      const allSiblings = await prisma.subOrder.findMany({
-        where: { parentOrderId: order.parentOrderId },
-        select: { status: true }
-      });
-      const siblingStatuses = allSiblings.map(s => s.status);
+      const [parentRecord2, allSiblings2] = await Promise.all([
+        prisma.order.findUnique({ where: { id: order.parentOrderId }, select: { status: true, overallStatus: true } }),
+        prisma.subOrder.findMany({ where: { parentOrderId: order.parentOrderId }, select: { status: true } })
+      ]);
+      const currentParentStatus2 = parentRecord2?.status || parentRecord2?.overallStatus || 'CONFIRMED';
+      const siblingStatuses = allSiblings2.map(s => s.status);
       const allTerminal = siblingStatuses.every(s => TERMINAL_STATUSES.includes(s));
       let newParentStatus;
       if (allTerminal) {
@@ -870,15 +877,12 @@ exports.updateTrackingInfo = async (request, reply) => {
         }));
         newParentStatus = minIndex !== Infinity ? ORDER_STATUS_SEQUENCE[minIndex] : null;
       }
-      if (newParentStatus) {
-        const parentOrder = await prisma.order.findUnique({ where: { id: order.parentOrderId }, select: { status: true } });
-        if (parentOrder && newParentStatus !== parentOrder.status) {
-          await prisma.order.update({
-            where: { id: order.parentOrderId },
-            data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
-          });
-          console.log(`📦 Parent order ${order.parentOrderId} status updated → ${newParentStatus}`);
-        }
+      if (newParentStatus && newParentStatus !== currentParentStatus2) {
+        await prisma.order.update({
+          where: { id: order.parentOrderId },
+          data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
+        });
+        console.log(`📦 Parent order ${order.parentOrderId} status updated: ${currentParentStatus2} → ${newParentStatus}`);
       }
     } else {
       await prisma.order.update({

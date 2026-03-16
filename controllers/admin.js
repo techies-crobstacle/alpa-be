@@ -24,6 +24,32 @@ const toSubDisplayId = (parentId, idx) => {
   return `#${_toShortCode(parentId)}-${suffix}`;
 };
 
+// ── Order status helpers ─────────────────────────────────────────────────────
+const ORDER_STATUS_SEQUENCE = ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+const TERMINAL_STATUSES     = ['CANCELLED', 'REFUND', 'PARTIAL_REFUND'];
+
+/**
+ * Derive the correct parent status for a MULTI_SELLER order from its sub-orders.
+ * Rules:
+ *  • If ALL sub-orders are terminal → CANCELLED (all cancelled) or PARTIAL_REFUND
+ *  • Otherwise → the MINIMUM (least-advanced) active sub-order status
+ *    (parent only advances when every seller has moved forward)
+ */
+const deriveMultiSellerStatus = (subOrderStatuses, fallback = 'CONFIRMED') => {
+  if (!subOrderStatuses || subOrderStatuses.length === 0) return fallback;
+  const allTerminal = subOrderStatuses.every(s => TERMINAL_STATUSES.includes(s));
+  if (allTerminal) {
+    return subOrderStatuses.every(s => s === 'CANCELLED') ? 'CANCELLED' : 'PARTIAL_REFUND';
+  }
+  const active = subOrderStatuses.filter(s => !TERMINAL_STATUSES.includes(s));
+  if (active.length === 0) return fallback;
+  const minIdx = Math.min(...active.map(s => {
+    const i = ORDER_STATUS_SEQUENCE.indexOf(s);
+    return i === -1 ? Infinity : i;
+  }));
+  return minIdx !== Infinity ? ORDER_STATUS_SEQUENCE[minIdx] : fallback;
+};
+
 // Trim item objects — keep only fields the frontend needs
 const trimItems = (items = []) =>
   items.map(item => ({
@@ -270,8 +296,10 @@ exports.getAllOrders = async (request, reply) => {
 
     // Transform sub-orders
     const transformedSubOrders = subOrders.map(subOrder => {
-      const siblings = subOrdersByParent[subOrder.parentOrderId];
-      const idx      = siblings.indexOf(subOrder);
+      const siblings    = subOrdersByParent[subOrder.parentOrderId];
+      const idx         = siblings.indexOf(subOrder);
+      // Derive the parent order's real status from ALL sibling sub-orders
+      const parentStatus = deriveMultiSellerStatus(siblings.map(s => s.status));
       return {
         id:              subOrder.id,
         displaySubId:    toSubDisplayId(subOrder.parentOrderId, idx),
@@ -281,6 +309,7 @@ exports.getAllOrders = async (request, reply) => {
         sellerId:        subOrder.sellerId,
         sellerName:      subOrder.seller?.name || 'Unknown',
         status:          subOrder.status,
+        parentStatus,
         totalAmount:     subOrder.subtotal,
         paymentStatus:   subOrder.parentOrder?.paymentStatus,
         customerName:    subOrder.parentOrder?.user?.name  || subOrder.parentOrder?.customerName,
@@ -3160,8 +3189,11 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       };
 
       // ── Shared base fields ──
-      // Prefer order.status (written by seller updates) then fall back to overallStatus
-      const resolvedStatus = order.status || order.overallStatus || 'CONFIRMED';
+      // For MULTI_SELLER orders derive the real status live from sub-orders so stale
+      // DB columns never cause a mismatch. For other types prefer status → overallStatus.
+      const resolvedStatus = hasSubOrders
+        ? deriveMultiSellerStatus(order.subOrders.map(s => s.status))
+        : (order.status || order.overallStatus || 'CONFIRMED');
 
       const base = {
         id:                    order.id,
