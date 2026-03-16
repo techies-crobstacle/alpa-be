@@ -55,7 +55,7 @@ exports.addToWishlist = async (request, reply) => {
             id: true,
             title: true,
             price: true,
-            images: true,
+            featuredImage: true,
             stock: true
           }
         }
@@ -139,7 +139,7 @@ exports.getWishlist = async (request, reply) => {
             title: true,
             description: true,
             price: true,
-            images: true,
+            featuredImage: true,
             stock: true,
             status: true,
             category: true,

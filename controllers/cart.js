@@ -206,7 +206,7 @@ exports.getMyCart = async (request, reply) => {
                 id: true,
                 title: true,
                 price: true,
-                images: true,
+                featuredImage: true,
                 stock: true,
                 category: true
               }
@@ -449,7 +449,7 @@ exports.calculateGuestCart = async (request, reply) => {
         id: true,
         title: true,
         price: true,
-        images: true,
+        featuredImage: true,
         stock: true,
         category: true
       }
@@ -640,7 +640,7 @@ exports.syncCart = async (request, reply) => {
 
     const validProducts = await prisma.product.findMany({
       where: { id: { in: guestProductIds } },
-      select: { id: true, title: true, price: true, stock: true, images: true }
+      select: { id: true, title: true, price: true, stock: true, featuredImage: true }
     });
 
     const validProductMap = new Map(validProducts.map(p => [p.id, p]));
@@ -702,7 +702,7 @@ exports.syncCart = async (request, reply) => {
                 id: true,
                 title: true,
                 price: true,
-                images: true,
+                featuredImage: true,
                 stock: true
               }
             }
@@ -717,7 +717,7 @@ exports.syncCart = async (request, reply) => {
       quantity: item.quantity,
       price: parseFloat(item.product.price || 0),
       name: item.product.title,
-      thumbnail: item.product.images?.[0] || null
+      thumbnail: item.product.featuredImage || null
     }));
 
     const totalPrice = cartItems.reduce(
