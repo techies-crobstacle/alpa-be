@@ -2487,9 +2487,48 @@ exports.trackGuestOrder = async (request, reply) => {
     const isMultiSeller = order.orderType === 'MULTI_SELLER' ||
       (Array.isArray(order.subOrders) && order.subOrders.length > 0);
 
-    // For MULTI_SELLER orders, items live on sub-orders — flatten them for the response
+    // Shape sub-orders into a clean structure the frontend can consume directly
+    const shapedSubOrders = isMultiSeller
+      ? order.subOrders.map(sub => ({
+          id: sub.id,
+          status: sub.status,
+          trackingNumber: sub.trackingNumber || null,
+          estimatedDelivery: sub.estimatedDelivery || null,
+          subtotal: sub.subtotal,
+          seller: {
+            id: sub.seller?.id || null,
+            name: sub.seller?.name || 'Unknown Seller'
+          },
+          items: sub.items.map(item => ({
+            id: item.id,
+            quantity: item.quantity,
+            price: item.price,
+            product: {
+              id: item.product?.id || null,
+              title: item.product?.title || 'Product',
+              featuredImage: item.product?.featuredImage || null,
+              price: item.product?.price || item.price
+            }
+          }))
+        }))
+      : undefined;
+
+    // For MULTI_SELLER orders, items live on sub-orders — flatten for top-level items field
     const resolvedItems = isMultiSeller
-      ? order.subOrders.flatMap(sub => sub.items)
+      ? order.subOrders.flatMap(sub =>
+          sub.items.map(item => ({
+            id: item.id,
+            quantity: item.quantity,
+            price: item.price,
+            sellerName: sub.seller?.name || 'Unknown Seller',
+            product: {
+              id: item.product?.id || null,
+              title: item.product?.title || 'Product',
+              featuredImage: item.product?.featuredImage || null,
+              price: item.product?.price || item.price
+            }
+          }))
+        )
       : order.items;
 
     return reply.status(200).send({ 
@@ -2509,10 +2548,11 @@ exports.trackGuestOrder = async (request, reply) => {
         shippingZipCode: order.shippingZipCode,
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
-        trackingNumber: order.trackingNumber,
-        estimatedDelivery: order.estimatedDelivery,
+        // For MULTI_SELLER, tracking lives per sub-order; top-level is null
+        trackingNumber: isMultiSeller ? null : (order.trackingNumber || null),
+        estimatedDelivery: isMultiSeller ? null : (order.estimatedDelivery || null),
         items: resolvedItems,
-        subOrders: isMultiSeller ? order.subOrders : undefined,
+        subOrders: shapedSubOrders,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       }
