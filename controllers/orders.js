@@ -2496,79 +2496,129 @@ exports.trackGuestOrder = async (request, reply) => {
 };
 
 // ─── Invoice PDF Helper ────────────────────────────────────────────
-// Generates an invoice PDF buffer for any order (no status restriction)
+// Accepts a unified order shape. Handles MULTI_SELLER (order.subOrders[]),
+// sub-order specific (order.sellerName set, flat order.items), and legacy/direct.
 const generateInvoiceBuffer = (order) => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('end',  () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Header
+    // Resolve status — MULTI_SELLER parents store it in overallStatus
+    const resolvedStatus = order.status || order.overallStatus || 'CONFIRMED';
+    const displayRef     = order.displayId || order.id;
+
+    // ── Header ──
     doc.fontSize(20).text('ALPA MARKETPLACE', 50, 50)
        .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
 
-    // Invoice title
+    // ── Invoice meta ──
     doc.fontSize(16).text('INVOICE', 50, 120)
        .fontSize(12)
-       .text(`Invoice #: ${order.id}`, 50, 145)
-       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 160)
-       .text(`Status: ${order.status}`, 50, 175);
+       .text(`Invoice #: ${displayRef}`, 50, 145)
+       .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 50, 160)
+       .text(`Status: ${resolvedStatus}`, 50, 175);
+    if (order.sellerName) {
+      doc.text(`Seller: ${order.sellerName}`, 50, 190);
+    }
 
-    // Customer details
+    // ── Bill To ──
     doc.fontSize(14).text('Bill To:', 50, 210)
        .fontSize(12)
-       .text(order.customerName || '', 50, 230)
+       .text(order.customerName  || '', 50, 230)
        .text(order.customerEmail || '', 50, 245)
        .text(order.shippingPhone || order.customerPhone || '', 50, 260);
 
-    // Shipping address
+    // ── Ship To ──
     doc.fontSize(14).text('Ship To:', 300, 210).fontSize(12);
     if (order.shippingAddressLine || order.shippingCity) {
       doc.text(order.shippingAddressLine || '', 300, 230)
          .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
-         .text(order.shippingZipCode || '', 300, 260)
-         .text(order.shippingCountry || '', 300, 275);
+         .text(order.shippingZipCode  || '', 300, 260)
+         .text(order.shippingCountry  || '', 300, 275);
     }
 
-    // Items table
-    const tableTop = 320;
-    doc.fontSize(12)
-       .text('Item', 50, tableTop).text('Quantity', 250, tableTop)
-       .text('Unit Price', 350, tableTop).text('Total', 450, tableTop);
-    doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+    const hasSubOrders = Array.isArray(order.subOrders) && order.subOrders.length > 0;
+    let yPos = 320;
+    let grandSubtotal = 0;
 
-    let yPos = tableTop + 30;
-    let subtotal = 0;
-    (order.items || []).forEach(item => {
-      const lineTotal = Number(item.price) * item.quantity;
-      subtotal += lineTotal;
-      doc.text(item.product?.title || 'Product', 50, yPos)
-         .text(item.quantity.toString(), 250, yPos)
-         .text(`$${Number(item.price).toFixed(2)}`, 350, yPos)
-         .text(`$${lineTotal.toFixed(2)}`, 450, yPos);
-      yPos += 20;
-    });
+    if (hasSubOrders) {
+      // ── MULTI_SELLER: one section per seller sub-order ──
+      for (const sub of order.subOrders) {
+        const sellerLabel = sub.seller?.name || sub.sellerName || 'Unknown Seller';
+        doc.fontSize(11)
+           .text(`Seller: ${sellerLabel}`, 50, yPos)
+           .text(`Sub-order Status: ${sub.status || resolvedStatus}`, 310, yPos);
+        yPos += 18;
 
-    yPos += 10;
-    doc.moveTo(50, yPos).lineTo(550, yPos).stroke();
-    yPos += 15;
+        doc.fontSize(10)
+           .text('Item',       50, yPos)
+           .text('Qty',       310, yPos)
+           .text('Unit Price', 370, yPos)
+           .text('Total',     470, yPos);
+        doc.moveTo(50, yPos + 12).lineTo(550, yPos + 12).stroke();
+        yPos += 22;
 
-    // Coupon / discount line
+        let sellerSubtotal = 0;
+        (sub.items || []).forEach(item => {
+          const lineTotal = Number(item.price) * item.quantity;
+          sellerSubtotal += lineTotal;
+          doc.fontSize(10)
+             .text(item.product?.title || 'Product', 50, yPos, { width: 250 })
+             .text(String(item.quantity),             310, yPos)
+             .text(`$${Number(item.price).toFixed(2)}`, 370, yPos)
+             .text(`$${lineTotal.toFixed(2)}`,          470, yPos);
+          yPos += 18;
+        });
+        doc.fontSize(10)
+           .text(`Seller Subtotal:`, 370, yPos)
+           .text(`$${Number(sub.subtotal ?? sellerSubtotal).toFixed(2)}`, 470, yPos);
+        yPos += 8;
+        doc.moveTo(50, yPos + 4).lineTo(550, yPos + 4).stroke();
+        yPos += 18;
+        grandSubtotal += sellerSubtotal;
+      }
+    } else {
+      // ── Single-seller / sub-order: flat items table ──
+      doc.fontSize(12)
+         .text('Item',       50, yPos)
+         .text('Quantity',  260, yPos)
+         .text('Unit Price', 360, yPos)
+         .text('Total',     460, yPos);
+      doc.moveTo(50, yPos + 15).lineTo(550, yPos + 15).stroke();
+      yPos += 28;
+
+      (order.items || []).forEach(item => {
+        const lineTotal = Number(item.price) * item.quantity;
+        grandSubtotal += lineTotal;
+        doc.text(item.product?.title || 'Product', 50, yPos, { width: 200 })
+           .text(String(item.quantity),              260, yPos)
+           .text(`$${Number(item.price).toFixed(2)}`, 360, yPos)
+           .text(`$${lineTotal.toFixed(2)}`,           460, yPos);
+        yPos += 20;
+      });
+      doc.moveTo(50, yPos + 5).lineTo(550, yPos + 5).stroke();
+      yPos += 18;
+    }
+
+    // ── Coupon / discount ──
     if (order.discountAmount && parseFloat(order.discountAmount) > 0) {
       doc.fontSize(12)
          .text(`Coupon (${order.couponCode || ''}) Discount:`, 300, yPos)
-         .text(`-$${parseFloat(order.discountAmount).toFixed(2)}`, 450, yPos);
+         .text(`-$${parseFloat(order.discountAmount).toFixed(2)}`, 460, yPos);
       yPos += 20;
     }
 
-    doc.fontSize(12).text('Subtotal:', 350, yPos).text(`$${subtotal.toFixed(2)}`, 450, yPos);
+    // ── Totals ──
+    doc.fontSize(12).text('Subtotal:',     350, yPos).text(`$${grandSubtotal.toFixed(2)}`, 460, yPos);
     yPos += 20;
-    doc.fontSize(14).text('Total Amount:', 350, yPos).text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPos);
-
+    doc.fontSize(14).text('Total Amount:', 350, yPos).text(`$${Number(order.totalAmount).toFixed(2)}`, 460, yPos);
     yPos += 40;
     doc.fontSize(12).text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPos);
+
+    // ── Footer ──
     yPos += 60;
     doc.fontSize(10)
        .text('Thank you for your business!', 50, yPos)
@@ -2578,79 +2628,93 @@ const generateInvoiceBuffer = (order) => {
   });
 };
 
-// Download Invoice as PDF
+// ─── Helper: build a unified invoice shape from a SubOrder record ──────────
+const buildSubOrderShape = (sub) => ({
+  id:                 sub.id,
+  createdAt:          sub.createdAt,
+  status:             sub.status,
+  sellerName:         sub.seller?.name || null,
+  customerName:       sub.parentOrder.customerName,
+  customerEmail:      sub.parentOrder.customerEmail,
+  customerPhone:      sub.parentOrder.customerPhone,
+  shippingPhone:      sub.parentOrder.shippingPhone,
+  shippingAddressLine: sub.parentOrder.shippingAddressLine,
+  shippingCity:       sub.parentOrder.shippingCity,
+  shippingState:      sub.parentOrder.shippingState,
+  shippingZipCode:    sub.parentOrder.shippingZipCode,
+  shippingCountry:    sub.parentOrder.shippingCountry,
+  totalAmount:        sub.subtotal,
+  paymentMethod:      sub.parentOrder.paymentMethod,
+  discountAmount:     null,
+  couponCode:         null,
+  items:              sub.items,
+  subOrders:          null,
+});
+
+// Download Invoice as PDF (auth required)
 exports.downloadInvoice = async (request, reply) => {
   try {
-    const userId = request.user.userId;
+    const userId   = request.user.userId;
     const userRole = request.user.role;
     const { orderId } = request.params;
 
-    // Build query based on user role
-    let orderQuery = {
-      where: { id: orderId },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                title: true,
-                price: true,
-                category: true,
-                sellerId: true  // Include sellerId for authorization
-              }
-            }
-          }
-        },
-        user: {
-          select: {
-            name: true,
-            email: true,
-            phone: true
-          }
-        }
-      }
+    const orderInclude = {
+      items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+      user:      { select: { name: true, email: true, phone: true } },
     };
 
-    // Apply role-based access control
-    if (userRole === 'USER') {
-      // Customers can only access their own orders
-      orderQuery.where.userId = userId;
-    } else if (userRole === 'SELLER') {
-      // Sellers can access orders containing their products
-      orderQuery.where.items = {
-        some: {
-          product: {
-            sellerId: userId
-          }
-        }
+    // ── Try as a parent / direct / legacy order first ──
+    let invoiceShape = null;
+    const orderRecord = await prisma.order.findFirst({ where: { id: orderId }, include: orderInclude });
+
+    if (orderRecord) {
+      // Role-based access
+      if (userRole === 'USER' && orderRecord.userId !== userId) {
+        return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
+      }
+      if (userRole === 'SELLER') {
+        const isSeller = orderRecord.sellerId === userId ||
+          orderRecord.items.some(i => i.product?.sellerId === userId) ||
+          orderRecord.subOrders?.some(s => s.sellerId === userId);
+        if (!isSeller) return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
+      }
+      invoiceShape = {
+        ...orderRecord,
+        customerName:  orderRecord.user?.name  || orderRecord.customerName,
+        customerEmail: orderRecord.user?.email || orderRecord.customerEmail,
+        customerPhone: orderRecord.user?.phone || orderRecord.customerPhone,
       };
+    } else {
+      // ── Fall back: try as a SubOrder ID ──
+      const subOrderInclude = {
+        parentOrder: { include: { user: { select: { name: true, email: true, phone: true } } } },
+        items:       { include: { product: { select: { id: true, title: true, price: true } } } },
+        seller:      { select: { name: true, email: true } },
+      };
+      const subRecord = await prisma.subOrder.findUnique({ where: { id: orderId }, include: subOrderInclude });
+      if (!subRecord) {
+        return reply.status(404).send({ success: false, message: "Order not found or you don't have permission to access this order" });
+      }
+      // Role-based access for sub-orders
+      if (userRole === 'USER' && subRecord.parentOrder.userId !== userId) {
+        return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
+      }
+      if (userRole === 'SELLER' && subRecord.sellerId !== userId) {
+        return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
+      }
+      invoiceShape = buildSubOrderShape(subRecord);
     }
-    // Admins can access all orders (no additional where clause)
 
-    // Get order with all necessary details
-    const order = await prisma.order.findFirst(orderQuery);
-
-    if (!order) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Order not found or you don't have permission to access this order" 
-      });
+    // Status guard
+    const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+      return reply.status(400).send({ success: false, message: `Invoice is not available for orders with status: ${resolvedStatus}` });
     }
 
-    // Check if order status is DELIVERED
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: `Invoice is not available for orders with status: ${order.status}` 
-      });
-    }
-
-    // Generate PDF
-    const pdfBuffer = await generateInvoiceBuffer(order);
-
+    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
+    reply.header('Content-Disposition', `attachment; filename="invoice-${orderId}.pdf"`);
     return reply.send(pdfBuffer);
   } catch (error) {
     console.error("Download invoice error:", error);
@@ -2664,185 +2728,57 @@ exports.downloadGuestInvoice = async (request, reply) => {
     const { orderId, customerEmail } = request.query;
 
     if (!orderId || !customerEmail) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Order ID and customer email are required" 
-      });
+      return reply.status(400).send({ success: false, message: "Order ID and customer email are required" });
     }
 
-    // Get order with verification using email
-    const order = await prisma.order.findFirst({
-      where: { 
-        id: orderId,
-        customerEmail: customerEmail // Verify with guest email
-      },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                title: true,
-                price: true,
-                category: true
-              }
-            }
-          }
-        }
-      }
+    const orderInclude = {
+      items:     { include: { product: { select: { id: true, title: true, price: true } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+    };
+
+    // Try as parent order (email verified)
+    let invoiceShape = null;
+    const orderRecord = await prisma.order.findFirst({
+      where: { id: orderId, customerEmail },
+      include: orderInclude,
     });
 
-    if (!order) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Order not found or email doesn't match" 
+    if (orderRecord) {
+      invoiceShape = orderRecord;
+    } else {
+      // Fall back to sub-order (verify email against parent)
+      const subRecord = await prisma.subOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          parentOrder: true,
+          items: { include: { product: { select: { id: true, title: true, price: true } } } },
+          seller: { select: { name: true, email: true } },
+        },
       });
+      if (!subRecord || subRecord.parentOrder.customerEmail !== customerEmail) {
+        return reply.status(404).send({ success: false, message: "Order not found or email doesn't match" });
+      }
+      invoiceShape = buildSubOrderShape(subRecord);
     }
 
-    // Allow invoice download for all active order statuses (not cancelled/refunded)
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: `Invoice is not available for orders with status: ${order.status}` 
-      });
+    const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+      return reply.status(400).send({ success: false, message: `Invoice is not available for orders with status: ${resolvedStatus}` });
     }
 
-    // Create PDF document
-    const doc = new PDFDocument({ margin: 50 });
-    
-    // Set response headers for PDF download
+    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
-    
-    // Create buffer to collect PDF data
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    
-    // Return the PDF when it's finished
-    const pdfPromise = new Promise((resolve, reject) => {
-      doc.on('end', () => {
-        const pdfBuffer = Buffer.concat(chunks);
-        reply.send(pdfBuffer);
-        resolve();
-      });
-      
-      doc.on('error', reject);
-    });
-
-    // Add company header
-    doc.fontSize(20)
-       .text('ALPA MARKETPLACE', 50, 50)
-       .fontSize(10)
-       .text('Your Cultural Marketplace', 50, 75)
-       .moveDown();
-
-    // Add invoice title and details
-    doc.fontSize(16)
-       .text('INVOICE', 50, 120)
-       .fontSize(12)
-       .text(`Invoice #: ${order.id}`, 50, 145)
-       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 160)
-       .text(`Status: ${order.status}`, 50, 175);
-
-    // Customer details
-    doc.fontSize(14)
-       .text('Bill To:', 50, 210)
-       .fontSize(12)
-       .text(`${order.customerName}`, 50, 230)
-       .text(`${order.customerEmail}`, 50, 245)
-       .text(`${order.shippingPhone || order.customerPhone}`, 50, 260);
-
-    // Shipping address - Use new specific fields if available
-    doc.fontSize(14)
-       .text('Ship To:', 300, 210)
-       .fontSize(12);
-
-    if (order.shippingAddressLine || order.shippingCity || order.shippingState) {
-       doc.text(`${order.shippingAddressLine || ''}`, 300, 230)
-          .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
-          .text(`${order.shippingZipCode || ''}`, 300, 260)
-          .text(`${order.shippingCountry || ''}`, 300, 275);
-    } else if (order.shippingAddress) {
-      let address;
-      try {
-        address = typeof order.shippingAddress === 'string' 
-          ? JSON.parse(order.shippingAddress) 
-          : order.shippingAddress;
-      } catch (error) {
-        console.warn('Failed to parse shipping address as JSON, using as string:', order.shippingAddress);
-        address = { street: order.shippingAddress.toString() };
-      }
-      
-      doc.text(`${address.street || address.address || address.addressLine || address.toString() || ''}`, 300, 230)
-         .text(`${address.city || ''}, ${address.state || ''}`, 300, 245)
-         .text(`${address.zipCode || address.zip || address.pincode || ''}`, 300, 260)
-         .text(`${address.country || ''}`, 300, 275);
-    }
-
-    // Items table header
-    const tableTop = 320;
-    doc.fontSize(12)
-       .text('Item', 50, tableTop)
-       .text('Quantity', 250, tableTop)
-       .text('Unit Price', 350, tableTop)
-       .text('Total', 450, tableTop);
-
-    // Draw line under header
-    doc.moveTo(50, tableTop + 15)
-       .lineTo(550, tableTop + 15)
-       .stroke();
-
-    let yPosition = tableTop + 30;
-    let subtotal = 0;
-
-    // Add items
-    order.items.forEach((item) => {
-      const itemTotal = Number(item.price) * item.quantity;
-      subtotal += itemTotal;
-
-      doc.text(item.product.title, 50, yPosition)
-         .text(item.quantity.toString(), 250, yPosition)
-         .text(`$${Number(item.price).toFixed(2)}`, 350, yPosition)
-         .text(`$${itemTotal.toFixed(2)}`, 450, yPosition);
-      
-      yPosition += 20;
-    });
-
-    // Add totals
-    yPosition += 20;
-    doc.moveTo(50, yPosition)
-       .lineTo(550, yPosition)
-       .stroke();
-
-    yPosition += 20;
-    doc.fontSize(12)
-       .text('Subtotal:', 350, yPosition)
-       .text(`$${subtotal.toFixed(2)}`, 450, yPosition);
-
-    yPosition += 20;
-    doc.fontSize(14)
-       .text('Total Amount:', 350, yPosition)
-       .text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPosition);
-
-    // Payment method
-    yPosition += 40;
-    doc.fontSize(12)
-       .text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPosition);
-
-    // Footer
-    yPosition += 60;
-    doc.fontSize(10)
-       .text('Thank you for your business!', 50, yPosition)
-       .text('For questions about this invoice, contact support@alpa.com', 50, yPosition + 15);
-
-      // Finalize PDF
-      doc.end();
-      return pdfPromise;
+    reply.header('Content-Disposition', `attachment; filename="invoice-${orderId}.pdf"`);
+    return reply.send(pdfBuffer);
   } catch (error) {
     console.error("Download guest invoice error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
+// ─── DEAD CODE REMOVED ─── old inline PDF generation replaced by generateInvoiceBuffer above
+// placeholder kept so line references don't shift unexpectedly
+const _guestInvoiceLegacyPlaceholder = null; // eslint-disable-line
 
 // Download Invoice as PDF — public endpoint for email links
 // No auth required: orderId is an unguessable CUID.
@@ -2851,37 +2787,47 @@ exports.downloadPublicInvoice = async (request, reply) => {
   try {
     const { orderId } = request.params;
 
-    const order = await prisma.order.findFirst({
-      where: { id: orderId },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, title: true, price: true, category: true }
-            }
-          }
+    const orderInclude = {
+      items:     { include: { product: { select: { id: true, title: true, price: true } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+      user:      { select: { name: true, email: true, phone: true } },
+    };
+
+    // Try parent / direct / legacy order first
+    let invoiceShape = null;
+    const orderRecord = await prisma.order.findFirst({ where: { id: orderId }, include: orderInclude });
+
+    if (orderRecord) {
+      invoiceShape = {
+        ...orderRecord,
+        customerName:  orderRecord.user?.name  || orderRecord.customerName,
+        customerEmail: orderRecord.user?.email || orderRecord.customerEmail,
+        customerPhone: orderRecord.user?.phone || orderRecord.customerPhone,
+      };
+    } else {
+      // Fall back to sub-order
+      const subRecord = await prisma.subOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          parentOrder: true,
+          items:  { include: { product: { select: { id: true, title: true, price: true } } } },
+          seller: { select: { name: true, email: true } },
         },
-        user: {
-          select: { name: true, email: true, phone: true }
-        }
-      }
-    });
-
-    if (!order) {
-      return reply.status(404).send({ success: false, message: "Order not found" });
-    }
-
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(order.status)) {
-      return reply.status(400).send({
-        success: false,
-        message: `Invoice is not available for orders with status: ${order.status}`
       });
+      if (!subRecord) {
+        return reply.status(404).send({ success: false, message: "Order not found" });
+      }
+      invoiceShape = buildSubOrderShape(subRecord);
     }
 
-    const pdfBuffer = await generateInvoiceBuffer(order);
+    const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+      return reply.status(400).send({ success: false, message: `Invoice is not available for orders with status: ${resolvedStatus}` });
+    }
 
+    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename="invoice-${order.id}.pdf"`);
+    reply.header('Content-Disposition', `attachment; filename="invoice-${orderId}.pdf"`);
     return reply.send(pdfBuffer);
   } catch (error) {
     console.error("Download public invoice error:", error);
