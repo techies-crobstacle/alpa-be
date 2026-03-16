@@ -2447,9 +2447,28 @@ exports.trackGuestOrder = async (request, reply) => {
               select: {
                 id: true,
                 title: true,
-                images: true,
+                featuredImage: true,
                 price: true
               }
+            }
+          }
+        },
+        subOrders: {
+          include: {
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    title: true,
+                    featuredImage: true,
+                    price: true
+                  }
+                }
+              }
+            },
+            seller: {
+              select: { id: true, name: true }
             }
           }
         }
@@ -2465,11 +2484,20 @@ exports.trackGuestOrder = async (request, reply) => {
       return reply.status(403).send({ success: false, message: "Email does not match order" });
     }
 
+    const isMultiSeller = order.orderType === 'MULTI_SELLER' ||
+      (Array.isArray(order.subOrders) && order.subOrders.length > 0);
+
+    // For MULTI_SELLER orders, items live on sub-orders — flatten them for the response
+    const resolvedItems = isMultiSeller
+      ? order.subOrders.flatMap(sub => sub.items)
+      : order.items;
+
     return reply.status(200).send({ 
       success: true, 
       order: {
         id: order.id,
-        status: order.status,
+        orderType: order.orderType,
+        status: order.status || order.overallStatus,
         totalAmount: order.totalAmount,
         customerName: order.customerName,
         customerEmail: order.customerEmail,
@@ -2483,7 +2511,8 @@ exports.trackGuestOrder = async (request, reply) => {
         shippingPhone: order.shippingPhone,
         trackingNumber: order.trackingNumber,
         estimatedDelivery: order.estimatedDelivery,
-        items: order.items,
+        items: resolvedItems,
+        subOrders: isMultiSeller ? order.subOrders : undefined,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       }
