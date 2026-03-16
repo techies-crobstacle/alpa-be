@@ -673,31 +673,69 @@ exports.createGuestPaymentIntent = async (request, reply) => {
           };
 
     // Create PENDING guest order (stock deducted on payment success via webhook / confirm)
-    const order = await prisma.order.create({
-      data: {
-        // userId intentionally omitted — guest order
-        totalAmount,
-        originalTotal,
-        couponCode: appliedCoupon ? appliedCoupon.code : null,
-        discountAmount: discountAmount > 0 ? discountAmount : null,
-        shippingAddress: shippingAddressData,
-        shippingAddressLine:
-          typeof shippingAddress === "string" ? shippingAddress : shippingAddress?.addressLine,
-        shippingCity: city,
-        shippingState: state,
-        shippingZipCode: zipCode,
-        shippingCountry: country,
-        shippingPhone: mobileNumber || customerPhone,
-        paymentMethod: "STRIPE",
-        status: "CONFIRMED",
-        paymentStatus: "PENDING",
-        stripePaymentIntentId: paymentIntent.id,
-        customerName,
-        customerEmail,
-        customerPhone: mobileNumber || customerPhone || "",
-        items: { create: orderItems },
-      },
-    });
+    // Build per-seller map — same logic as the logged-in flow
+    const guestSellerMap = new Map();
+    for (const { product, quantity } of cartItems) {
+      const sid = product.sellerId;
+      if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
+      guestSellerMap.get(sid).push({ product, quantity });
+    }
+    const guestIsMultiSeller = guestSellerMap.size > 1;
+
+    const guestOrderBaseData = {
+      // userId intentionally omitted — guest order
+      totalAmount,
+      originalTotal,
+      couponCode: appliedCoupon ? appliedCoupon.code : null,
+      discountAmount: discountAmount > 0 ? discountAmount : null,
+      shippingAddress: shippingAddressData,
+      shippingAddressLine:
+        typeof shippingAddress === "string" ? shippingAddress : shippingAddress?.addressLine,
+      shippingCity: city,
+      shippingState: state,
+      shippingZipCode: zipCode,
+      shippingCountry: country,
+      shippingPhone: mobileNumber || customerPhone,
+      paymentMethod: "STRIPE",
+      status: "CONFIRMED",
+      overallStatus: "CONFIRMED",
+      paymentStatus: "PENDING",
+      stripePaymentIntentId: paymentIntent.id,
+      customerName,
+      customerEmail,
+      customerPhone: mobileNumber || customerPhone || "",
+    };
+
+    let order;
+    if (guestIsMultiSeller) {
+      order = await prisma.$transaction(async (tx) => {
+        const parentOrder = await tx.order.create({ data: guestOrderBaseData });
+        for (const [sellerId, sellerItems] of guestSellerMap) {
+          const subtotal = sellerItems.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const subOrder = await tx.subOrder.create({
+            data: { parentOrderId: parentOrder.id, sellerId, subtotal, status: "CONFIRMED" }
+          });
+          await tx.orderItem.createMany({
+            data: sellerItems.map(i => ({
+              subOrderId: subOrder.id,
+              productId: i.product.id,
+              quantity: i.quantity,
+              price: Number(i.product.price)
+            }))
+          });
+        }
+        return parentOrder;
+      });
+    } else {
+      const [singleSellerId] = guestSellerMap.keys();
+      order = await prisma.order.create({
+        data: {
+          ...guestOrderBaseData,
+          sellerId: singleSellerId,
+          items: { create: orderItems },
+        },
+      });
+    }
 
     console.log(`✅ Guest Stripe PaymentIntent created: ${paymentIntent.id}, order: ${order.id}`);
 
