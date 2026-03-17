@@ -672,8 +672,8 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
                         <td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;">${(orderDetails.status || '').toUpperCase()}</span></td>
                       </tr>
-                      ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
-                      ${orderDetails.estimatedDelivery ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
+                      ${orderDetails.trackingNumber && orderDetails.status?.toLowerCase() !== 'delivered' ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
+                      ${orderDetails.estimatedDelivery && orderDetails.status?.toLowerCase() !== 'delivered' ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
                     </table>
                   </div>
                 </td>
@@ -723,14 +723,20 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:10px 40px 36px;text-align:center;">
-                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                    <td style="padding-right:8px;text-align:right;">
-                      <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> Track Order</a>
-                    </td>
-                    <td style="padding-left:8px;text-align:left;">
-                      <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
-                    </td>
-                  </tr></table>
+                  ${orderDetails.status?.toLowerCase() === 'delivered' ? `
+                    <!-- Delivered: Only show Download Invoice -->
+                    <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+                  ` : `
+                    <!-- Other statuses: Show both buttons -->
+                    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td style="padding-right:8px;text-align:right;">
+                        <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📦 Track Order</a>
+                      </td>
+                      <td style="padding-left:8px;text-align:left;">
+                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+                      </td>
+                    </tr></table>
+                  `}
                 </td>
               </tr>
 
