@@ -12,7 +12,7 @@ END $$;
 -- Backfill existing rows that have no subDisplayId yet
 -- Format: {parentOrder.displayId}-A, -B, -C, ... ordered by sub-order createdAt
 UPDATE "sub_orders" AS so
-SET "subDisplayId" = o."displayId" || '-' || chr(64 + ranked.rn)
+SET "subDisplayId" = o."displayId" || '-' || chr((64 + ranked.rn)::int)
 FROM (
   SELECT
     id,

@@ -8,39 +8,38 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  password      String
-  name          String
-  phone         String?
-  role          Role     @default(CUSTOMER)
-  isVerified    Boolean  @default(false)
-  profileImage  String?
-  emailVerified Boolean  @default(false)
-  emailVerificationDeadline DateTime? // 7 days from signup after OTP verification
-  emailVerificationReminderSentAt DateTime? // Track when 7-day reminder email was sent
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  products      Product[]
-  orders        Order[]
-  sellerOrders  Order[] @relation("SellerOrders") // Direct orders for single-seller purchases
-  subOrders     SubOrder[] @relation("SellerSubOrders") // Seller's sub-orders
-  cart          Cart?
-  ratings       Rating[]
-  supportTickets SupportTicket[]
-  sellerProfile SellerProfile?
-  notifications Notification[]
-  wishlist      Wishlist[]
-  orderNotifications OrderNotification[]
-  userSessions  UserSession[]
-  loginVerifications LoginVerification[]
-  siteFeedback  SiteFeedback[]
-  ssoTickets    SsoTicket[]
-  addresses     UserAddress[]
-  sellerCommissions   CommissionEarned[] @relation("SellerCommissions")
-  customerCommissions CommissionEarned[] @relation("CustomerCommissions")
-  payoutRequests      PayoutRequest[]
+  id                              String              @id @default(cuid())
+  email                           String              @unique
+  password                        String
+  name                            String
+  phone                           String?
+  role                            Role                @default(CUSTOMER)
+  isVerified                      Boolean             @default(false)
+  profileImage                    String?
+  emailVerified                   Boolean             @default(false)
+  createdAt                       DateTime            @default(now())
+  updatedAt                       DateTime            @updatedAt
+  emailVerificationDeadline       DateTime?
+  emailVerificationReminderSentAt DateTime?
+  cart                            Cart?
+  customerCommissions             CommissionEarned[]  @relation("CustomerCommissions")
+  sellerCommissions               CommissionEarned[]  @relation("SellerCommissions")
+  loginVerifications              LoginVerification[]
+  notifications                   Notification[]
+  orderNotifications              OrderNotification[]
+  sellerOrders                    Order[]             @relation("SellerOrders")
+  orders                          Order[]
+  payoutRequests                  PayoutRequest[]
+  products                        Product[]
+  ratings                         Rating[]
+  sellerProfile                   SellerProfile?
+  siteFeedback                    SiteFeedback[]
+  ssoTickets                      SsoTicket[]
+  subOrders                       SubOrder[]          @relation("SellerSubOrders")
+  supportTickets                  SupportTicket[]
+  addresses                       UserAddress[]
+  userSessions                    UserSession[]
+  wishlist                        Wishlist[]
 
   @@map("users")
 }
@@ -48,7 +47,6 @@ model User {
 model UserAddress {
   id              String   @id @default(cuid())
   userId          String   @map("user_id")
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   shippingAddress String   @map("shipping_address")
   city            String
   state           String
@@ -58,6 +56,7 @@ model UserAddress {
   isDefault       Boolean  @default(false) @map("is_default")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_addresses")
 }
@@ -67,30 +66,30 @@ model PendingRegistration {
   email     String   @unique
   name      String
   password  String?
-  phone     String?
   mobile    String?
   role      Role
   otp       String
   otpExpiry DateTime
-  formData  Json?    @map("form_data")
   createdAt DateTime @default(now())
+  phone     String?
   updatedAt DateTime @updatedAt
+  formData  Json?    @map("form_data")
 
   @@map("pending_registrations")
 }
 
 model UserSession {
-  id                    String    @id @default(cuid())
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceFingerprint     String    // Browser + OS characteristics for device similarity
-  trustedDeviceToken    String?   @map("trusted_device_token") // Secure token for trusted device identification
-  lastVerifiedAt        DateTime  @default(now())
-  verificationExpiryAt  DateTime  // 30 days from last verification for trusted devices
-  isActive              Boolean   @default(true)
-  revokedAt             DateTime? @map("revoked_at") // When device trust was explicitly revoked
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  userId               String
+  deviceFingerprint    String
+  lastVerifiedAt       DateTime  @default(now())
+  verificationExpiryAt DateTime
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  revokedAt            DateTime? @map("revoked_at")
+  trustedDeviceToken   String?   @map("trusted_device_token")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, deviceFingerprint])
   @@index([trustedDeviceToken])
@@ -98,97 +97,96 @@ model UserSession {
 }
 
 model LoginVerification {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  email     String
-  otp       String
-  otpExpiry DateTime
+  id                String   @id @default(cuid())
+  userId            String
+  email             String
+  otp               String
+  otpExpiry         DateTime
   deviceFingerprint String
-  verified  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  verified          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("login_verifications")
 }
 
 model SellerProfile {
-  id                      String        @id @default(cuid())
-  userId                  String        @unique
-  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  contactPerson           String?
+  id                      String              @id @default(cuid())
+  userId                  String              @unique
   businessName            String?
-  abn                     String?
-  businessAddress         String?
-  businessType            String?
-  yearsInBusiness         Int?
-  website                 String?
-  culturalBackground      String?       // kept for migration compatibility
-  culturalStory           String?       // kept for migration compatibility
-  artistName              String?
-  artistDescription       String?
   storeName               String?
-  storeDescription        String?
-  storeLogo               String?
-  storeBanner             String?
-  storeLocation           String?
-  kycDocuments            Json?
-  kycSubmitted            Boolean       @default(false)
+  businessType            String?
+  businessAddress         String?
   bankDetails             Json?
-  status                  SellerStatus  @default(PENDING)
-  onboardingStep          Int           @default(1)
-  submittedForReviewAt    DateTime?
-  approvedAt              DateTime?
-  rejectedAt              DateTime?
-  rejectionReason         String?
-  suspendedAt             DateTime?
-  suspensionReason        String?
+  status                  SellerStatus        @default(PENDING)
+  productCount            Int                 @default(0)
+  minimumProductsUploaded Boolean             @default(false)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  abn                     String?
   activatedAt             DateTime?
   activatedBy             String?
   adminNotes              String?
-  productCount            Int           @default(0)
-  minimumProductsUploaded Boolean       @default(false)
-  commissionId            String?       @map("commission_id")
-  commission              Commission?   @relation(fields: [commissionId], references: [id])
+  approvedAt              DateTime?
+  contactPerson           String?
+  culturalBackground      String?
+  culturalStory           String?
+  kycDocuments            Json?
+  kycSubmitted            Boolean             @default(false)
+  onboardingStep          Int                 @default(1)
+  rejectedAt              DateTime?
+  rejectionReason         String?
+  storeBanner             String?
+  storeDescription        String?
+  storeLocation           String?
+  storeLogo               String?
+  submittedForReviewAt    DateTime?
+  suspendedAt             DateTime?
+  suspensionReason        String?
+  website                 String?
+  yearsInBusiness         Int?
+  artistName              String?
+  artistDescription       String?
+  commissionId            String?             @map("commission_id")
   bankChangeRequests      BankChangeRequest[]
-  subOrders               SubOrder[]    // Sub-orders for this seller
-  createdAt               DateTime      @default(now())
-  updatedAt               DateTime      @updatedAt
+  commission              Commission?         @relation(fields: [commissionId], references: [id])
+  user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subOrders               SubOrder[]          @relation("SellerSubOrders")
 
   @@map("seller_profiles")
 }
 
 model Product {
-  id          String        @id @default(cuid())
-  title       String
-  description String?
-  price       Decimal       @db.Decimal(10, 2)
-  category    String
-  stock         Int           @default(0)
-  featuredImage String?       // Single cover/featured image displayed in listings
-  images        String[]      // Gallery images shown in product detail
-  sellerId      String
-  seller      User          @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  sellerName  String?
-  artistName  String?       // Optional artist name field
-  status      ProductStatus @default(PENDING)
-  isActive    Boolean       @default(false)  // Product approval status
-  rejectionReason String?    // Reason for product rejection (admin → seller)
-  sellerInactiveReason String?  // Reason seller gave when they deactivated the product (seller → admin context)
-  reviewNote  String?        // Note from seller when submitting product for admin review
-  featured    Boolean       @default(false)
-  tags        String[]      @default([])
-  // Soft delete — rows are never hard-deleted; recycle bin uses these fields
-  deletedAt     DateTime?   // null = live product; set = in recycle bin
-  deletedBy     String?     // userId of who deleted it
-  deletedByRole String?     // "ADMIN" or "SELLER"
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-
-  cartItems   CartItem[]
-  orderItems  OrderItem[]
-  ratings     Rating[]
-  wishlist    Wishlist[]
+  id                   String             @id @default(cuid())
+  title                String
+  description          String?
+  price                Decimal?           @db.Decimal(10, 2)
+  category             String
+  stock                Int?               @default(0)
+  images               String[]
+  sellerId             String
+  sellerName           String?
+  status               ProductStatus      @default(PENDING)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  featured             Boolean            @default(false)
+  tags                 String[]           @default([])
+  artistName           String?
+  isActive             Boolean            @default(false)
+  featuredImage        String?
+  rejectionReason      String?
+  deletedAt            DateTime?
+  deletedBy            String?
+  deletedByRole        String?
+  reviewNote           String?
+  sellerInactiveReason String?
+  cartItems            CartItem[]
+  orderItems           OrderItem[]
+  product_variants     product_variants[]
+  seller               User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  ratings              Rating[]
+  wishlist             Wishlist[]
 
   @@index([sellerId])
   @@index([category])
@@ -202,64 +200,67 @@ model Product {
 model Cart {
   id        String     @id @default(cuid())
   userId    String     @unique
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items     CartItem[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  items     CartItem[]
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("carts")
 }
 
 model CartItem {
-  id        String   @id @default(cuid())
-  cartId    String
-  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  quantity  Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String            @id @default(cuid())
+  cartId           String
+  productId        String
+  quantity         Int               @default(1)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  variant_id       String?
+  cart             Cart              @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product          Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product_variants product_variants? @relation(fields: [variant_id], references: [id], onDelete: Cascade)
 
-  @@unique([cartId, productId])
+  @@index([cartId, productId, variant_id])
+  @@index([variant_id])
   @@map("cart_items")
 }
 
 model Order {
-  id                String      @id @default(cuid())
-  displayId         String      @unique // Short 6-char alphanumeric ID shown to customers e.g. "A4X9KR"
-  userId            String?     // Made optional for guest orders
-  user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sellerId          String?     // For single-seller orders
-  seller            User?       @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: SetNull)
-  items             OrderItem[] // Legacy items relation for existing orders
-  subOrders         SubOrder[]  // Child orders for each seller
-  totalAmount       Decimal     @db.Decimal(10, 2)
-  status            OrderStatus? // Legacy status for existing orders
-  overallStatus     OrderStatus @default(CONFIRMED) // Overall order status
-  trackingNumber    String?     // Legacy tracking for existing orders
-  estimatedDelivery DateTime?   // Legacy delivery date for existing orders
-  statusReason      String?     // Legacy status reason for existing orders
-  paymentMethod     String?
-  stripePaymentIntentId String?   // Stripe PaymentIntent ID
-  paymentStatus     PaymentStatus @default(PENDING) // payment state
-  couponCode        String?     // Coupon code applied at checkout
-  discountAmount    Decimal?    @db.Decimal(10, 2) // Discount amount applied
-  originalTotal     Decimal?    @db.Decimal(10, 2) // Pre-discount total
-  shippingAddress   Json?       // Keeping for backward compatibility or structured storage
-  shippingAddressLine String?
-  shippingCity        String?
-  shippingState       String?
-  shippingZipCode     String?
-  shippingCountry     String?
-  shippingPhone       String?
-  customerName      String
-  customerEmail     String
-  customerPhone     String
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-
-  orderNotifications OrderNotification[]
-  commissionEarned   CommissionEarned[]
+  id                    String              @id @default(cuid())
+  userId                String?
+  totalAmount           Decimal             @db.Decimal(10, 2)
+  status                OrderStatus?
+  paymentMethod         String?
+  shippingAddress       Json?
+  trackingNumber        String?
+  estimatedDelivery     DateTime?
+  customerName          String
+  customerEmail         String
+  customerPhone         String
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  shippingAddressLine   String?
+  shippingCity          String?
+  shippingCountry       String?
+  shippingPhone         String?
+  shippingState         String?
+  shippingZipCode       String?
+  paymentStatus         PaymentStatus       @default(PENDING)
+  stripePaymentIntentId String?
+  paypalOrderId         String?
+  couponCode            String?
+  discountAmount        Decimal?            @db.Decimal(10, 2)
+  originalTotal         Decimal?            @db.Decimal(10, 2)
+  statusReason          String?
+  overallStatus         OrderStatus         @default(CONFIRMED)
+  sellerId              String?
+  displayId             String              @unique
+  commissionEarned      CommissionEarned[]
+  items                 OrderItem[]
+  orderNotifications    OrderNotification[]
+  seller                User?               @relation("SellerOrders", fields: [sellerId], references: [id])
+  user                  User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subOrders             SubOrder[]
 
   @@index([userId])
   @@index([sellerId])
@@ -269,24 +270,23 @@ model Order {
 }
 
 model SubOrder {
-  id                String      @id @default(cuid())
-  subDisplayId      String?     @unique // Customer-facing short ID, e.g. "A4X9KR-A" (parentDisplayId-suffix)
-  parentOrderId     String      // Reference to parent order
-  parentOrder       Order       @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
-  sellerId          String      // Seller this sub-order belongs to
-  seller            User        @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: Cascade)
-  sellerProfile     SellerProfile? @relation(fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey") // Access to seller's business info
-  items             OrderItem[] // Items specific to this seller
-  subtotal          Decimal     @db.Decimal(10, 2) // Seller's portion of the order
-  status            OrderStatus @default(CONFIRMED) // Seller-specific status
-  trackingNumber    String?     // Seller-specific tracking
-  estimatedDelivery DateTime?   // Seller-specific delivery estimate
-  statusReason      String?     // Seller-specific status reason
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-
-  orderNotifications OrderNotification[]
+  id                 String              @id @default(cuid())
+  parentOrderId      String
+  sellerId           String
+  subtotal           Decimal             @db.Decimal(10, 2)
+  status             OrderStatus         @default(CONFIRMED)
+  trackingNumber     String?
+  estimatedDelivery  DateTime?
+  statusReason       String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  subDisplayId       String?             @unique
   commissionEarned   CommissionEarned[]
+  items              OrderItem[]
+  orderNotifications OrderNotification[]
+  parentOrder        Order               @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
+  seller             User                @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  seller             SellerProfile       @relation("SellerSubOrders", fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey")
 
   @@index([parentOrderId])
   @@index([sellerId])
@@ -295,31 +295,33 @@ model SubOrder {
 }
 
 model OrderItem {
-  id        String   @id @default(cuid())
-  // Keep both for backward compatibility - existing items have orderId, new items have subOrderId
-  orderId   String?  // For existing order items (legacy)
-  order     Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  subOrderId String? // For new order items (parent-child architecture)
-  subOrder  SubOrder? @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Decimal  @db.Decimal(10, 2)
-  createdAt DateTime @default(now())
+  id               String            @id @default(cuid())
+  orderId          String?
+  productId        String
+  quantity         Int
+  price            Decimal           @db.Decimal(10, 2)
+  createdAt        DateTime          @default(now())
+  subOrderId       String?
+  variant_id       String?
+  order            Order?            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product           @relation(fields: [productId], references: [id])
+  subOrder         SubOrder?         @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+  product_variants product_variants? @relation(fields: [variant_id], references: [id])
 
+  @@index([variant_id])
   @@map("order_items")
 }
 
 model Rating {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   rating    Int      @db.SmallInt
   comment   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
   @@index([productId])
@@ -328,14 +330,14 @@ model Rating {
 
 model SiteFeedback {
   id        String   @id @default(cuid())
-  userId    String?  // Optional - guests can also submit
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  name      String?  // For guest users
-  email     String?  // For guest users
-  rating    Int      @db.SmallInt // 1-5 stars
+  userId    String?
+  name      String?
+  email     String?
+  rating    Int      @db.SmallInt
   comment   String?
-  page      String?  // Which page they're giving feedback on (optional)
+  page      String?
   createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([rating])
@@ -343,21 +345,21 @@ model SiteFeedback {
 }
 
 model SupportTicket {
-  id          String        @id @default(cuid())
+  id          String       @id @default(cuid())
   userId      String?
-  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  orderId     String?
-  guestEmail  String?
-  requestType String?
   subject     String
   message     String
-  status      TicketStatus  @default(OPEN)
-  priority    Priority      @default(MEDIUM)
+  status      TicketStatus @default(OPEN)
+  priority    Priority     @default(MEDIUM)
   category    String?
   attachments String[]
   response    String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  orderId     String?
+  guestEmail  String?
+  requestType String?
+  user        User?        @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([orderId])
@@ -369,16 +371,16 @@ model SupportTicket {
 model Notification {
   id          String           @id @default(cuid())
   userId      String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String
   message     String
   type        NotificationType
   isRead      Boolean          @default(false)
-  relatedId   String?          // Order ID, Product ID, etc.
-  relatedType String?          // "order", "product", "seller", etc.
-  metadata    Json?            // Additional data (seller name, order details, etc.)
+  relatedId   String?
+  relatedType String?
+  metadata    Json?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([isRead])
@@ -387,30 +389,268 @@ model Notification {
 }
 
 model CategoryRequest {
-  id                String              @id @default(cuid())
-  categoryName      String              @unique
-  description       String?
-  status            CategoryStatus      @default(PENDING)
-  requestedBy       String?             // User ID who requested it (optional)
-  approvedBy        String?             // Admin ID who approved it
-  rejectedBy        String?             // Admin ID who rejected it
-  approvalMessage   String?             // Message when approved
-  rejectionMessage  String?             // Message when rejected
-  requestedAt       DateTime            @default(now())
-  approvedAt        DateTime?
-  rejectedAt        DateTime?
-  updatedAt         DateTime            @updatedAt
-
-  // Soft delete — row is kept for log continuity; only gone when hard deleted
-  softDeletedAt     DateTime?           // null = active; set = soft deleted
-  softDeletedBy     String?             // userId who soft deleted it
-  restoredAt        DateTime?           // last restore timestamp
-  restoredBy        String?             // userId who restored it
+  id               String         @id @default(cuid())
+  categoryName     String         @unique
+  description      String?
+  status           CategoryStatus @default(PENDING)
+  requestedBy      String?
+  approvedBy       String?
+  rejectedBy       String?
+  approvalMessage  String?
+  rejectionMessage String?
+  requestedAt      DateTime       @default(now())
+  approvedAt       DateTime?
+  rejectedAt       DateTime?
+  updatedAt        DateTime       @updatedAt
+  softDeletedAt    DateTime?
+  softDeletedBy    String?
+  restoredAt       DateTime?
+  restoredBy       String?
 
   @@index([status])
   @@index([requestedAt])
   @@index([softDeletedAt])
   @@map("category_requests")
+}
+
+model Commission {
+  id          String          @id @default(cuid())
+  title       String
+  type        CommissionType
+  value       Decimal         @db.Decimal(10, 2)
+  description String?
+  isDefault   Boolean         @default(false)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  sellers     SellerProfile[]
+
+  @@map("commissions")
+}
+
+model CommissionEarned {
+  id               String           @id @default(cuid())
+  orderId          String?          @map("order_id")
+  sellerId         String           @map("seller_id")
+  customerId       String?          @map("customer_id")
+  customerName     String           @map("customer_name")
+  customerEmail    String           @map("customer_email")
+  sellerName       String?          @map("seller_name")
+  orderValue       Decimal          @map("order_value") @db.Decimal(10, 2)
+  commissionRate   Decimal          @map("commission_rate") @db.Decimal(5, 2)
+  commissionAmount Decimal          @map("commission_amount") @db.Decimal(10, 2)
+  status           CommissionStatus @default(PENDING)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  netPayable       Decimal          @map("net_payable") @db.Decimal(10, 2)
+  subOrderId       String?          @map("sub_order_id")
+  customer         User?            @relation("CustomerCommissions", fields: [customerId], references: [id])
+  order            Order?           @relation(fields: [orderId], references: [id])
+  seller           User             @relation("SellerCommissions", fields: [sellerId], references: [id], onDelete: Cascade)
+  subOrder         SubOrder?        @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("commission_earned")
+}
+
+model PayoutRequest {
+  id                  String              @id @default(cuid())
+  sellerId            String              @map("seller_id")
+  requestedAmount     Decimal             @map("requested_amount") @db.Decimal(10, 2)
+  redeemableAtRequest Decimal             @map("redeemable_at_request") @db.Decimal(10, 2)
+  status              PayoutRequestStatus @default(PENDING)
+  sellerNote          String?             @map("seller_note")
+  adminNote           String?             @map("admin_note")
+  processedAt         DateTime?           @map("processed_at")
+  processedBy         String?             @map("processed_by")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  seller              User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("payout_requests")
+}
+
+model Coupon {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  expiresAt     DateTime  @map("expires_at")
+  createdBy     String    @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  discountType  String    @default("percentage") @map("discount_type")
+  discountValue Float     @map("discount_value")
+  maxDiscount   Float?    @map("max_discount")
+  minCartValue  Float?    @map("min_cart_value")
+  usageLimit    Int?      @map("usage_limit")
+  usagePerUser  Int       @default(1) @map("usage_per_user")
+  usageCount    Int       @default(0) @map("usage_count")
+  isActive      Boolean   @default(true) @map("is_active")
+  restoredAt    DateTime? @map("restored_at")
+  restoredBy    String?   @map("restored_by")
+  softDeletedAt DateTime? @map("soft_deleted_at")
+  softDeletedBy String?   @map("soft_deleted_by")
+
+  @@index([softDeletedAt])
+  @@map("coupons")
+}
+
+model Wishlist {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("wishlists")
+}
+
+model OrderNotification {
+  id             String             @id @default(cuid())
+  orderId        String?
+  sellerId       String
+  type           NotificationType
+  priority       Priority           @default(MEDIUM)
+  status         NotificationStatus @default(PENDING)
+  message        String?
+  notes          String?
+  slaDeadline    DateTime
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  completedAt    DateTime?
+  acknowledgedAt DateTime?
+  subOrderId     String?
+  order          Order?             @relation(fields: [orderId], references: [id])
+  seller         User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  subOrder       SubOrder?          @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([priority])
+  @@index([type])
+  @@index([slaDeadline])
+  @@index([orderId])
+  @@index([subOrderId])
+  @@map("order_notifications")
+}
+
+model ShippingMethod {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  cost          Decimal  @db.Decimal(10, 2)
+  estimatedDays String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("shipping_methods")
+}
+
+model GST {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  percentage  Decimal  @db.Decimal(5, 2)
+  description String?
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("gst_settings")
+}
+
+model SsoTicket {
+  id        String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([expiresAt], map: "sso_tickets_expiresat_idx")
+  @@index([userId], map: "sso_tickets_userid_idx")
+  @@map("sso_tickets")
+}
+
+model Blog {
+  id         String     @id @default(cuid())
+  title      String
+  slug       String     @unique
+  content    String
+  coverImage String
+  status     BlogStatus @default(DRAFT)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@map("blogs")
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  entityType    String
+  entityId      String
+  action        String
+  actorId       String?
+  actorEmail    String?
+  actorRole     String?
+  actorIp       String?
+  previousData  Json?
+  newData       Json?
+  changedFields String[]
+  reason        String?
+  userAgent     String?
+  requestId     String?
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([entityType, action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model BankChangeRequest {
+  id             String           @id @default(cuid())
+  sellerId       String
+  newBankDetails Json
+  reason         String
+  status         BankChangeStatus @default(PENDING)
+  reviewedBy     String?
+  reviewNote     String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  seller         SellerProfile    @relation(fields: [sellerId], references: [userId], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("bank_change_requests")
+}
+
+model product_variants {
+  id          String      @id
+  product_id  String
+  attributes  Json
+  price       Decimal     @db.Decimal(10, 2)
+  stock       Int         @default(0)
+  sku         String?     @unique
+  is_active   Boolean     @default(true)
+  created_at  DateTime    @default(now())
+  updated_at  DateTime
+  images      String[]    @default([])
+  cart_items  CartItem[]
+  order_items OrderItem[]
+  products    Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@index([product_id])
 }
 
 enum NotificationType {
@@ -445,17 +685,17 @@ enum Role {
   CUSTOMER
   SELLER
   ADMIN
-  SUPER_ADMIN
   PASSWORD_RESET
+  SUPER_ADMIN
 }
 
 enum OrderStatus {
   PENDING
   CONFIRMED
-  PROCESSING
   SHIPPED
   DELIVERED
   CANCELLED
+  PROCESSING
   REFUND
   PARTIAL_REFUND
 }
@@ -489,7 +729,6 @@ enum SellerStatus {
   SUSPENDED
 }
 
-
 enum ProductStatus {
   PENDING
   ACTIVE
@@ -503,23 +742,6 @@ enum CategoryStatus {
   REJECTED
 }
 
-// Commission: admin-defined fee rules applied to sellers
-model Commission {
-  id          String         @id @default(cuid())
-  title       String
-  type        CommissionType
-  value       Decimal        @db.Decimal(10, 2)
-  description String?
-  isDefault   Boolean        @default(false)
-  isActive    Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  sellers     SellerProfile[]
-
-  @@map("commissions")
-}
-
 enum CommissionType {
   FIXED
   PERCENTAGE
@@ -531,170 +753,11 @@ enum CommissionStatus {
   CANCELLED
 }
 
-// CommissionEarned: auto-created for every order, tracking the platform fee per seller
-model CommissionEarned {
-  id               String           @id @default(cuid())
-  orderId          String?          @map("order_id") // Made optional for backward compatibility 
-  order            Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  subOrderId       String?          @map("sub_order_id") // New relation to SubOrder
-  subOrder         SubOrder?        @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
-  sellerId         String           @map("seller_id")
-  seller           User             @relation("SellerCommissions", fields: [sellerId], references: [id], onDelete: Cascade)
-  customerId       String?          @map("customer_id")
-  customer         User?            @relation("CustomerCommissions", fields: [customerId], references: [id], onDelete: SetNull)
-  customerName     String           @map("customer_name")
-  customerEmail    String           @map("customer_email")
-  sellerName       String?          @map("seller_name")
-  // Seller's portion of the order (sum of their items × qty)
-  orderValue       Decimal          @db.Decimal(10, 2) @map("order_value")
-  commissionRate   Decimal          @db.Decimal(5, 2)  @map("commission_rate")  // e.g. 10.00
-  commissionAmount Decimal          @db.Decimal(10, 2) @map("commission_amount")
-  netPayable       Decimal          @db.Decimal(10, 2) @map("net_payable")       // orderValue - commissionAmount
-  status           CommissionStatus @default(PENDING)
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt       @map("updated_at")
-
-  @@index([orderId])
-  @@index([sellerId])
-  @@index([status])
-  @@map("commission_earned")
-}
-
 enum PayoutRequestStatus {
   PENDING
   APPROVED
   REJECTED
   COMPLETED
-}
-
-// PayoutRequest: seller-initiated payout request against their redeemable balance
-// Only commission_earned records older than 30 days are eligible (redeemable)
-model PayoutRequest {
-  id                   String              @id @default(cuid())
-  sellerId             String              @map("seller_id")
-  seller               User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  requestedAmount      Decimal             @db.Decimal(10, 2) @map("requested_amount")
-  redeemableAtRequest  Decimal             @db.Decimal(10, 2) @map("redeemable_at_request") // snapshot of redeemable amount at time of request
-  status               PayoutRequestStatus @default(PENDING)
-  sellerNote           String?             @map("seller_note")
-  adminNote            String?             @map("admin_note")
-  processedAt          DateTime?           @map("processed_at")
-  processedBy          String?             @map("processed_by")
-  createdAt            DateTime            @default(now()) @map("created_at")
-  updatedAt            DateTime            @updatedAt @map("updated_at")
-
-  @@index([sellerId])
-  @@index([status])
-  @@map("payout_requests")
-}
-
-model Coupon {
-  id             String    @id @default(cuid())
-  code           String    @unique
-  discountType   String    @default("percentage") @map("discount_type") // "percentage" | "flat"
-  discountValue  Float     @map("discount_value")
-  maxDiscount    Float?    @map("max_discount")    // cap on discount amount (for percentage type)
-  minCartValue   Float?    @map("min_cart_value")  // minimum cart total to apply coupon
-  expiresAt      DateTime  @map("expires_at")
-  usageLimit     Int?      @map("usage_limit")     // total times coupon can be used (null = unlimited)
-  usagePerUser   Int       @default(1) @map("usage_per_user") // max uses per user
-  usageCount     Int       @default(0) @map("usage_count")    // total times used so far
-  isActive       Boolean   @default(true) @map("is_active")
-  createdBy      String    @map("created_by")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-
-  // Soft delete — row is kept for audit continuity; only gone when hard-deleted
-  softDeletedAt  DateTime? @map("soft_deleted_at") // null = active; set = in recycle bin
-  softDeletedBy  String?   @map("soft_deleted_by") // userId of admin who soft-deleted it
-  restoredAt     DateTime? @map("restored_at")     // last restore timestamp
-  restoredBy     String?   @map("restored_by")     // userId of admin who restored it
-
-  @@index([softDeletedAt])
-  @@map("coupons")
-}
-
-model Wishlist {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, productId])
-  @@index([userId])
-  @@map("wishlists")
-}
-
-model OrderNotification {
-  id              String               @id @default(cuid())
-  orderId         String?              // Made optional for backward compatibility
-  subOrderId      String?              // New relation to SubOrder 
-  sellerId        String
-  type            NotificationType
-  priority        Priority             @default(MEDIUM)
-  status          NotificationStatus   @default(PENDING)
-  message         String?
-  notes           String?
-  slaDeadline     DateTime
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  completedAt     DateTime?
-  acknowledgedAt  DateTime?
-
-  order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  subOrder SubOrder? @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
-  seller   User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  @@index([sellerId])
-  @@index([status])
-  @@index([priority])
-  @@index([type])
-  @@index([slaDeadline])
-  @@index([orderId])
-  @@index([subOrderId])
-  @@map("order_notifications")
-}
-
-model ShippingMethod {
-  id          String   @id @default(cuid())
-  name        String   @unique // e.g., "Express Shipping", "Standard Shipping"
-  description String?  // Additional details about the shipping method
-  cost        Decimal  @db.Decimal(10, 2) // Cost in AUD
-  estimatedDays String? // e.g., "2-3 business days"
-  isActive    Boolean  @default(true) // Can be toggled on/off by admin
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("shipping_methods")
-}
-
-model GST {
-  id          String   @id @default(cuid())
-  name        String   @unique // e.g., "Standard GST", "Reduced GST"
-  percentage  Decimal  @db.Decimal(5, 2) // GST percentage (e.g., 10.00 for 10%)
-  description String?  // Additional details about the GST
-  isActive    Boolean  @default(true) // Can be toggled on/off by admin
-  isDefault   Boolean  @default(false) // Mark as default GST to apply
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("gst_settings")
-}
-
-// SSO Ticket: One-time handshake tokens for cross-domain authentication (Sellers & Customers only)
-model SsoTicket {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("sso_tickets")
 }
 
 enum NotificationStatus {
@@ -704,81 +767,9 @@ enum NotificationStatus {
   CANCELLED
 }
 
-model Blog {
-  id         String     @id @default(cuid())
-  title      String
-  slug       String     @unique
-  content    String
-  coverImage String
-  status     BlogStatus @default(DRAFT)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-
-  @@map("blogs")
-}
-
 enum BlogStatus {
   DRAFT
   PUBLISHED
-}
-
-// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
-// Append-only table. Never update or delete rows from this table.
-// Captures every mutation to Products (and future entities) with full before/after snapshots.
-model AuditLog {
-  id           String   @id @default(cuid())
-
-  // What was affected
-  entityType   String   // "PRODUCT", "ORDER", "USER", etc.
-  entityId     String   // Primary key of the affected record
-
-  // What happened
-  action       String   // e.g. "PRODUCT_CREATED", "PRODUCT_APPROVED"
-
-  // Who did it
-  actorId      String?  // userId — null for system/scheduler actions
-  actorEmail   String?  // Denormalised so it survives user deletion
-  actorRole    String?  // "ADMIN", "SELLER", "CUSTOMER", "SYSTEM"
-  actorIp      String?  // Client IP address
-
-  // What changed
-  previousData Json?    // Full record snapshot BEFORE the change
-  newData      Json?    // Full record snapshot AFTER the change
-  changedFields String[] // ["price", "stock", "isActive"] — quick diff index
-
-  // Extra context
-  reason       String?  // Optional human-readable reason / note
-  userAgent    String?  // Browser / client info
-  requestId    String?  // Correlates with server logs (x-request-id header)
-
-  // Immutability anchor — this column is never modified after insert
-  createdAt    DateTime @default(now())
-
-  @@index([entityType, entityId])
-  @@index([actorId])
-  @@index([entityType, action])
-  @@index([createdAt])
-  @@map("audit_logs")
-}
-
-// ─── BANK CHANGE REQUEST ──────────────────────────────────────────────────────
-// Seller-initiated request to change their bank details.
-// Always requires admin approval before the live bankDetails are updated.
-model BankChangeRequest {
-  id             String           @id @default(cuid())
-  sellerId       String           // references SellerProfile.userId
-  seller         SellerProfile    @relation(fields: [sellerId], references: [userId], onDelete: Cascade)
-  newBankDetails Json             // { bankName, accountName, bsb, accountNumber }
-  reason         String
-  status         BankChangeStatus @default(PENDING)
-  reviewedBy     String?          // Admin userId who actioned the request
-  reviewNote     String?          // Optional admin note when rejecting
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-
-  @@index([sellerId])
-  @@index([status])
-  @@map("bank_change_requests")
 }
 
 enum BankChangeStatus {
