@@ -373,8 +373,8 @@ exports.updateProduct = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "Product not found" });
     }
 
-    // Check authorization: only seller (owner) or admin can update
-    if (userRole !== "ADMIN" && product.sellerId !== userId) {
+    // Check authorization: only seller (owner), admin, or super admin can update
+    if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to update this product" });
     }
 
@@ -721,7 +721,7 @@ exports.deleteProduct = async (request, reply) => {
     }
 
     // Only the owning seller or an admin may delete
-    if (userRole !== "ADMIN" && product.sellerId !== userId) {
+    if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
     }
 
@@ -819,12 +819,12 @@ exports.restoreProduct = async (request, reply) => {
     }
 
     // Ownership check for sellers
-    if (userRole !== "ADMIN" && product.sellerId !== userId) {
+    if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to restore this product" });
     }
 
-    // Sellers restore to PENDING (re-approval required); Admins restore to INACTIVE (can activate manually)
-    const restoredStatus = userRole === "ADMIN" ? "INACTIVE" : "PENDING";
+    // Sellers restore to PENDING (re-approval required); Admins/SuperAdmins restore to INACTIVE (can activate manually)
+    const restoredStatus = (userRole === "ADMIN" || userRole === "SUPER_ADMIN") ? "INACTIVE" : "PENDING";
 
     await prisma.$executeRaw`
       UPDATE "products"
