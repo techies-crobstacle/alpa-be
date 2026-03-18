@@ -5,7 +5,7 @@ const PDFDocument = require('pdfkit');
  * Works for both logged-in user orders and guest orders.
  *
  * @param {Object} order
- * @param {string} order.id
+ * @param {string} order.displayId
  * @param {Date}   order.createdAt
  * @param {string} order.status
  * @param {string} order.customerName
@@ -39,7 +39,7 @@ const generateInvoiceBuffer = (order) => {
     // ── Invoice meta ────────────────────────────────────────────────────────
     doc.fontSize(16).text('INVOICE', 50, 120)
        .fontSize(12)
-       .text(`Invoice #: ${order.id}`, 50, 145)
+       .text(`Invoice #: ${order.displayId || order.id}`, 50, 145)
        .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 50, 160)
        .text(`Status: ${order.status}`, 50, 175);
 
