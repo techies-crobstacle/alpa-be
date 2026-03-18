@@ -1,5 +1,23 @@
 const prisma = require("../config/prisma");
+const crypto = require("crypto");
 const { checkInventory } = require("../utils/checkInventory");
+
+// ─── Short Display ID Generator ───────────────────────────────────────────────
+const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+async function generateDisplayId() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let id = '';
+    for (let i = 0; i < 6; i++) {
+      id += DISPLAY_ID_CHARS[bytes[i] % DISPLAY_ID_CHARS.length];
+    }
+    const existing = await prisma.order.findUnique({ where: { displayId: id } });
+    if (!existing) return id;
+  }
+  throw new Error('Failed to generate a unique display ID after 10 attempts');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 const { 
   sendOrderConfirmationEmail, 
   sendOrderStatusEmail,
@@ -248,6 +266,9 @@ exports.createOrder = async (request, reply) => {
       });
     }
 
+    // Generate short alphanumeric display ID for the customer
+    const displayId = await generateDisplayId();
+
     // Use transaction to ensure atomicity
     const order = await prisma.$transaction(async (tx) => {
       // Deduct stock — re-validate inside the transaction to prevent race conditions
@@ -285,6 +306,7 @@ exports.createOrder = async (request, reply) => {
         // MULTI-SELLER ORDER: Create parent order + sub-orders
         const parentOrder = await tx.order.create({
           data: {
+            displayId,
             userId,
             totalAmount,
             originalTotal,
@@ -374,6 +396,7 @@ exports.createOrder = async (request, reply) => {
         const [sellerId] = sellerNotifications.keys();
         const singleOrder = await tx.order.create({
           data: {
+            displayId,
             userId,
             sellerId, // Link directly to seller
             totalAmount,
@@ -683,6 +706,7 @@ exports.createOrder = async (request, reply) => {
       success: true,
       message: "Order placed successfully! Confirmation email sent.",
       orderId: orderId,
+      displayId: mainOrder.displayId,
       isMultiSeller: order.isMultiSeller,
       ...(order.isMultiSeller ? {
         subOrders: order.subOrders.map(sub => ({
@@ -955,6 +979,7 @@ exports.getMyOrders = async (request, reply) => {
 
       return {
         id: order.id,
+        displayId: order.displayId,
         userId: order.userId,
         type: isDirectOrder ? 'DIRECT' : (isMultiSellerOrder ? 'MULTI_SELLER' : (sellerCount > 1 ? 'MULTI_SELLER' : 'DIRECT')),
         totalAmount: order.totalAmount,
@@ -1010,12 +1035,12 @@ exports.getMyOrders = async (request, reply) => {
 // USER — CANCEL ORDER (with SMS notification)
 exports.cancelOrder = async (request, reply) => {
   try {
-    const orderId = request.params.id;
+    const displayId = request.params.id;
     const userId = request.user.userId;
     const { reason, statusReason } = request.body || {};
 
     const order = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { displayId },
       include: {
         items: {
           include: {
@@ -1032,6 +1057,8 @@ exports.cancelOrder = async (request, reply) => {
     if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
       return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
     }
+
+    const orderId = order.id; // resolve to internal CUID for all remaining operations
 
     const finalReason = (statusReason || reason || '').trim();
 
@@ -1215,7 +1242,7 @@ const formatRefundRequestFromTicket = (ticket) => {
 // USER — REQUEST REFUND / PARTIAL REFUND
 exports.requestRefund = async (request, reply) => {
   try {
-    const orderId = request.params.id;
+    const displayId = request.params.id;
     const userId = request.user.userId;
     const { requestType, reason, statusReason } = request.body || {};
 
@@ -1236,7 +1263,7 @@ exports.requestRefund = async (request, reply) => {
     }
 
     const order = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { displayId },
       include: {
         items: {
           include: {
@@ -1258,6 +1285,10 @@ exports.requestRefund = async (request, reply) => {
         }
       }
     });
+
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+
+    const orderId = order.id; // resolve to internal CUID for all remaining operations
 
     if (!order) {
       return reply.status(404).send({ success: false, message: "Order not found" });
@@ -1465,9 +1496,9 @@ exports.getRefundRequestById = async (request, reply) => {
 // GUEST — REQUEST REFUND / PARTIAL REFUND
 exports.requestGuestRefund = async (request, reply) => {
   try {
-    const { orderId, customerEmail, requestType, reason, statusReason } = request.body || {};
+    const { orderId: displayId, customerEmail, requestType, reason, statusReason } = request.body || {};
 
-    if (!orderId || !customerEmail) {
+    if (!displayId || !customerEmail) {
       return reply.status(400).send({
         success: false,
         message: 'orderId and customerEmail are required'
@@ -1492,7 +1523,7 @@ exports.requestGuestRefund = async (request, reply) => {
 
     const normalizedEmail = customerEmail.trim().toLowerCase();
     const order = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { displayId },
       include: {
         items: {
           include: {
@@ -1522,6 +1553,8 @@ exports.requestGuestRefund = async (request, reply) => {
     if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
       return reply.status(403).send({ success: false, message: 'Email does not match order' });
     }
+
+    const orderId = order.id; // resolve to internal CUID for ticket creation and notifications
 
     if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(order.status)) {
       return reply.status(400).send({
@@ -1627,9 +1660,9 @@ exports.requestGuestRefund = async (request, reply) => {
 // GUEST — TRACK REFUND REQUESTS BY ORDER + EMAIL
 exports.getGuestRefundRequests = async (request, reply) => {
   try {
-    const { orderId, customerEmail } = request.query;
+    const { orderId: displayId, customerEmail } = request.query;
 
-    if (!orderId || !customerEmail) {
+    if (!displayId || !customerEmail) {
       return reply.status(400).send({
         success: false,
         message: 'orderId and customerEmail are required'
@@ -1637,7 +1670,7 @@ exports.getGuestRefundRequests = async (request, reply) => {
     }
 
     const normalizedEmail = customerEmail.trim().toLowerCase();
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findUnique({ where: { displayId } });
 
     if (!order) {
       return reply.status(404).send({ success: false, message: 'Order not found' });
@@ -1653,6 +1686,8 @@ exports.getGuestRefundRequests = async (request, reply) => {
     if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
       return reply.status(403).send({ success: false, message: 'Email does not match order' });
     }
+
+    const orderId = order.id; // resolve to internal CUID
 
     const requests = await prisma.supportTicket.findMany({
       where: {
@@ -1693,9 +1728,9 @@ exports.getGuestRefundRequests = async (request, reply) => {
 exports.getGuestRefundRequestById = async (request, reply) => {
   try {
     const { requestId } = request.params;
-    const { orderId, customerEmail } = request.query;
+    const { orderId: displayId, customerEmail } = request.query;
 
-    if (!orderId || !customerEmail) {
+    if (!displayId || !customerEmail) {
       return reply.status(400).send({
         success: false,
         message: 'orderId and customerEmail are required'
@@ -1703,7 +1738,7 @@ exports.getGuestRefundRequestById = async (request, reply) => {
     }
 
     const normalizedEmail = customerEmail.trim().toLowerCase();
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const order = await prisma.order.findUnique({ where: { displayId } });
 
     if (!order) {
       return reply.status(404).send({ success: false, message: 'Order not found' });
@@ -1719,6 +1754,8 @@ exports.getGuestRefundRequestById = async (request, reply) => {
     if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
       return reply.status(403).send({ success: false, message: 'Email does not match order' });
     }
+
+    const orderId = order.id; // resolve to internal CUID
 
     const ticket = await prisma.supportTicket.findFirst({
       where: {
@@ -1762,12 +1799,12 @@ exports.getGuestRefundRequestById = async (request, reply) => {
 // USER — REORDER (Add all items from previous order to cart)
 exports.reorder = async (request, reply) => {
   try {
-    const orderId = request.params.id;
+    const displayId = request.params.id;
     const userId = request.user.userId;
 
     // Get the order with items
     const order = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { displayId },
       include: {
         items: {
           include: {
@@ -1784,6 +1821,9 @@ exports.reorder = async (request, reply) => {
     if (order.userId !== userId) {
       return reply.status(403).send({ success: false, message: "Not authorized to reorder this order" });
     }
+
+    const orderId = order.id; // resolve to internal CUID (used later for cart ops)
+    void orderId; // suppress unused variable warning — orderId kept for any extensions
 
     if (order.items.length === 0) {
       return reply.status(400).send({ success: false, message: "Order has no items to reorder" });
@@ -2127,6 +2167,9 @@ exports.createGuestOrder = async (request, reply) => {
     const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Generate short alphanumeric display ID for the customer
+    const displayId = await generateDisplayId();
+
     // Create order using transaction
     const order = await prisma.$transaction(async (tx) => {
       // Deduct stock — re-validate inside the transaction to prevent race conditions
@@ -2159,6 +2202,7 @@ exports.createGuestOrder = async (request, reply) => {
       // Create order without userId (guest order) with shipping/GST details
       const newOrder = await tx.order.create({
         data: {
+          displayId,
           totalAmount,
           originalTotal,
           couponCode: appliedCoupon ? appliedCoupon.code : null,
@@ -2402,6 +2446,7 @@ exports.createGuestOrder = async (request, reply) => {
       success: true,
       message: "Guest order placed successfully! Confirmation email sent.",
       orderId: order.id,
+      displayId: order.displayId,
       orderSummary: {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
@@ -2432,14 +2477,14 @@ exports.createGuestOrder = async (request, reply) => {
 // GUEST — TRACK ORDER by Order ID and Email
 exports.trackGuestOrder = async (request, reply) => {
   try {
-    const { orderId, customerEmail } = request.query;
+    const { orderId: displayId, customerEmail } = request.query;
 
-    if (!orderId || !customerEmail) {
+    if (!displayId || !customerEmail) {
       return reply.status(400).send({ success: false, message: "Order ID and customer email are required" });
     }
 
     const order = await prisma.order.findUnique({
-      where: { id: orderId },
+      where: { displayId },
       include: {
         items: {
           include: {
@@ -2735,7 +2780,7 @@ exports.downloadInvoice = async (request, reply) => {
 
     // ── Try as a parent / direct / legacy order first ──
     let invoiceShape = null;
-    const orderRecord = await prisma.order.findFirst({ where: { id: orderId }, include: orderInclude });
+    const orderRecord = await prisma.order.findFirst({ where: { displayId: orderId }, include: orderInclude });
 
     if (orderRecord) {
       // Role-based access
@@ -2808,7 +2853,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
     // Try as parent order (email verified)
     let invoiceShape = null;
     const orderRecord = await prisma.order.findFirst({
-      where: { id: orderId, customerEmail },
+      where: { displayId: orderId, customerEmail },
       include: orderInclude,
     });
 
