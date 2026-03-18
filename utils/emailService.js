@@ -268,7 +268,7 @@
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Customer: ${customerName}`);
-//     console.log(`Order ID: ${orderDetails.displayd}`);
+//     console.log(`Order ID: ${orderDetails.displayId}`);
 //     console.log(`Total: $${orderDetails.totalAmount.toFixed(2)}`);
 //     console.log("=".repeat(50) + "\n");
 //     return { success: true, message: "Email logged to console (dev mode)" };
@@ -300,13 +300,13 @@
 //   const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
 //   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-be.onrender.com';
 //   const trackingUrl = orderDetails.isGuest
-//     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayd}&email=${encodeURIComponent(email)}`
+//     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(email)}`
 //     : `${dashboardUrl}/customerdashboard/orders`;
 //   // Authenticated users get the dedicated public email-download endpoint (no bearer token needed in links).
 //   // Guests use their email-verified endpoint for extra security.
 //   const invoiceUrl = orderDetails.isGuest
-//     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayd}&customerEmail=${encodeURIComponent(email)}`
-//     : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayd}`;
+//     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayId}&customerEmail=${encodeURIComponent(email)}`
+//     : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayId}`;
 
 //   const content = `
 //     <!-- Header -->
@@ -326,7 +326,7 @@
 //               <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
 //                 <tr>
 //                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
-//                   <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.displayd}</td>
+//                   <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.displayId}</td>
 //                 </tr>
 //                 <tr>
 //                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>
@@ -478,7 +478,7 @@
 //       email: senderEmail,
 //       name: senderName
 //     },
-//     subject: `Order Confirmation - Invoice #${orderDetails.displayd}`,
+//     subject: `Order Confirmation - Invoice #${orderDetails.displayId}`,
 //     html: generateResponsiveEmailTemplate({
 //       title: 'Order Confirmation - Made in Arnhem Land',
 //       content: content,
@@ -491,7 +491,7 @@
 //     if (orderDetails.invoicePDFBuffer) {
 //       msg.attachments = [{
 //         content: orderDetails.invoicePDFBuffer.toString('base64'),
-//         filename: `invoice-${orderDetails.displayd}.pdf`,
+//         filename: `invoice-${orderDetails.displayId}.pdf`,
 //         type: 'application/pdf',
 //         disposition: 'attachment'
 //       }];
@@ -583,13 +583,13 @@
 //   const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
 //   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-back.onrender.com';
 //   const trackingUrl = orderDetails.isGuest
-//     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayd}&email=${encodeURIComponent(email)}`
+//     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(email)}`
 //     : `${dashboardUrl}/customerdashboard/orders`;
 //   // Authenticated users get the dedicated public email-download endpoint.
 //   // Guests use their email-verified endpoint for extra security.
 //   const invoiceUrl = orderDetails.isGuest
-//     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayd}&customerEmail=${encodeURIComponent(email)}`
-//     : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayd}`;
+//     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayId}&customerEmail=${encodeURIComponent(email)}`
+//     : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayId}`;
 
 //   const msg = {
 //     to: email,
@@ -597,7 +597,7 @@
 //       name: senderName,
 //       email: senderEmail
 //     },
-//         subject: `Order Update: #${orderDetails.displayd} � Made in Arnhem Land`,
+//         subject: `Order Update: #${orderDetails.displayId} � Made in Arnhem Land`,
 //     html: `
 //       <!DOCTYPE html>
 //       <html>
@@ -661,7 +661,7 @@
 //                     <table width="100%" cellpadding="0" cellspacing="0">
 //                       <tr>
 //                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-//                         <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td>
+//                         <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td>
 //                       </tr>
 //                       <tr>
 //                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -761,7 +761,7 @@
 //     if (orderDetails.invoicePDFBuffer) {
 //       msg.attachments = [{
 //         content: orderDetails.invoicePDFBuffer.toString('base64'),
-//         filename: `invoice-${orderDetails.displayd}.pdf`,
+//         filename: `invoice-${orderDetails.displayId}.pdf`,
 //         type: 'application/pdf',
 //         disposition: 'attachment'
 //       }];
@@ -782,7 +782,7 @@
 //     console.log("=".repeat(50));
 //     console.log(`To: ${email}`);
 //     console.log(`Seller: ${sellerName}`);
-//     console.log(`Order: ${orderDetails.displayd}`);
+//     console.log(`Order: ${orderDetails.displayId}`);
 //     console.log("=".repeat(50) + "\n");
 //     return { success: true };
 //   }
@@ -801,7 +801,7 @@
 //       email: senderEmail,
 //       name: senderName
 //     },
-//     subject: `New Order Received: #${orderDetails.displayd} � Made in Arnhem Land`,
+//     subject: `New Order Received: #${orderDetails.displayId} � Made in Arnhem Land`,
 //     html: `
 //       <!DOCTYPE html>
 //       <html lang="en">
@@ -839,7 +839,7 @@
 //                     <table width="100%" cellpadding="0" cellspacing="0">
 //                       <tr>
 //                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-//                         <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.displayd}</td>
+//                         <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.displayId}</td>
 //                       </tr>
 //                       <tr>
 //                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -881,10 +881,10 @@
 //                 <td style="padding:0 40px 36px;text-align:center;">
 //                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
 //                     <td style="padding-right:8px;text-align:right;">
-//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📱 View in Dashboard</a>
+//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📱 View in Dashboard</a>
 //                     </td>
 //                     <td style="padding-left:8px;text-align:left;">
-//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
 //                     </td>
 //                   </tr></table>
 //                 </td>
@@ -2272,7 +2272,7 @@
 //     console.log("?? DEVELOPMENT MODE - Admin New Order Email");
 //     console.log("=".repeat(50));
 //     console.log(`To: ${adminEmail}`);
-//     console.log(`Order: ${orderDetails.displayd}`);
+//     console.log(`Order: ${orderDetails.displayId}`);
 //     console.log(`Customer: ${orderDetails.customerName}`);
 //     console.log(`Sellers: ${orderDetails.sellerNames}`);
 //     console.log(`Total: $${parseFloat(orderDetails.totalAmount).toFixed(2)}`);
@@ -2291,7 +2291,7 @@
 //   const msg = {
 //     to: adminEmail,
 //     from: { email: senderEmail, name: senderName },
-//     subject: `New Order Placed: #${orderDetails.displayd} � Made in Arnhem Land`,
+//     subject: `New Order Placed: #${orderDetails.displayId} � Made in Arnhem Land`,
 //     html: `
 //       <!DOCTYPE html>
 //       <html lang="en">
@@ -2323,7 +2323,7 @@
 //                     <table width="100%" cellpadding="0" cellspacing="0">
 //                       <tr>
 //                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-//                         <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td>
+//                         <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td>
 //                       </tr>
 //                       <tr>
 //                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date</strong></td>
@@ -2393,10 +2393,10 @@
 //                 <td style="padding:0 40px 36px;text-align:center;">
 //                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
 //                     <td style="padding-right:8px;text-align:right;">
-//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
+//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
 //                     </td>
 //                     <td style="padding-left:8px;text-align:left;">
-//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+//                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
 //                     </td>
 //                   </tr></table>
 //                 </td>
@@ -2418,7 +2418,7 @@
 
 //   try {
 //     await sgMail.send(msg);
-//     console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayd}`);
+//     console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayId}`);
 //     return { success: true };
 //   } catch (error) {
 //     console.error("? Admin new order email error:", error.response?.body || error.message);
@@ -2433,7 +2433,7 @@
 //   if (isDevelopmentMode) {
 //     console.log("\n" + "=".repeat(50));
 //     console.log("?? DEVELOPMENT MODE - Seller Order Status Update");
-//     console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.displayd} | Status: ${orderDetails.status}`);
+//     console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status}`);
 //     console.log("=".repeat(50) + "\n");
 //     return { success: true };
 //   }
@@ -2455,7 +2455,7 @@
 //   const msg = {
 //     to: email,
 //     from: { name: senderName, email: senderEmail },
-//     subject: `Order Status Updated: #${orderDetails.displayd || ''} � Made in Arnhem Land`,
+//     subject: `Order Status Updated: #${orderDetails.displayId || ''} � Made in Arnhem Land`,
 //     html: `
 //       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
 //         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -2466,7 +2466,7 @@
 //                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
 //               </td></tr>
 //               <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-//                 <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayd || ''} is now <strong>${statusLabel}</strong></p>
+//                 <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} is now <strong>${statusLabel}</strong></p>
 //               </td></tr>
 //               <tr><td style="padding:28px 40px 20px;">
 //                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${sellerName}</strong>,</p>
@@ -2475,7 +2475,7 @@
 //               <tr><td style="padding:0 40px 20px;">
 //                 <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
 //                   <table width="100%" cellpadding="0" cellspacing="0">
-//                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td></tr>
+//                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${statusLabel.toUpperCase()}</span></td></tr>
 //                     ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
@@ -2485,7 +2485,7 @@
 //                 </div>
 //               </td></tr>
 //               <tr><td style="padding:0 40px 36px;text-align:center;">
-//                 <a href="${baseUrl}/seller/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
+//                 <a href="${baseUrl}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
 //               </td></tr>
 //               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
 //                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
@@ -2499,7 +2499,7 @@
 
 //   try {
 //     await sgMail.send(msg);
-//     console.log(`? Seller order status email sent to ${email} for order ${orderDetails.displayd}`);
+//     console.log(`? Seller order status email sent to ${email} for order ${orderDetails.displayId}`);
 //     return { success: true };
 //   } catch (error) {
 //     console.error("? Seller order status email error:", error.response?.body || error.message);
@@ -2514,7 +2514,7 @@
 //   if (isDevelopmentMode) {
 //     console.log("\n" + "=".repeat(50));
 //     console.log("?? DEVELOPMENT MODE - Admin Order Status Update");
-//     console.log(`To: ${adminEmail} | Order: ${orderDetails.displayd} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
+//     console.log(`To: ${adminEmail} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
 //     console.log("=".repeat(50) + "\n");
 //     return { success: true };
 //   }
@@ -2532,7 +2532,7 @@
 //   const msg = {
 //     to: adminEmail,
 //     from: { name: senderName, email: senderEmail },
-//     subject: `Order Status Updated by ${updatedBy}: #${orderDetails.displayd || ''} � Made in Arnhem Land`,
+//     subject: `Order Status Updated by ${updatedBy}: #${orderDetails.displayId || ''} � Made in Arnhem Land`,
 //     html: `
 //       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
 //         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -2543,7 +2543,7 @@
 //                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
 //               </td></tr>
 //               <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-//                 <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayd || ''} ➟ <strong>${st.toUpperCase()}</strong></p>
+//                 <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} ➟ <strong>${st.toUpperCase()}</strong></p>
 //               </td></tr>
 //               <tr><td style="padding:28px 40px 20px;">
 //                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
@@ -2552,7 +2552,7 @@
 //               <tr><td style="padding:0 40px 20px;">
 //                 <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
 //                   <table width="100%" cellpadding="0" cellspacing="0">
-//                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td></tr>
+//                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` � ${orderDetails.sellerName}` : ''}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${st.toUpperCase()}</span></td></tr>
@@ -2563,7 +2563,7 @@
 //                 </div>
 //               </td></tr>
 //               <tr><td style="padding:0 40px 36px;text-align:center;">
-//                 <a href="${baseUrl}/admin/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
+//                 <a href="${baseUrl}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
 //               </td></tr>
 //               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
 //                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
@@ -2577,7 +2577,7 @@
 
 //   try {
 //     await sgMail.send(msg);
-//     console.log(`? Admin order status email sent to ${adminEmail} for order ${orderDetails.displayd}`);
+//     console.log(`? Admin order status email sent to ${adminEmail} for order ${orderDetails.displayId}`);
 //     return { success: true };
 //   } catch (error) {
 //     console.error("? Admin order status email error:", error.response?.body || error.message);
@@ -3794,7 +3794,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Customer: ${customerName}`);
-    console.log(`Order ID: ${orderDetails.displayd}`);
+    console.log(`Order ID: ${orderDetails.displayId}`);
     console.log(`Total: $${orderDetails.totalAmount.toFixed(2)}`);
     console.log("=".repeat(50) + "\n");
     return { success: true, message: "Email logged to console (dev mode)" };
@@ -3860,7 +3860,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                 </tr>
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Payment Method</strong></td>
-                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.paymentMethod === 'STRIPE' || orderDetails.paymentMethod === 'Stripe' || !orderDetails.paymentMethod ? 'Debit/Credit Card' : orderDetails.paymentMethod}</td>
+                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.paymentMethod || 'Credit/Debit Card'}</td>
                 </tr>
               </table>
             </td>
@@ -4004,7 +4004,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       email: senderEmail,
       name: senderName
     },
-    subject: `Order Confirmation - Invoice #${orderDetails.displayid}`,
+    subject: `Order Confirmation - Invoice #${orderDetails.displayId}`,
     html: generateResponsiveEmailTemplate({
       title: 'Order Confirmation - Made in Arnhem Land',
       content: content,
@@ -4017,7 +4017,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     if (orderDetails.invoicePDFBuffer) {
       msg.attachments = [{
         content: orderDetails.invoicePDFBuffer.toString('base64'),
-        filename: `invoice-${orderDetails.displayd}.pdf`,
+        filename: `invoice-${orderDetails.displayId}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment'
       }];
@@ -4109,13 +4109,13 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-back.onrender.com';
   const trackingUrl = orderDetails.isGuest
-    ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayd}&email=${encodeURIComponent(email)}`
+    ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(email)}`
     : `${dashboardUrl}/customerdashboard/orders`;
   // Authenticated users get the dedicated public email-download endpoint.
   // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
-    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayd}&customerEmail=${encodeURIComponent(email)}`
-    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayd}`;
+    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayId}&customerEmail=${encodeURIComponent(email)}`
+    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayId}`;
 
   const msg = {
     to: email,
@@ -4123,7 +4123,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-        subject: `Order Update: #${orderDetails.displayd} � Made in Arnhem Land`,
+        subject: `Order Update: #${orderDetails.displayId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4187,7 +4187,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -4287,7 +4287,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
     if (orderDetails.invoicePDFBuffer) {
       msg.attachments = [{
         content: orderDetails.invoicePDFBuffer.toString('base64'),
-        filename: `invoice-${orderDetails.displayd}.pdf`,
+        filename: `invoice-${orderDetails.displayId}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment'
       }];
@@ -4308,7 +4308,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Seller: ${sellerName}`);
-    console.log(`Order: ${orderDetails.displayd}`);
+    console.log(`Order: ${orderDetails.displayId}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
@@ -4327,7 +4327,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `New Order Received: #${orderDetails.displayd} � Made in Arnhem Land`,
+    subject: `New Order Received: #${orderDetails.displayId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -4365,7 +4365,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.displayd}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.displayId}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -4407,10 +4407,10 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
                     <td style="padding-right:8px;text-align:right;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📱 View in Dashboard</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📱 View in Dashboard</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -5798,7 +5798,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
     console.log("?? DEVELOPMENT MODE - Admin New Order Email");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail}`);
-    console.log(`Order: ${orderDetails.displayd}`);
+    console.log(`Order: ${orderDetails.displayId}`);
     console.log(`Customer: ${orderDetails.customerName}`);
     console.log(`Sellers: ${orderDetails.sellerNames}`);
     console.log(`Total: $${parseFloat(orderDetails.totalAmount).toFixed(2)}`);
@@ -5817,7 +5817,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Order Placed: #${orderDetails.displayd} � Made in Arnhem Land`,
+    subject: `New Order Placed: #${orderDetails.displayId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -5849,7 +5849,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date</strong></td>
@@ -5919,10 +5919,10 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
                     <td style="padding-right:8px;text-align:right;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -5944,7 +5944,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayd}`);
+    console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error("? Admin new order email error:", error.response?.body || error.message);
@@ -5959,7 +5959,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
     console.log("?? DEVELOPMENT MODE - Seller Order Status Update");
-    console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.displayd} | Status: ${orderDetails.status}`);
+    console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
@@ -5981,7 +5981,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated: #${orderDetails.displayd || ''} � Made in Arnhem Land`,
+    subject: `Order Status Updated: #${orderDetails.displayId || ''} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -5992,7 +5992,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayd || ''} is now <strong>${statusLabel}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} is now <strong>${statusLabel}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${sellerName}</strong>,</p>
@@ -6001,7 +6001,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
               <tr><td style="padding:0 40px 20px;">
                 <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
                   <table width="100%" cellpadding="0" cellspacing="0">
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${statusLabel.toUpperCase()}</span></td></tr>
                     ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
@@ -6011,7 +6011,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 </div>
               </td></tr>
               <tr><td style="padding:0 40px 36px;text-align:center;">
-                <a href="${baseUrl}/seller/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
+                <a href="${baseUrl}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
               </td></tr>
               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
@@ -6025,7 +6025,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller order status email sent to ${email} for order ${orderDetails.displayd}`);
+    console.log(`? Seller order status email sent to ${email} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error("? Seller order status email error:", error.response?.body || error.message);
@@ -6040,7 +6040,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
     console.log("?? DEVELOPMENT MODE - Admin Order Status Update");
-    console.log(`To: ${adminEmail} | Order: ${orderDetails.displayd} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
+    console.log(`To: ${adminEmail} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
@@ -6058,7 +6058,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   const msg = {
     to: adminEmail,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated by ${updatedBy}: #${orderDetails.displayd || ''} � Made in Arnhem Land`,
+    subject: `Order Status Updated by ${updatedBy}: #${orderDetails.displayId || ''} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -6069,7 +6069,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayd || ''} ➟ <strong>${st.toUpperCase()}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} ➟ <strong>${st.toUpperCase()}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
@@ -6078,7 +6078,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
               <tr><td style="padding:0 40px 20px;">
                 <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
                   <table width="100%" cellpadding="0" cellspacing="0">
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayd}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` � ${orderDetails.sellerName}` : ''}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${st.toUpperCase()}</span></td></tr>
@@ -6089,7 +6089,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 </div>
               </td></tr>
               <tr><td style="padding:0 40px 36px;text-align:center;">
-                <a href="${baseUrl}/admin/orders/${orderDetails.displayd}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
+                <a href="${baseUrl}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
               </td></tr>
               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
@@ -6103,7 +6103,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin order status email sent to ${adminEmail} for order ${orderDetails.displayd}`);
+    console.log(`? Admin order status email sent to ${adminEmail} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error("? Admin order status email error:", error.response?.body || error.message);
