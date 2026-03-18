@@ -671,7 +671,7 @@ exports.createOrder = async (request, reply) => {
             if (admin.email) {
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  orderId: orderId,
+                  orderId: mainOrder.displayId,
                   customerName: user.name,
                   customerEmail: user.email,
                   customerPhone: mobileNumber || user.phone || '',
@@ -2410,7 +2410,7 @@ exports.createGuestOrder = async (request, reply) => {
             if (admin.email) {
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  orderId: order.id,
+                  orderId: order.displayId,
                   customerName,
                   customerEmail,
                   customerPhone,
