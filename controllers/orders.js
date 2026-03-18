@@ -571,7 +571,7 @@ exports.createOrder = async (request, reply) => {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
-              orderId: mainOrder.displayId,
+              displayId: mainOrder.displayId,
               totalAmount,
               itemCount: cart.items.length,
               products: cart.items.map(item => ({
@@ -630,7 +630,7 @@ exports.createOrder = async (request, reply) => {
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                  orderId: mainOrder.displayId,
+                  displayId: mainOrder.displayId,
                   productCount: sellerData.productCount,
                   totalAmount: sellerData.totalAmount,
                   products: sellerData.products,
@@ -671,7 +671,7 @@ exports.createOrder = async (request, reply) => {
             if (admin.email) {
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  orderId: mainOrder.displayId,
+                  displayId: mainOrder.displayId,
                   customerName: user.name,
                   customerEmail: user.email,
                   customerPhone: mobileNumber || user.phone || '',
@@ -1143,7 +1143,7 @@ exports.cancelOrder = async (request, reply) => {
 
       if (sellerUser?.email) {
         sendSellerOrderStatusEmail(sellerUser.email, resolvedSellerName, {
-          orderId: order.displayId, status: 'cancelled', updatedBy: 'Customer',
+          displayId: order.displayId, status: 'cancelled', updatedBy: 'Customer',
           customerName: order.customerName || 'Customer',
           totalAmount: order.totalAmount, reason: finalReason
         }).catch(err => console.error(`Seller cancel email error (sellerId=${sellerId}):`, err.message));
@@ -1166,7 +1166,7 @@ exports.cancelOrder = async (request, reply) => {
         for (const admin of admins) {
           if (admin.email) {
             sendAdminOrderStatusEmail(admin.email, admin.name, {
-              orderId: order.displayId, status: 'cancelled', updatedBy: 'Customer',
+              displayId: order.displayId, status: 'cancelled', updatedBy: 'Customer',
               customerName: order.customerName || 'Customer',
               sellerName: cancelledSellerNameStr,
               totalAmount: order.totalAmount, reason: finalReason
@@ -1181,7 +1181,7 @@ exports.cancelOrder = async (request, reply) => {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
 
       sendOrderStatusEmail(user.email, user.name, {
-        orderId: order.displayId,
+        displayId: order.displayId,
         status: "cancelled",
         reason: finalReason,
         totalAmount: order.totalAmount,
@@ -2309,7 +2309,7 @@ exports.createGuestOrder = async (request, reply) => {
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
         try {
           const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
-            orderId: order.displayId,
+            displayId: order.displayId,
             totalAmount,
             itemCount: order.items.length,
             products: order.items.map(item => ({
@@ -2364,7 +2364,7 @@ exports.createGuestOrder = async (request, reply) => {
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                  orderId: order.displayId,
+                  displayId: order.displayId,
                   productCount: sellerData.productCount,
                   totalAmount: sellerData.totalAmount,
                   products: sellerData.products,
@@ -2410,7 +2410,7 @@ exports.createGuestOrder = async (request, reply) => {
             if (admin.email) {
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  orderId: order.displayId,
+                  displayId: order.displayId,
                   customerName,
                   customerEmail,
                   customerPhone,
@@ -2747,6 +2747,7 @@ const generateInvoiceBuffer = (order) => {
 // ─── Helper: build a unified invoice shape from a SubOrder record ──────────
 const buildSubOrderShape = (sub) => ({
   id:                 sub.id,
+  displayId:          sub.parentOrder?.displayId || null,
   createdAt:          sub.createdAt,
   status:             sub.status,
   sellerName:         sub.seller?.name || null,

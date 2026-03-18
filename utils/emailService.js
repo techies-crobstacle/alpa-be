@@ -3852,7 +3852,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
-                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.displayidorderId}</td>
+                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.displayId}</td>
                 </tr>
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>

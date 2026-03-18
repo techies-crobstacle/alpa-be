@@ -472,7 +472,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
       typeof order.shippingAddress === 'object' ? order.shippingAddress?.orderSummary : null;
 
     sendOrderConfirmationEmail(toEmail, toName, {
-      orderId:       order.displayId,
+      displayId:     order.displayId,
       totalAmount:   Number(order.totalAmount),
       itemCount:     allItems.length,
       products:      allItems.map((item) => ({
