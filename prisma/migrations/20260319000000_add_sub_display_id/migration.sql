@@ -7,6 +7,7 @@ SET "subDisplayId" = o."displayId" || '-' || chr(64 + ranked.rn)
 FROM (
   SELECT
     id,
+    "parentOrderId",
     ROW_NUMBER() OVER (
       PARTITION BY "parentOrderId"
       ORDER BY "createdAt" ASC
