@@ -2474,6 +2474,7 @@ exports.createGuestOrder = async (request, reply) => {
 };
 
 // GUEST — TRACK ORDER by Order ID and Email
+// Tracks any order by display ID + customer email — works for both guests and registered users.
 exports.trackGuestOrder = async (request, reply) => {
   try {
     const { orderId: displayId, customerEmail } = request.query;
@@ -2523,8 +2524,8 @@ exports.trackGuestOrder = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "Order not found" });
     }
 
-    // Verify customer email matches
-    if (order.customerEmail !== customerEmail) {
+    // Verify customer email matches — works for guests and registered users alike
+    if (order.customerEmail?.toLowerCase() !== customerEmail?.toLowerCase()) {
       return reply.status(403).send({ success: false, message: "Email does not match order" });
     }
 
@@ -2575,23 +2576,29 @@ exports.trackGuestOrder = async (request, reply) => {
         )
       : order.items;
 
+    // Extract orderSummary from the stored shippingAddress JSON blob (kept for legacy storage)
+    const storedShipping = order.shippingAddress || {};
+    const orderSummary = storedShipping.orderSummary || null;
+
     return reply.status(200).send({ 
       success: true, 
       order: {
         id: order.id,
+        displayId: order.displayId,
         orderType: order.orderType,
         status: order.status || order.overallStatus,
         totalAmount: order.totalAmount,
         customerName: order.customerName,
-        customerEmail: order.customerEmail,
         customerPhone: order.customerPhone,
-        shippingAddress: order.shippingAddress,
-        shippingAddressLine: order.shippingAddressLine,
-        shippingCity: order.shippingCity,
-        shippingState: order.shippingState,
-        shippingZipCode: order.shippingZipCode,
-        shippingCountry: order.shippingCountry,
-        shippingPhone: order.shippingPhone,
+        shippingAddress: {
+          addressLine: order.shippingAddressLine,
+          city: order.shippingCity,
+          state: order.shippingState,
+          zipCode: order.shippingZipCode,
+          country: order.shippingCountry,
+          phone: order.shippingPhone
+        },
+        orderSummary,
         // For MULTI_SELLER, tracking lives per sub-order; top-level is null
         trackingNumber: isMultiSeller ? null : (order.trackingNumber || null),
         estimatedDelivery: isMultiSeller ? null : (order.estimatedDelivery || null),
@@ -2603,7 +2610,7 @@ exports.trackGuestOrder = async (request, reply) => {
     });
 
   } catch (error) {
-    console.error("Track guest order error:", error);
+    console.error("Track order error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
