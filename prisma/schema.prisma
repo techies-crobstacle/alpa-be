@@ -241,7 +241,6 @@ model Order {
   statusReason      String?     // Legacy status reason for existing orders
   paymentMethod     String?
   stripePaymentIntentId String?   // Stripe PaymentIntent ID
-  paypalOrderId         String?   // PayPal Order ID
   paymentStatus     PaymentStatus @default(PENDING) // payment state
   couponCode        String?     // Coupon code applied at checkout
   discountAmount    Decimal?    @db.Decimal(10, 2) // Discount amount applied

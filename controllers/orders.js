@@ -126,12 +126,12 @@ exports.createOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "All fields including shipping method are required" });
     }
 
-    // Only Stripe and PayPal are accepted — COD is not supported
-    const ALLOWED_PAYMENT_METHODS = ['STRIPE', 'PAYPAL'];
+    // Only Stripe is accepted — COD is not supported
+    const ALLOWED_PAYMENT_METHODS = ['STRIPE'];
     if (!ALLOWED_PAYMENT_METHODS.includes(paymentMethod.toUpperCase())) {
       return reply.status(400).send({
         success: false,
-        message: `Payment method '${paymentMethod}' is not supported. Accepted methods: Stripe, PayPal`
+        message: `Payment method '${paymentMethod}' is not supported. Accepted methods: Stripe`
       });
     }
 
@@ -989,7 +989,6 @@ exports.getMyOrders = async (request, reply) => {
         statusReason: order.statusReason,
         paymentMethod: order.paymentMethod,
         stripePaymentIntentId: order.stripePaymentIntentId,
-        paypalOrderId: order.paypalOrderId,
         paymentStatus: order.paymentStatus,
         couponCode: order.couponCode,
         discountAmount: order.discountAmount,

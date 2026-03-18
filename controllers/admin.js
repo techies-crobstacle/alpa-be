@@ -3210,7 +3210,6 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         discountAmount:        order.discountAmount  || null,
         couponCode:            order.couponCode      || null,
         stripePaymentIntentId: order.stripePaymentIntentId || null,
-        paypalOrderId:         order.paypalOrderId        || null,
         customer,
         shippingAddress,
         createdAt:  order.createdAt,
