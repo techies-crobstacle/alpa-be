@@ -635,7 +635,7 @@ exports.updateOrderStatus = async (request, reply) => {
       console.log(`📧 Sending status update email to customer: ${customerEmail}`);
       
       sendOrderStatusEmail(customerEmail, customerName, {
-        orderId: orderRecord.id,
+        orderId: orderRecord.parentOrder?.displayId || orderRecord.id,
         status: normalizedStatus.toLowerCase(),
         reason: statusReason || undefined,
         trackingNumber: orderRecord.trackingNumber,
@@ -700,7 +700,7 @@ exports.updateOrderStatus = async (request, reply) => {
         for (const admin of admins) {
           if (admin.email) {
             sendAdminOrderStatusEmail(admin.email, admin.name, {
-              orderId: orderRecord.id, 
+              orderId: orderRecord.parentOrder?.displayId || orderRecord.id,
               status: normalizedStatus.toLowerCase(),
               sellerName: seller?.name || 'Unknown',
               updatedBy: 'Seller',
@@ -730,7 +730,7 @@ exports.updateOrderStatus = async (request, reply) => {
         
         if (sellerUser?.email) {
           sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
-            orderId: orderRecord.id,
+            orderId: orderRecord.parentOrder?.displayId || orderRecord.id,
             status: normalizedStatus.toLowerCase(),
             customerName,
             totalAmount: orderRecord.subtotal,
@@ -799,6 +799,7 @@ exports.updateTrackingInfo = async (request, reply) => {
       order = {
         id: subOrderRecord.id,
         sellerId: subOrderRecord.sellerId,
+        displayId: subOrderRecord.parentOrder.displayId,
         status: subOrderRecord.status,
         trackingNumber: subOrderRecord.trackingNumber,
         estimatedDelivery: subOrderRecord.estimatedDelivery,
@@ -903,7 +904,7 @@ exports.updateTrackingInfo = async (request, reply) => {
     if (customerEmail) {
       console.log(`📧 Sending tracking info email to customer: ${customerEmail}`);
       sendOrderStatusEmail(customerEmail, customerName, {
-        orderId,
+        orderId: order.displayId,
         status: "shipped",
         trackingNumber,
         totalAmount: order.totalAmount,
@@ -945,7 +946,7 @@ exports.updateTrackingInfo = async (request, reply) => {
             for (const admin of admins) {
               if (admin.email) {
                 sendAdminOrderStatusEmail(admin.email, admin.name, {
-                  orderId, status: 'shipped',
+                  orderId: order.displayId, status: 'shipped',
                   sellerName: seller?.name || 'Unknown', updatedBy: 'Seller',
                   customerName, totalAmount: order.totalAmount, trackingNumber
                 }).catch(err => console.error("Admin order status email error (non-blocking):", err.message));
@@ -966,7 +967,7 @@ exports.updateTrackingInfo = async (request, reply) => {
             .then(sellerUser => {
               if (sellerUser?.email) {
                 sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
-                  orderId, status: 'shipped', customerName,
+                  orderId: order.displayId, status: 'shipped', customerName,
                   totalAmount: order.totalAmount, trackingNumber
                 }).catch(err => console.error("Seller order status email error (non-blocking):", err.message));
               }

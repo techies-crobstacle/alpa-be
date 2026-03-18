@@ -597,7 +597,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-        subject: `Order Update: #${orderDetails.orderId?.slice(-8)} � Made in Arnhem Land`,
+        subject: `Order Update: #${orderDetails.orderId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1018,7 +1018,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `Action Required: ${notificationType} � Order #${orderId?.slice(-8)} � Made in Arnhem Land`,
+      subject: `Action Required: ${notificationType} � Order #${orderId} � Made in Arnhem Land`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -1053,7 +1053,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderId?.slice(-8) || 'N/A'}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderId || 'N/A'}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Action Required</strong></td>
@@ -2455,7 +2455,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} � Made in Arnhem Land`,
+    subject: `Order Status Updated: #${orderDetails.orderId || ''} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -2466,7 +2466,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${(orderDetails.orderId || '').slice(-8).toUpperCase()} is now <strong>${statusLabel}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.orderId || ''} is now <strong>${statusLabel}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${sellerName}</strong>,</p>
@@ -2532,7 +2532,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   const msg = {
     to: adminEmail,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated by ${updatedBy}: #${(orderDetails.orderId || '').slice(-8).toUpperCase()} � Made in Arnhem Land`,
+    subject: `Order Status Updated by ${updatedBy}: #${orderDetails.orderId || ''} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html><html><body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
@@ -2543,7 +2543,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${(orderDetails.orderId || '').slice(-8).toUpperCase()} ? <strong>${st.toUpperCase()}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.orderId || ''} ➟ <strong>${st.toUpperCase()}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>

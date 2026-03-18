@@ -629,12 +629,8 @@ exports.createOrder = async (request, reply) => {
               const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
-                const sellerOrderId = order.isMultiSeller 
-                  ? order.subOrders.find(sub => sub.sellerId === sellerId)?.id || orderId
-                  : orderId;
-                  
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                  orderId: sellerOrderId,
+                  orderId: mainOrder.displayId,
                   productCount: sellerData.productCount,
                   totalAmount: sellerData.totalAmount,
                   products: sellerData.products,
@@ -1147,7 +1143,7 @@ exports.cancelOrder = async (request, reply) => {
 
       if (sellerUser?.email) {
         sendSellerOrderStatusEmail(sellerUser.email, resolvedSellerName, {
-          orderId, status: 'cancelled', updatedBy: 'Customer',
+          orderId: order.displayId, status: 'cancelled', updatedBy: 'Customer',
           customerName: order.customerName || 'Customer',
           totalAmount: order.totalAmount, reason: finalReason
         }).catch(err => console.error(`Seller cancel email error (sellerId=${sellerId}):`, err.message));
@@ -1170,7 +1166,7 @@ exports.cancelOrder = async (request, reply) => {
         for (const admin of admins) {
           if (admin.email) {
             sendAdminOrderStatusEmail(admin.email, admin.name, {
-              orderId, status: 'cancelled', updatedBy: 'Customer',
+              orderId: order.displayId, status: 'cancelled', updatedBy: 'Customer',
               customerName: order.customerName || 'Customer',
               sellerName: cancelledSellerNameStr,
               totalAmount: order.totalAmount, reason: finalReason
@@ -1185,7 +1181,7 @@ exports.cancelOrder = async (request, reply) => {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
 
       sendOrderStatusEmail(user.email, user.name, {
-        orderId,
+        orderId: order.displayId,
         status: "cancelled",
         reason: finalReason,
         totalAmount: order.totalAmount,
@@ -2368,7 +2364,7 @@ exports.createGuestOrder = async (request, reply) => {
               console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
-                  orderId: order.id,
+                  orderId: order.displayId,
                   productCount: sellerData.productCount,
                   totalAmount: sellerData.totalAmount,
                   products: sellerData.products,
