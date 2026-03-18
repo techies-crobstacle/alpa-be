@@ -571,7 +571,7 @@ exports.createOrder = async (request, reply) => {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
-              orderId: orderId,
+              orderId: mainOrder.displayId,
               totalAmount,
               itemCount: cart.items.length,
               products: cart.items.map(item => ({
@@ -2313,7 +2313,7 @@ exports.createGuestOrder = async (request, reply) => {
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
         try {
           const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
-            orderId: order.id,
+            orderId: order.displayId,
             totalAmount,
             itemCount: order.items.length,
             products: order.items.map(item => ({
@@ -2901,7 +2901,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
 const _guestInvoiceLegacyPlaceholder = null; // eslint-disable-line
 
 // Download Invoice as PDF — public endpoint for email links
-// No auth required: orderId is an unguessable CUID.
+// No auth required: orderId is the short displayId shown to customers.
 // GET /api/orders/invoice/public/:orderId
 exports.downloadPublicInvoice = async (request, reply) => {
   try {
@@ -2913,9 +2913,9 @@ exports.downloadPublicInvoice = async (request, reply) => {
       user:      { select: { name: true, email: true, phone: true } },
     };
 
-    // Try parent / direct / legacy order first
+    // Try parent / direct / legacy order first (by displayId)
     let invoiceShape = null;
-    const orderRecord = await prisma.order.findFirst({ where: { id: orderId }, include: orderInclude });
+    const orderRecord = await prisma.order.findFirst({ where: { displayId: orderId }, include: orderInclude });
 
     if (orderRecord) {
       invoiceShape = {
