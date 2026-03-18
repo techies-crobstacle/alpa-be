@@ -60,6 +60,10 @@ async function orderRoutes(fastify, options) {
   // Download invoice PDF — requires auth (used by frontend in many places)
   fastify.get("/invoice/:orderId", { preHandler: [authenticateUser, checkRole(['CUSTOMER', 'USER', 'SELLER', 'ADMIN'])] }, orderController.downloadInvoice);
 
+  // Download sub-order invoice PDF — seller-specific, only that seller's items
+  // :subOrderId = subDisplayId without # prefix, e.g. "A4X9KR-A"
+  fastify.get("/invoice/sub/:subOrderId", { preHandler: [authenticateUser, checkRole(['CUSTOMER', 'USER', 'SELLER', 'ADMIN'])] }, orderController.downloadSubOrderInvoice);
+
   // Download invoice PDF — public endpoint for email "Download Invoice" button
   // Registered as a separate path so it never conflicts with the auth route above
   fastify.get("/invoice/public/:orderId", orderController.downloadPublicInvoice);

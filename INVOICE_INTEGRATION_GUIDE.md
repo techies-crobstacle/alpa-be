@@ -61,7 +61,82 @@ const response = await fetch(
 
 ---
 
-### 2. Public Invoice (Email links — no auth required)
+### 2. Sub-Order Invoice (Seller Dashboard — multi-vendor orders)
+
+```
+GET /api/orders/invoice/sub/:subOrderId
+Authorization: Bearer <jwt_token>
+```
+
+- `:subOrderId` = `subOrder.subDisplayId` **without** the `#` prefix — e.g. `A4X9KR-A`
+- Roles allowed: `SELLER`, `ADMIN`, `SUPER_ADMIN`
+- Access rules:
+  - `SELLER` — can only download their **own** sub-orders (`subOrder.sellerId === userId`)
+  - `ADMIN` / `SUPER_ADMIN` — can download any sub-order
+- The PDF contains **only that seller's items, their subtotal, and the sub-order status** — no other sellers' sections, no parent grand total
+- Invoice `#` shown on the PDF = `subDisplayId` (e.g. `#A4X9KR-A`)
+
+#### `subDisplayId` format
+
+```
+{parentOrder.displayId}-{seller suffix}
+```
+
+| Parent `displayId` | First seller | Second seller | Third seller |
+|---|---|---|---|
+| `A4X9KR` | `A4X9KR-A` | `A4X9KR-B` | `A4X9KR-C` |
+
+The suffix is assigned alphabetically in the order the sellers were added at checkout (A = first, B = second, etc.).
+
+`subDisplayId` is returned in the orders list API response on every `subOrders[]` item:
+
+```json
+{
+  "id": "cljx8k2abc...",
+  "displayId": "A4X9KR",
+  "subOrders": [
+    {
+      "id": "cljx9m3def...",
+      "subDisplayId": "A4X9KR-A",
+      "sellerId": "...",
+      "status": "CONFIRMED",
+      "subtotal": 79.99
+    },
+    {
+      "id": "cljx9m3ghi...",
+      "subDisplayId": "A4X9KR-B",
+      "sellerId": "...",
+      "status": "SHIPPED",
+      "subtotal": 69.99
+    }
+  ]
+}
+```
+
+**Example (Seller Dashboard — sub-order invoice):**
+```js
+// subOrder.subDisplayId comes from the parent order's subOrders[] array
+const response = await fetch(
+  `${BACKEND_URL}/api/orders/invoice/sub/${subOrder.subDisplayId}`,
+  { headers: { Authorization: `Bearer ${sellerToken}` } }
+);
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = `invoice-${subOrder.subDisplayId}.pdf`;
+a.click();
+```
+
+---
+
+### 3. Full Parent Invoice (Admin Dashboard — all sellers in one PDF)
+
+Same as endpoint #1 — pass the parent `displayId`. The PDF will render one section per seller with a grand total.
+
+---
+
+### 4. Public Invoice (Email links — no auth required)
 
 ```
 GET /api/orders/invoice/public/:orderId
@@ -73,7 +148,7 @@ GET /api/orders/invoice/public/:orderId
 
 ---
 
-### 3. Guest Invoice (Guest orders — email-verified)
+### 5. Guest Invoice (Guest orders — email-verified)
 
 ```
 GET /api/orders/guest/invoice?orderId=<displayId>&customerEmail=<email>
@@ -85,9 +160,15 @@ GET /api/orders/guest/invoice?orderId=<displayId>&customerEmail=<email>
 
 ---
 
-## Order Types
+## Order Types and which endpoint to call
 
-### Direct Order (single-seller)
+| Order type | How to detect | Endpoint to call |
+|---|---|---|
+| **Direct order** (single seller) | `subOrders` array is empty or absent | `GET /invoice/:displayId` |
+| **Multi-vendor order — full PDF** (admin) | `subOrders.length > 0` | `GET /invoice/:displayId` (all sellers) |
+| **Multi-vendor order — seller slice** | `subOrders.length > 0` and you are a seller | `GET /invoice/sub/:subDisplayId` |
+
+### Direct Order
 - Items belong directly to the `Order` record
 - Invoice shows a single flat table of items
 
@@ -167,7 +248,10 @@ No action is required from the dashboard for this — it is fully automated by t
 | Wrong | Right |
 |---|---|
 | `/api/orders/invoice/cljx8k2abc...` (CUID) | `/api/orders/invoice/A4X9KR` (displayId) |
+| `/api/orders/invoice/sub/cljx9m3def...` (SubOrder CUID) | `/api/orders/invoice/sub/A4X9KR-A` (subDisplayId) |
 | Passing `order.id` | Passing `order.displayId` |
+| Passing `subOrder.id` | Passing `subOrder.subDisplayId` |
+| Calling full-parent invoice for a seller's sub-order | Use `/invoice/sub/:subDisplayId` for seller-specific downloads |
 | Calling the endpoint for `PENDING` / `CANCELLED` orders | Check status first, hide button if not invocable |
 | Omitting `Authorization` header for seller/admin routes | Always include `Bearer <token>` |
 

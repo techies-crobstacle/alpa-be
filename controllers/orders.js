@@ -349,10 +349,17 @@ exports.createOrder = async (request, reply) => {
 
         // Create sub-orders for each seller with their specific products
         const createdSubOrders = [];
+        let subOrderIndex = 0;
         for (const [sellerId, sellerData] of sellerNotifications) {
+          // Derive a customer-facing sub-display ID: parentDisplayId + alphabetic suffix (A, B, C...)
+          const subSuffix = String.fromCharCode(65 + subOrderIndex); // 0→A, 1→B, …
+          const subDisplayId = `${displayId}-${subSuffix}`;
+          subOrderIndex++;
+
           // Create sub-order for this seller
           const subOrder = await tx.subOrder.create({
             data: {
+              subDisplayId,
               parentOrderId: parentOrder.id,
               sellerId: sellerId,
               subtotal: sellerData.totalAmount,
@@ -2748,6 +2755,7 @@ const generateInvoiceBuffer = (order) => {
 const buildSubOrderShape = (sub) => ({
   id:                 sub.id,
   displayId:          sub.parentOrder?.displayId || null,
+  subDisplayId:       sub.subDisplayId || null,
   createdAt:          sub.createdAt,
   status:             sub.status,
   sellerName:         sub.seller?.name || null,
@@ -2835,6 +2843,57 @@ exports.downloadInvoice = async (request, reply) => {
     return reply.send(pdfBuffer);
   } catch (error) {
     console.error("Download invoice error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// Download Sub-Order Invoice — seller-specific PDF (only that seller's items)
+// GET /api/orders/invoice/sub/:subOrderId
+// :subOrderId = subDisplayId without # prefix, e.g. "A4X9KR-A"
+exports.downloadSubOrderInvoice = async (request, reply) => {
+  try {
+    const userId   = request.user.userId;
+    const userRole = request.user.role;
+    const { subOrderId } = request.params;
+
+    const subRecord = await prisma.subOrder.findFirst({
+      where: { subDisplayId: subOrderId },
+      include: {
+        parentOrder: {
+          include: { user: { select: { name: true, email: true, phone: true } } }
+        },
+        items: { include: { product: { select: { id: true, title: true, price: true } } } },
+        seller: { select: { name: true, email: true } },
+      },
+    });
+
+    if (!subRecord) {
+      return reply.status(404).send({ success: false, message: 'Sub-order not found' });
+    }
+
+    // Role-based access
+    if (userRole === 'USER' && subRecord.parentOrder.userId !== userId) {
+      return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
+    }
+    if (userRole === 'SELLER' && subRecord.sellerId !== userId) {
+      return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
+    }
+
+    const resolvedStatus = subRecord.status || 'CONFIRMED';
+    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+      return reply.status(400).send({ success: false, message: `Invoice is not available for sub-orders with status: ${resolvedStatus}` });
+    }
+
+    const invoiceShape = buildSubOrderShape(subRecord);
+    // Override displayId to use subDisplayId so the PDF shows e.g. "#A4X9KR-A"
+    invoiceShape.displayId = subRecord.subDisplayId || invoiceShape.displayId;
+
+    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="invoice-${subOrderId}.pdf"`);
+    return reply.send(pdfBuffer);
+  } catch (error) {
+    console.error('Download sub-order invoice error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

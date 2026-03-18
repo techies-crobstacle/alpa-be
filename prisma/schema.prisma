@@ -270,6 +270,7 @@ model Order {
 
 model SubOrder {
   id                String      @id @default(cuid())
+  subDisplayId      String?     @unique // Customer-facing short ID, e.g. "A4X9KR-A" (parentDisplayId-suffix)
   parentOrderId     String      // Reference to parent order
   parentOrder       Order       @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
   sellerId          String      // Seller this sub-order belongs to
