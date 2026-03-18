@@ -15,16 +15,17 @@ const {
 } = require("../utils/csvExport");
 
 // ── Order display-ID helpers ─────────────────────────────────────────────────
-// Last 6 alphanumeric chars of the CUID (from the END), uppercased → e.g. "XHB5PK"
-// Using slice(-6) so the code visually matches the tail of the raw ID the user sees.
-const _sc = (id = '') => id.replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase();
-// DIRECT / parent:  #ABC123
-const toDisplayId = (id) => `#${_sc(id)}`;
+// Accepts stored displayId Int (e.g. 1001) OR falls back to last-6-chars of CUID.
+const toDisplayId = (idOrN) => {
+  if (typeof idOrN === 'number') return `#${idOrN}`;
+  return `#${(idOrN || '').replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}`;
+};
 // Sub-order suffix: A, B … Z, AA … (Excel-column style, 0-based index)
-const toSubDisplayId = (parentId, idx) => {
+const toSubDisplayId = (parentIdOrN, idx) => {
   let suffix = '', n = idx;
   do { suffix = String.fromCharCode(65 + (n % 26)) + suffix; n = Math.floor(n / 26) - 1; } while (n >= 0);
-  return `#${_sc(parentId)}-${suffix}`;
+  if (typeof parentIdOrN === 'number') return `#${parentIdOrN}-${suffix}`;
+  return `#${(parentIdOrN || '').replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}-${suffix}`;
 };
 
 // Trim item objects — keep only fields the frontend needs
@@ -205,7 +206,7 @@ exports.getSellerOrders = async (request, reply) => {
     // Transform direct orders to unified format
     const transformedDirectOrders = allDirectOrders.map(order => ({
       id:        order.id,
-      displayId: toDisplayId(order.id),   // e.g. #ABC123
+      displayId: toDisplayId(order.displayId),   // e.g. #1001
       parentOrderId: null,
       type: 'DIRECT',
       status: mapStatusForDisplay(order.status || order.overallStatus),
@@ -236,9 +237,9 @@ exports.getSellerOrders = async (request, reply) => {
       const idx      = siblings.indexOf(subOrder.id);
       return ({
       id:              subOrder.id,
-      displaySubId:    toSubDisplayId(subOrder.parentOrderId, idx), // e.g. #XHB5PK-A
+      displaySubId:    toSubDisplayId(subOrder.parentOrder?.displayId ?? subOrder.parentOrderId, idx), // e.g. #1001-A
       parentOrderId:   subOrder.parentOrderId,
-      parentDisplayId: toDisplayId(subOrder.parentOrderId),         // e.g. #XHB5PK
+      parentDisplayId: toDisplayId(subOrder.parentOrder?.displayId ?? subOrder.parentOrderId),         // e.g. #1001
       type: 'SUB_ORDER',
       status: mapStatusForDisplay(subOrder.status),
       trackingNumber: subOrder.trackingNumber,
@@ -265,9 +266,9 @@ exports.getSellerOrders = async (request, reply) => {
     // Transform legacy multi-seller old orders (show only this seller's items, like a sub-order)
     const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => ({
       id:              order.id,
-      displaySubId:    toSubDisplayId(order.id, idx), // e.g. #XHB5PK-A (treated as sub)
+      displaySubId:    toSubDisplayId(order.displayId, idx), // e.g. #1001-A (treated as sub)
       parentOrderId:   order.id,
-      parentDisplayId: toDisplayId(order.id),
+      parentDisplayId: toDisplayId(order.displayId),
       type: 'SUB_ORDER',
       status: mapStatusForDisplay(order.status || order.overallStatus),
       trackingNumber: order.trackingNumber,

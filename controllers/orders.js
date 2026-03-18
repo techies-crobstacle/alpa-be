@@ -2537,7 +2537,7 @@ const generateInvoiceBuffer = (order) => {
 
     // Resolve status — MULTI_SELLER parents store it in overallStatus
     const resolvedStatus = order.status || order.overallStatus || 'CONFIRMED';
-    const displayRef     = order.displayId || order.id;
+    const displayRef     = order.displayId != null ? `#${order.displayId}` : order.id;
 
     // ── Header ──
     doc.fontSize(20).text('ALPA MARKETPLACE', 50, 50)

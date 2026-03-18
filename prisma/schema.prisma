@@ -226,6 +226,7 @@ model CartItem {
 
 model Order {
   id                String      @id @default(cuid())
+  displayId         Int         @unique @default(autoincrement()) // Human-readable order number e.g. 1001
   userId            String?     // Made optional for guest orders
   user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   sellerId          String?     // For single-seller orders
