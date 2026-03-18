@@ -20,12 +20,27 @@
  */
 
 const axios = require("axios");
+const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
 const { sendOrderConfirmationEmail } = require("../utils/emailService");
 const { notifyAdminNewOrder, notifySellerNewOrder } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
 const { createCommissionEarned } = require("./commission");
+
+// ─── Short Display ID Generator ───────────────────────────────────────────────
+const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+async function generateDisplayId() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let id = '';
+    for (let i = 0; i < 6; i++) id += DISPLAY_ID_CHARS[bytes[i] % DISPLAY_ID_CHARS.length];
+    const existing = await prisma.order.findUnique({ where: { displayId: id } });
+    if (!existing) return id;
+  }
+  throw new Error('Failed to generate a unique display ID after 10 attempts');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PayPal API helpers
@@ -245,7 +260,10 @@ exports.createOrder = async (request, reply) => {
     }
     const isMultiSeller = sellerItemsMap.size > 1;
 
+    const displayId = await generateDisplayId();
+
     const orderBaseData = {
+      displayId,
       userId,
       totalAmount,
       shippingAddress: shippingAddressData,
@@ -298,6 +316,7 @@ exports.createOrder = async (request, reply) => {
       paypalOrderId,
       approveUrl,      // ← Use this for redirect flow
       orderId: order.id,
+      displayId: order.displayId,
       amount: totalAmount,
       currency: "AUD",
       orderSummary: {

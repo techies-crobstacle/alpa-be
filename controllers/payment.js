@@ -1,6 +1,21 @@
 const Stripe = require("stripe");
+const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
+
+// ─── Short Display ID Generator ───────────────────────────────────────────────
+const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+async function generateDisplayId() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const bytes = crypto.randomBytes(6);
+    let id = '';
+    for (let i = 0; i < 6; i++) id += DISPLAY_ID_CHARS[bytes[i] % DISPLAY_ID_CHARS.length];
+    const existing = await prisma.order.findUnique({ where: { displayId: id } });
+    if (!existing) return id;
+  }
+  throw new Error('Failed to generate a unique display ID after 10 attempts');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 const {
   sendOrderConfirmationEmail,
 } = require("../utils/emailService");
@@ -131,7 +146,10 @@ exports.createPaymentIntent = async (request, reply) => {
             },
           };
 
+    const displayId = await generateDisplayId();
+
     const orderBaseData = {
+      displayId,
       userId,
       totalAmount,
       shippingAddress: shippingAddressData,
@@ -186,6 +204,7 @@ exports.createPaymentIntent = async (request, reply) => {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       orderId: order.id,
+      displayId: order.displayId,
       amount: amountInCents,        // in cents (Stripe standard) — e.g. 9500 for $95.00 AUD
       displayAmount: totalAmount,   // in dollars, for UI display only — e.g. 95.00
       currency: "aud",
@@ -682,7 +701,10 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     }
     const guestIsMultiSeller = guestSellerMap.size > 1;
 
+    const displayId = await generateDisplayId();
+
     const guestOrderBaseData = {
+      displayId,
       // userId intentionally omitted — guest order
       totalAmount,
       originalTotal,
@@ -744,6 +766,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       orderId: order.id,
+      displayId: order.displayId,
       amount: amountInCents,
       displayAmount: totalAmount,
       currency: "aud",
