@@ -274,6 +274,7 @@ exports.confirmPayment = async (request, reply) => {
         success: true,
         message: "Payment already confirmed",
         orderId: order.id,
+        displayId: order.displayId,
       });
     }
 
@@ -286,6 +287,7 @@ exports.confirmPayment = async (request, reply) => {
       success: true,
       message: "Payment confirmed and order placed successfully",
       orderId: order.id,
+      displayId: order.displayId,
       status: "CONFIRMED",
       paymentStatus: "PAID",
     });
@@ -854,6 +856,7 @@ exports.confirmGuestPayment = async (request, reply) => {
         success: true,
         message: "Payment already confirmed",
         orderId: order.id,
+        displayId: order.displayId,
       });
     }
 
@@ -868,6 +871,7 @@ exports.confirmGuestPayment = async (request, reply) => {
       success: true,
       message: "Guest payment confirmed and order placed successfully",
       orderId: order.id,
+      displayId: order.displayId,
       status: "CONFIRMED",
       paymentStatus: "PAID",
     });
