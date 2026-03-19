@@ -9,10 +9,10 @@ async function sellerOrderRoutes(fastify, options) {
   fastify.get("/", { preHandler: authenticateSeller }, sellerOrderController.getSellerOrders);
 
   // Update order status (Packed, Shipped, Delivered etc.) - Seller and Admin access
-  fastify.put("/update-status/:orderId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, sellerOrderController.updateOrderStatus);
+  fastify.put("/update-status/:orderId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN', 'SUPER_ADMIN'])] }, sellerOrderController.updateOrderStatus);
 
   // Update tracking number & estimated delivery - Seller and Admin access
-  fastify.put("/tracking/:orderId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, sellerOrderController.updateTrackingInfo);
+  fastify.put("/tracking/:orderId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN', 'SUPER_ADMIN'])] }, sellerOrderController.updateTrackingInfo);
 
   // Seller Stock bulk update
   fastify.put("/products/bulk-stock", { preHandler: authenticateSeller }, sellerOrderController.bulkUpdateStock);
