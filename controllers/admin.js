@@ -1,6 +1,10 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
 const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail } = require("../utils/emailService");
+const { uploadToCloudinary } = require("../config/cloudinary");
+const fs = require('fs');
+const path = require('path');
+const { pipeline } = require('stream/promises');
 
 // ── Role helper ───────────────────────────────────────────────────────────────
 // SUPER_ADMIN has all the same operational rights as ADMIN.
@@ -3345,6 +3349,381 @@ exports.getAllOrdersDetailed = async (request, reply) => {
     });
   } catch (error) {
     console.error('getAllOrdersDetailed error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// ── Sponsored Section Management ─────────────────────────────────────────────
+
+// Create sponsored section (Admin only)
+exports.createSponsoredSection = async (request, reply) => {
+  try {
+    const { role } = request.user;
+    if (!isAdminRole(role)) {
+      return reply.status(403).send({ success: false, error: 'Forbidden' });
+    }
+
+    let requestData = {};
+    let mediaUrl = null;
+    let mediaType = 'IMAGE';
+
+    // Check if request is multipart (for file uploads)
+    if (request.isMultipart()) {
+      console.log('Processing multipart form-data...');
+      const parts = request.parts();
+
+      for await (const part of parts) {
+        console.log('Part detected - Type:', part.type, 'Fieldname:', part.fieldname, 'Value:', part.value);
+        
+        if (part.type === 'file') {
+          // Handle file upload (media file - image or video)
+          console.log('File detected:', part.filename, 'Fieldname:', part.fieldname);
+          
+          if (part.fieldname === 'media' || part.fieldname === 'mediaFile') {
+            try {
+              // Ensure uploads directory exists
+              const uploadsDir = path.join(__dirname, '../uploads/');
+              if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+              }
+
+              const tempPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+              
+              // Write file using stream
+              await pipeline(part.file, fs.createWriteStream(tempPath));
+              console.log('File saved to temp path:', tempPath);
+
+              // Determine media type by file extension or MIME type
+              const fileExtension = path.extname(part.filename).toLowerCase();
+              const mimeType = part.mimetype;
+              
+              if (mimeType.startsWith('video/') || ['.mp4', '.webm', '.mov', '.avi'].includes(fileExtension)) {
+                mediaType = 'VIDEO';
+              } else {
+                mediaType = 'IMAGE';
+              }
+
+              // Upload to Cloudinary
+              const uploadResult = await uploadToCloudinary(tempPath, 'sponsored');
+              mediaUrl = uploadResult.url;
+              
+              console.log('✓ Cloudinary upload successful:', mediaUrl);
+
+              // Clean up temp file
+              try {
+                await fs.promises.unlink(tempPath);
+                console.log('✓ Temp file cleaned up');
+              } catch (unlinkError) {
+                console.log('Warning: Could not delete temp file:', unlinkError.message);
+              }
+            } catch (uploadError) {
+              console.error('✗ File upload error:', uploadError);
+              return reply.status(500).send({
+                success: false,
+                error: 'Failed to upload media file: ' + uploadError.message
+              });
+            }
+          }
+        } else {
+          // Handle regular form fields (CREATE function)
+          console.log('Field:', part.fieldname, '=', part.value);
+          
+          // Trim whitespace and store field
+          if (part.fieldname) {
+            requestData[part.fieldname] = part.value ? part.value.toString().trim() : part.value;
+          }
+        }
+      }
+    } else {
+      // Handle JSON body
+      requestData = request.body || {};
+      mediaUrl = requestData.mediaUrl;
+      mediaType = requestData.mediaType || 'IMAGE';
+    }
+    
+    console.log('Processed data:', requestData);
+    console.log('Media URL:', mediaUrl);
+    console.log('Media Type:', mediaType);
+    
+    const { title, description, ctaText, ctaUrl, isActive, order } = requestData;
+
+    // Use uploaded media URL if file was uploaded, otherwise use provided URL
+    const finalMediaUrl = mediaUrl || requestData.mediaUrl;
+
+    // Validate required fields
+    if (!title || !description || !finalMediaUrl || !ctaText || !ctaUrl) {
+      console.log('Validation failed - Missing fields:');
+      console.log('title:', title);
+      console.log('description:', description); 
+      console.log('finalMediaUrl:', finalMediaUrl);
+      console.log('ctaText:', ctaText);
+      console.log('ctaUrl:', ctaUrl);
+      
+      return reply.status(400).send({ 
+        success: false, 
+        error: 'Title, description, media file/URL, ctaText, and ctaUrl are required',
+        received: { title, description, finalMediaUrl, ctaText, ctaUrl }
+      });
+    }
+
+    // Validate mediaType if provided in form data
+    const finalMediaType = requestData.mediaType || mediaType;
+    console.log('Final MediaType being validated:', finalMediaType, 'Type:', typeof finalMediaType);
+    
+    if (finalMediaType && !['IMAGE', 'VIDEO'].includes(finalMediaType.toString().toUpperCase().trim())) {
+      return reply.status(400).send({ 
+        success: false, 
+        error: 'MediaType must be either IMAGE or VIDEO',
+        received: finalMediaType
+      });
+    }
+
+    const sponsoredSection = await prisma.sponsoredSection.create({
+      data: {
+        title,
+        description,
+        mediaUrl: finalMediaUrl,
+        mediaType: finalMediaType ? finalMediaType.toString().toUpperCase().trim() : 'IMAGE',
+        ctaText,
+        ctaUrl,
+        isActive: isActive ? isActive === 'true' || isActive === true : true,
+        order: order ? parseInt(order) : null
+      }
+    });
+
+    return reply.status(201).send({
+      success: true,
+      message: 'Sponsored section created successfully',
+      data: sponsoredSection
+    });
+  } catch (error) {
+    console.error('createSponsoredSection error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// Get all sponsored sections for admin (active and inactive)
+exports.getAllSponsoredSections = async (request, reply) => {
+  try {
+    const { role } = request.user;
+    if (!isAdminRole(role)) {
+      return reply.status(403).send({ success: false, error: 'Forbidden' });
+    }
+
+    const { page = 1, limit = 10, status } = request.query;
+    const skip = (page - 1) * limit;
+    const take = parseInt(limit);
+
+    let whereCondition = {};
+    if (status !== undefined) {
+      whereCondition.isActive = status === 'active';
+    }
+
+    const [sponsoredSections, total] = await Promise.all([
+      prisma.sponsoredSection.findMany({
+        where: whereCondition,
+        orderBy: [
+          { order: 'asc' },
+          { createdAt: 'desc' }
+        ],
+        skip,
+        take
+      }),
+      prisma.sponsoredSection.count({ where: whereCondition })
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      data: sponsoredSections,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: take,
+        pages: Math.ceil(total / take)
+      }
+    });
+  } catch (error) {
+    console.error('getAllSponsoredSections error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// Update sponsored section (Admin only)
+exports.updateSponsoredSection = async (request, reply) => {
+  try {
+    const { role } = request.user;
+    if (!isAdminRole(role)) {
+      return reply.status(403).send({ success: false, error: 'Forbidden' });
+    }
+
+    const { id } = request.params;
+    let requestData = {};
+    let mediaUrl = null;
+    let mediaType = null;
+
+    // Check if request is multipart (for file uploads)
+    if (request.isMultipart()) {
+      console.log('Processing multipart form-data...');
+      const parts = request.parts();
+
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          // Handle file upload (media file - image or video)
+          console.log('File detected:', part.filename, 'Fieldname:', part.fieldname);
+          
+          if (part.fieldname === 'media' || part.fieldname === 'mediaFile') {
+            try {
+              // Ensure uploads directory exists
+              const uploadsDir = path.join(__dirname, '../uploads/');
+              if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+              }
+
+              const tempPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+              
+              // Write file using stream
+              await pipeline(part.file, fs.createWriteStream(tempPath));
+              console.log('File saved to temp path:', tempPath);
+
+              // Determine media type by file extension or MIME type
+              const fileExtension = path.extname(part.filename).toLowerCase();
+              const mimeType = part.mimetype;
+              
+              if (mimeType.startsWith('video/') || ['.mp4', '.webm', '.mov', '.avi'].includes(fileExtension)) {
+                mediaType = 'VIDEO';
+              } else {
+                mediaType = 'IMAGE';
+              }
+
+              // Upload to Cloudinary
+              const uploadResult = await uploadToCloudinary(tempPath, 'sponsored');
+              mediaUrl = uploadResult.url;
+              
+              console.log('✓ Cloudinary upload successful:', mediaUrl);
+
+              // Clean up temp file
+              try {
+                await fs.promises.unlink(tempPath);
+                console.log('✓ Temp file cleaned up');
+              } catch (unlinkError) {
+                console.log('Warning: Could not delete temp file:', unlinkError.message);
+              }
+            } catch (uploadError) {
+              console.error('✗ File upload error:', uploadError);
+              return reply.status(500).send({
+                success: false,
+                error: 'Failed to upload media file: ' + uploadError.message
+              });
+            }
+          }
+        } else {
+          // Handle regular form fields (UPDATE function)
+          console.log('Field:', part.fieldname, '=', part.value);
+          
+          // Trim whitespace and store field
+          if (part.fieldname) {
+            requestData[part.fieldname] = part.value ? part.value.toString().trim() : part.value;
+          }
+        }
+      }
+    } else {
+      // Handle JSON body
+      requestData = request.body || {};
+    }
+    
+    const { title, description, ctaText, ctaUrl, isActive, order } = requestData;
+
+    // Check if sponsored section exists
+    const existingSection = await prisma.sponsoredSection.findUnique({
+      where: { id }
+    });
+
+    if (!existingSection) {
+      return reply.status(404).send({ 
+        success: false, 
+        error: 'Sponsored section not found' 
+      });
+    }
+
+    // Validate mediaType if provided
+    const finalMediaType = requestData.mediaType || mediaType;
+    if (finalMediaType && !['IMAGE', 'VIDEO'].includes(finalMediaType)) {
+      return reply.status(400).send({ 
+        success: false, 
+        error: 'MediaType must be either IMAGE or VIDEO' 
+      });
+    }
+
+    // Prepare update data
+    const updateData = {};
+    if (title !== undefined && title.trim()) updateData.title = title;
+    if (description !== undefined && description.trim()) updateData.description = description;
+    
+    // Only update mediaUrl if we have a new file upload OR a new URL provided
+    if (mediaUrl) {
+      // New file was uploaded
+      updateData.mediaUrl = mediaUrl;
+    } else if (requestData.mediaUrl && requestData.mediaUrl.trim()) {
+      // New URL provided in form data
+      updateData.mediaUrl = requestData.mediaUrl;
+    }
+    // If neither, don't update mediaUrl - keep existing value
+    
+    if (finalMediaType !== undefined) updateData.mediaType = finalMediaType;
+    if (ctaText !== undefined && ctaText.trim()) updateData.ctaText = ctaText;
+    if (ctaUrl !== undefined && ctaUrl.trim()) updateData.ctaUrl = ctaUrl;
+    if (isActive !== undefined) updateData.isActive = isActive === 'true' || isActive === true;
+    if (order !== undefined) updateData.order = order ? parseInt(order) : null;
+    if (order !== undefined) updateData.order = order ? parseInt(order) : null;
+
+    const updatedSection = await prisma.sponsoredSection.update({
+      where: { id },
+      data: updateData
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Sponsored section updated successfully',
+      data: updatedSection
+    });
+  } catch (error) {
+    console.error('updateSponsoredSection error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// Delete sponsored section (Admin only)
+exports.deleteSponsoredSection = async (request, reply) => {
+  try {
+    const { role } = request.user;
+    if (!isAdminRole(role)) {
+      return reply.status(403).send({ success: false, error: 'Forbidden' });
+    }
+
+    const { id } = request.params;
+
+    // Check if sponsored section exists
+    const existingSection = await prisma.sponsoredSection.findUnique({
+      where: { id }
+    });
+
+    if (!existingSection) {
+      return reply.status(404).send({ 
+        success: false, 
+        error: 'Sponsored section not found' 
+      });
+    }
+
+    await prisma.sponsoredSection.delete({
+      where: { id }
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Sponsored section deleted successfully'
+    });
+  } catch (error) {
+    console.error('deleteSponsoredSection error:', error);
     return reply.status(500).send({ success: false, error: error.message });
   }
 };

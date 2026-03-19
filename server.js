@@ -30,6 +30,7 @@ const blogsRoutes   = require("./routes/blogsRoutes");
 const commissionRoutes = require("./routes/commissionRoute");
 const uploadRoutes = require("./routes/uploadRoutes");
 const contactRoutes = require("./routes/contactRoutes");
+const publicRoutes = require("./routes/publicRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 const { initializeLowStockScheduler } = require("./utils/lowStockScheduler");
@@ -104,7 +105,7 @@ require("./config/passport")(app);
 app.register(require("@fastify/formbody"));
 app.register(require("@fastify/multipart"), {
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 50 * 1024 * 1024 // 50MB limit (increased from 10MB)
   }
 });
 
@@ -148,6 +149,10 @@ app.register(paymentRoutes, { prefix: "/api/payments" });
 app.register(blogsRoutes,   { prefix: "/api/blogs" });
 app.register(commissionRoutes, { prefix: "/api/commissions" });
   app.register(contactRoutes, { prefix: "/api" });
+app.register(publicRoutes, { prefix: "/api/public" });
+
+
+
 const PORT = parseInt(process.env.PORT) || 5000;
 
 // Graceful shutdown

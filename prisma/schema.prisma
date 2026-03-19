@@ -653,6 +653,29 @@ model product_variants {
   @@index([product_id])
 }
 
+model SponsoredSection {
+  id          String                 @id @default(cuid())
+  title       String
+  description String
+  mediaUrl    String
+  mediaType   SponsoredMediaType     @default(IMAGE)
+  ctaText     String
+  ctaUrl      String
+  isActive    Boolean                @default(true)
+  order       Int?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+  @@map("sponsored_sections")
+}
+
+enum SponsoredMediaType {
+  IMAGE
+  VIDEO
+}
+
 enum NotificationType {
   ORDER_STATUS_CHANGED
   NEW_ORDER

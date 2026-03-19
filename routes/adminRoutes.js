@@ -157,6 +157,12 @@ async function adminRoutes(fastify, options) {
   // GET /admin/audit-logs/products/:productId  — full history for one product
   // Accessible by ADMIN (any product) or SELLER (own products only)
   fastify.get("/audit-logs/products/:productId", { preHandler: authenticateUser }, adminController.getProductAuditHistory);
+
+  // ---------------- SPONSORED SECTIONS MANAGEMENT ----------------
+  fastify.post("/sponsored-sections", { preHandler: adminAuth }, adminController.createSponsoredSection);
+  fastify.get("/sponsored-sections", { preHandler: adminAuth }, adminController.getAllSponsoredSections);
+  fastify.put("/sponsored-sections/:id", { preHandler: adminAuth }, adminController.updateSponsoredSection);
+  fastify.delete("/sponsored-sections/:id", { preHandler: adminAuth }, adminController.deleteSponsoredSection);
 } 
 
 module.exports = adminRoutes;
