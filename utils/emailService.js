@@ -4231,17 +4231,63 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                         <th style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
                         <th style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
                         <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Unit Price</th>
-                        <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Subtotal</th>
+                        <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Total</th>
                       </tr>
                     </thead>
                     <tbody>${productRows}</tbody>
-                    ${orderDetails.totalAmount ? `
                     <tfoot>
-                      <tr style="background:#F9EDE9;">
-                        <td colspan="3" style="padding:12px;text-align:right;color:#5A1E12;font-size:15px;font-weight:700;">Total Paid:</td>
-                        <td style="padding:12px;text-align:right;color:#5A1E12;font-size:18px;font-weight:800;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td>
+                      <!-- Subtotal row -->
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">Subtotal (inc. GST)</td>
+                        <td style="padding:10px 12px;text-align:right;color:#333;font-size:14px;">$${
+                          orderDetails.orderSummary
+                            ? parseFloat(orderDetails.orderSummary.subtotal || 0).toFixed(2)
+                            : (parseFloat(orderDetails.totalAmount || 0)).toFixed(2)
+                        }</td>
                       </tr>
-                    </tfoot>` : ''}
+                      <!-- Shipping row -->
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
+                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` — ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
+                        </td>
+                        <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
+                          orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0
+                            ? `$${parseFloat(orderDetails.orderSummary.shippingCost).toFixed(2)}`
+                            : '<span style="color:#2e7d32;font-weight:600;">FREE</span>'
+                        }</td>
+                      </tr>
+                      <!-- Coupon Discount row (only shown when a coupon was applied) -->
+                      ${orderDetails.orderSummary?.discountAmount && parseFloat(orderDetails.orderSummary.discountAmount) > 0 ? `
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
+                        <td style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
+                      </tr>` : ''}
+                      <!-- GST extracted row -->
+                      <tr style="background-color:#fdf5f3;border-top:1px dashed #ddd;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">
+                          GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
+                        </td>
+                        <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
+                          orderDetails.orderSummary
+                            ? parseFloat(orderDetails.orderSummary.gstAmount || 0).toFixed(2)
+                            : '0.00'
+                        }</td>
+                      </tr>
+                      <!-- Net ex-GST row -->
+                      <tr style="background-color:#fdf5f3;">
+                        <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">Net amount (ex. GST)</td>
+                        <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
+                          orderDetails.orderSummary
+                            ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
+                            : '0.00'
+                        }</td>
+                      </tr>
+                      <!-- Grand Total row -->
+                      <tr style="background-color:#F9EDE9;border-top:2px solid #C4603A;">
+                        <td colspan="3" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
+                        <td style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${parseFloat(orderDetails.totalAmount || 0).toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </td>
               </tr>` : ''}
