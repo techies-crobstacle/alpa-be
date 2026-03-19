@@ -800,3 +800,26 @@ enum BankChangeStatus {
   APPROVED
   REJECTED
 }
+
+
+
+
+
+
+enum ContactMessageStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+}
+
+model ContactMessage {
+  id          String               @id @default(uuid())
+  issueType   String
+  fullName    String
+  phoneNumber String?
+  email       String
+  message     String               @db.Text
+  status      ContactMessageStatus @default(NEW)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
