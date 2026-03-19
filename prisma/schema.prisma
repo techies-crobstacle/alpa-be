@@ -286,7 +286,7 @@ model SubOrder {
   orderNotifications OrderNotification[]
   parentOrder        Order               @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
   seller             User                @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: Cascade)
-  seller             SellerProfile       @relation("SellerSubOrders", fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey")
+  sellerProfile      SellerProfile       @relation("SellerSubOrders", fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey")
 
   @@index([parentOrderId])
   @@index([sellerId])
