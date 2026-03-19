@@ -801,6 +801,11 @@ enum BankChangeStatus {
   REJECTED
 }
 
+
+
+
+
+
 enum ContactMessageStatus {
   NEW
   IN_PROGRESS
