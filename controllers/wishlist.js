@@ -284,12 +284,10 @@ exports.moveToCart = async (request, reply) => {
     }
 
     // Check if product already in cart
-    const existingCartItem = await prisma.cartItem.findUnique({
+    const existingCartItem = await prisma.cartItem.findFirst({
       where: {
-        cartId_productId: {
-          cartId: cart.id,
-          productId
-        }
+        cartId: cart.id,
+        productId
       }
     });
 
@@ -297,10 +295,7 @@ exports.moveToCart = async (request, reply) => {
       // Update quantity
       await prisma.cartItem.update({
         where: {
-          cartId_productId: {
-            cartId: cart.id,
-            productId
-          }
+          id: existingCartItem.id
         },
         data: {
           quantity: { increment: quantity }

@@ -1888,12 +1888,10 @@ exports.reorder = async (request, reply) => {
       }
 
       // Check if item already exists in cart
-      const existingCartItem = await prisma.cartItem.findUnique({
+      const existingCartItem = await prisma.cartItem.findFirst({
         where: {
-          cartId_productId: {
-            cartId: cart.id,
-            productId: product.id
-          }
+          cartId: cart.id,
+          productId: product.id
         }
       });
 
@@ -1918,10 +1916,7 @@ exports.reorder = async (request, reply) => {
 
         const updatedItem = await prisma.cartItem.update({
           where: {
-            cartId_productId: {
-              cartId: cart.id,
-              productId: product.id
-            }
+            id: existingCartItem.id
           },
           data: {
             quantity: newQuantity
