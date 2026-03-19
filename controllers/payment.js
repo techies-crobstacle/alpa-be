@@ -356,6 +356,7 @@ exports.getPaymentStatus = async (request, reply) => {
       where: { id: orderId, userId },
       select: {
         id: true,
+        displayId: true,
         status: true,
         paymentStatus: true,
         paymentMethod: true,

@@ -28,6 +28,7 @@ const feedbackRoutes = require("./routes/feedbackRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const blogsRoutes   = require("./routes/blogsRoutes");
 const commissionRoutes = require("./routes/commissionRoute");
+const uploadRoutes = require("./routes/uploadRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 const { initializeLowStockScheduler } = require("./utils/lowStockScheduler");
@@ -122,6 +123,7 @@ app.get("/", async (request, reply) => {
 
 // Register routes
 app.register(authRoutes, { prefix: "/api/auth" });
+app.register(uploadRoutes, { prefix: "/api/upload" });
 app.register(productRoutes, { prefix: "/api/products" });
 app.register(cartRoutes, { prefix: "/api/cart" });
 app.register(orderRoutes, { prefix: "/api/orders" });

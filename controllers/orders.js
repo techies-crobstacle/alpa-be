@@ -1246,7 +1246,7 @@ exports.requestRefund = async (request, reply) => {
   try {
     const displayId = request.params.id;
     const userId = request.user.userId;
-    const { requestType, reason, statusReason } = request.body || {};
+    const { requestType, reason, statusReason, items, images } = request.body || {};
 
     const normalizedRequestType = normalizeOrderStatus(requestType);
     if (!['REFUND', 'PARTIAL_REFUND'].includes(normalizedRequestType)) {
@@ -1292,10 +1292,6 @@ exports.requestRefund = async (request, reply) => {
 
     const orderId = order.id; // resolve to internal CUID for all remaining operations
 
-    if (!order) {
-      return reply.status(404).send({ success: false, message: "Order not found" });
-    }
-
     if (order.userId !== userId) {
       return reply.status(403).send({ success: false, message: "Not authorized" });
     }
@@ -1320,6 +1316,11 @@ exports.requestRefund = async (request, reply) => {
       });
     }
 
+    let itemsMessage = '';
+    if (items && Array.isArray(items) && items.length > 0) {
+      itemsMessage = `\nRequested Items:\n` + items.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
+    }
+
     const ticketTitle = normalizedRequestType === 'REFUND' ? 'Refund Request' : 'Partial Refund Request';
     const readableOrderId = orderId.slice(-8).toUpperCase();
     const supportTicket = await prisma.supportTicket.create({
@@ -1328,9 +1329,10 @@ exports.requestRefund = async (request, reply) => {
         orderId,
         requestType: normalizedRequestType,
         subject: `${ticketTitle} for Order #${readableOrderId}`,
-        message: `Order ID: ${orderId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}`,
+        message: `Order ID: ${displayId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}${itemsMessage}`,
         category: 'REFUND_REQUEST',
-        priority: 'MEDIUM'
+        priority: 'MEDIUM',
+        attachments: images && Array.isArray(images) ? images : []
       }
     });
 
@@ -1498,7 +1500,7 @@ exports.getRefundRequestById = async (request, reply) => {
 // GUEST — REQUEST REFUND / PARTIAL REFUND
 exports.requestGuestRefund = async (request, reply) => {
   try {
-    const { orderId: displayId, customerEmail, requestType, reason, statusReason } = request.body || {};
+    const { orderId: displayId, customerEmail, requestType, reason, statusReason, items, images } = request.body || {};
 
     if (!displayId || !customerEmail) {
       return reply.status(400).send({
@@ -1578,6 +1580,11 @@ exports.requestGuestRefund = async (request, reply) => {
       });
     }
 
+    let itemsMessage = '';
+    if (items && Array.isArray(items) && items.length > 0) {
+      itemsMessage = `\nRequested Items:\n` + items.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
+    }
+
     const ticketTitle = normalizedRequestType === 'REFUND' ? 'Refund Request' : 'Partial Refund Request';
     const readableOrderId = orderId.slice(-8).toUpperCase();
 
@@ -1588,9 +1595,10 @@ exports.requestGuestRefund = async (request, reply) => {
         guestEmail: normalizedEmail,
         requestType: normalizedRequestType,
         subject: `${ticketTitle} for Order #${readableOrderId}`,
-        message: `Order ID: ${orderId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}`,
+        message: `Order ID: ${displayId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}${itemsMessage}`,
         category: 'REFUND_REQUEST',
-        priority: 'MEDIUM'
+        priority: 'MEDIUM',
+        attachments: images && Array.isArray(images) ? images : []
       }
     });
 
