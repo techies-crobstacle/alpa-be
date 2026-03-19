@@ -823,7 +823,10 @@ exports.updateTrackingInfo = async (request, reply) => {
     }
 
     // ── Authorization ─────────────────────────────────────────────────────
-    if (userRole !== "ADMIN") {
+    // Allow both ADMIN and SUPER_ADMIN full access
+    const isAdminUser = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
+    
+    if (!isAdminUser) {
       if (isSubOrder) {
         if (order.sellerId !== userId) {
           return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't belong to you" });
