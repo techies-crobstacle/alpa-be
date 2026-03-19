@@ -64,10 +64,10 @@ const trimItems = (items = []) =>
     quantity:  item.quantity,
     price:     item.price,
     product:   item.product ? {
-      id:     item.product.id,
-      title:  item.product.title,
-      images: item.product.images,
-      price:  item.product.price
+      id:            item.product.id,
+      title:         item.product.title,
+      featuredImage: item.product.featuredImage,
+      price:         item.product.price
     } : null
   }));
 
@@ -411,7 +411,15 @@ exports.getOrdersBySellerId = async (request, reply) => {
         include: {
           items: {
             include: {
-              product: true
+              product: {
+                select: {
+                  id: true,
+                  title: true,
+                  featuredImage: true,
+                  price: true,
+                  sellerId: true
+                }
+              }
             }
           },
           parentOrder: {
@@ -442,7 +450,15 @@ exports.getOrdersBySellerId = async (request, reply) => {
         include: {
           items: {
             include: {
-              product: true
+              product: {
+                select: {
+                  id: true,
+                  title: true,
+                  featuredImage: true,
+                  price: true,
+                  sellerId: true
+                }
+              }
             }
           },
           user: {
@@ -480,7 +496,7 @@ exports.getOrdersBySellerId = async (request, reply) => {
                 select: {
                   id: true,
                   title: true,
-                  images: true,
+                  featuredImage: true,
                   price: true,
                   sellerId: true
                 }
