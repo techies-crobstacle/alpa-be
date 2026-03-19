@@ -38,7 +38,7 @@ const trimItems = (items = []) =>
     product:   item.product ? {
       id:     item.product.id,
       title:  item.product.title,
-      images: item.product.images,
+      featuredImage: item.product.featuredImage,
       price:  item.product.price
     } : null
   }));
@@ -141,7 +141,7 @@ exports.getSellerOrders = async (request, reply) => {
                 select: {
                   id: true,
                   title: true,
-                  images: true,
+                  featuredImage: true,
                   price: true,
                   sellerId: true
                 }
