@@ -29,6 +29,7 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const blogsRoutes   = require("./routes/blogsRoutes");
 const commissionRoutes = require("./routes/commissionRoute");
 const uploadRoutes = require("./routes/uploadRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 const { initializeLowStockScheduler } = require("./utils/lowStockScheduler");
@@ -146,9 +147,7 @@ app.register(feedbackRoutes, { prefix: "/api/feedback" });
 app.register(paymentRoutes, { prefix: "/api/payments" });
 app.register(blogsRoutes,   { prefix: "/api/blogs" });
 app.register(commissionRoutes, { prefix: "/api/commissions" });
-
-
-
+  app.register(contactRoutes, { prefix: "/api" });
 const PORT = parseInt(process.env.PORT) || 5000;
 
 // Graceful shutdown
