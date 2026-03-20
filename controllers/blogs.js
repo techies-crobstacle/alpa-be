@@ -10,6 +10,27 @@ const generateSlug = (title) =>
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
+// Helper: process tags from various input formats
+const processTags = (tags) => {
+  if (!tags) return [];
+  
+  // If already an array, return as is
+  if (Array.isArray(tags)) return tags;
+  
+  // If string, try to parse as JSON first
+  if (typeof tags === 'string') {
+    try {
+      const parsed = JSON.parse(tags);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+      // If JSON parse fails, treat as comma-separated string
+      return tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+    }
+  }
+  
+  return [];
+};
+
 // ─────────────────────────────────────────────
 // ADMIN: Create Blog
 // ─────────────────────────────────────────────
@@ -17,6 +38,12 @@ exports.createBlog = async (request, reply) => {
   try {
     const body = request.body || {};
     const { title, slug, content, shortDescription, tags, ctaText } = body;
+
+    // DEBUG: Log tags processing
+    console.log('🐛 DEBUG - Raw tags received:', tags);
+    console.log('🐛 DEBUG - Type of tags:', typeof tags);
+    const processedTags = processTags(tags);
+    console.log('🐛 DEBUG - Processed tags:', processedTags);
 
     // Enhanced validation with specific error messages
     if (!title || title.trim() === '') {
@@ -72,7 +99,7 @@ exports.createBlog = async (request, reply) => {
         content,
         coverImage,
         shortDescription: shortDescription || null,
-        tags: tags ? (Array.isArray(tags) ? tags : []) : [],
+        tags: processedTags,
         ctaText: ctaText || null,
         status: "DRAFT",
       },
@@ -93,6 +120,12 @@ exports.updateBlog = async (request, reply) => {
     const { id } = request.params;
     const body = request.body || {};
     const { title, slug, content, shortDescription, tags, ctaText } = body;
+
+    // DEBUG: Log tags processing for updates
+    if (tags !== undefined) {
+      console.log('🐛 UPDATE DEBUG - Raw tags received:', tags);
+      console.log('🐛 UPDATE DEBUG - Type of tags:', typeof tags);
+    }
 
     const blog = await prisma.blog.findUnique({ where: { id } });
     if (!blog) {
@@ -130,7 +163,7 @@ exports.updateBlog = async (request, reply) => {
         ...(content && { content }),
         ...(coverImage && { coverImage }),
         ...(shortDescription !== undefined && { shortDescription }),
-        ...(tags !== undefined && { tags: Array.isArray(tags) ? tags : [] }),
+        ...(tags !== undefined && { tags: processTags(tags) }),
         ...(ctaText !== undefined && { ctaText }),
       },
     });
