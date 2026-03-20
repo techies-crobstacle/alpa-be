@@ -16,12 +16,22 @@ const generateSlug = (title) =>
 exports.createBlog = async (request, reply) => {
   try {
     const body = request.body || {};
-    const { title, slug, content } = body;
+    const { title, slug, content, shortDescription, tags, ctaText } = body;
 
-    if (!title || !content) {
+    // Enhanced validation with specific error messages
+    if (!title || title.trim() === '') {
       return reply.status(400).send({
         success: false,
-        message: "title and content are required",
+        message: "title is required and cannot be empty",
+        received: { title: title || 'undefined' }
+      });
+    }
+
+    if (!content || content.trim() === '') {
+      return reply.status(400).send({
+        success: false,
+        message: "content is required and cannot be empty",
+        received: { content: content || 'undefined' }
       });
     }
 
@@ -61,6 +71,9 @@ exports.createBlog = async (request, reply) => {
         slug: finalSlug,
         content,
         coverImage,
+        shortDescription: shortDescription || null,
+        tags: tags ? (Array.isArray(tags) ? tags : []) : [],
+        ctaText: ctaText || null,
         status: "DRAFT",
       },
     });
@@ -79,7 +92,7 @@ exports.updateBlog = async (request, reply) => {
   try {
     const { id } = request.params;
     const body = request.body || {};
-    const { title, slug, content } = body;
+    const { title, slug, content, shortDescription, tags, ctaText } = body;
 
     const blog = await prisma.blog.findUnique({ where: { id } });
     if (!blog) {
@@ -116,6 +129,9 @@ exports.updateBlog = async (request, reply) => {
         ...(slug && { slug: slug.toLowerCase().trim() }),
         ...(content && { content }),
         ...(coverImage && { coverImage }),
+        ...(shortDescription !== undefined && { shortDescription }),
+        ...(tags !== undefined && { tags: Array.isArray(tags) ? tags : [] }),
+        ...(ctaText !== undefined && { ctaText }),
       },
     });
 
@@ -232,6 +248,9 @@ exports.getAllBlogs = async (request, reply) => {
           slug: true,
           content: true,
           coverImage: true,
+          shortDescription: true,
+          tags: true,
+          ctaText: true,
           status: true,
           createdAt: true,
           updatedAt: true,

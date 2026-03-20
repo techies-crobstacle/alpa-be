@@ -582,14 +582,17 @@ model SsoTicket {
 }
 
 model Blog {
-  id         String     @id @default(cuid())
-  title      String
-  slug       String     @unique
-  content    String
-  coverImage String
-  status     BlogStatus @default(DRAFT)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id               String     @id @default(cuid())
+  title            String
+  slug             String     @unique
+  content          String
+  coverImage       String
+  shortDescription String?
+  tags             String[]   @default([])
+  ctaText          String?
+  status           BlogStatus @default(DRAFT)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   @@map("blogs")
 }

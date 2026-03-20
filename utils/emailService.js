@@ -4653,7 +4653,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
 
                     <!-- CTA -->
                     <div style="text-align:center;">
-                      <a href="${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app/'}/sellerdashboard/orders" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">🚀 Take Action Now</a>
+                      <a href="${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app/'}/sellerdashboard/orders" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Take Action Now</a>
                     </div>
                   </td>
                 </tr>
