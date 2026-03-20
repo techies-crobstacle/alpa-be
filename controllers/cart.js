@@ -138,17 +138,19 @@ exports.addToCart = async (request, reply) => {
       });
 
       if (existingItem) {
-        // Calculate new total quantity
         const totalQuantity = existingItem.quantity + newQuantity;
         if (totalQuantity > product.stock) {
           return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
         }
         await prisma.cartItem.update({
           where: { id: existingItem.id },
-          data: {
-            quantity: totalQuantity
-          }
+          data: { quantity: totalQuantity }
         });
+        // Fire-and-forget: silently clean up any duplicate rows in the background
+        // without blocking the response (caused by the attributes feature rollback)
+        prisma.cartItem.deleteMany({
+          where: { cartId: cart.id, productId, id: { not: existingItem.id } }
+        }).catch(e => console.error('Cart dedup cleanup error:', e));
       } else {
         if (newQuantity > product.stock) {
           return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
@@ -163,15 +165,22 @@ exports.addToCart = async (request, reply) => {
       }
     }
 
-    // Fetch updated cart item count
+    // Fetch updated cart and deduplicate counts to avoid inflated values from leftover duplicate rows
     const updatedCart = await prisma.cart.findUnique({
       where: { userId },
       include: { items: true }
     });
-    const cartItemCount = updatedCart ? updatedCart.items.length : 0;
-    const totalQuantity = updatedCart
-      ? updatedCart.items.reduce((sum, i) => sum + i.quantity, 0)
-      : 0;
+    const deduplicatedItems = new Map();
+    updatedCart?.items.forEach(item => {
+      const key = item.productId;
+      if (deduplicatedItems.has(key)) {
+        deduplicatedItems.get(key).qty += item.quantity;
+      } else {
+        deduplicatedItems.set(key, { qty: item.quantity });
+      }
+    });
+    const cartItemCount = deduplicatedItems.size;
+    const totalQuantity = Array.from(deduplicatedItems.values()).reduce((sum, i) => sum + i.qty, 0);
 
     return reply.status(200).send({
       success: true,
@@ -243,12 +252,22 @@ exports.getMyCart = async (request, reply) => {
       });
     }
 
-    // Clean response: only send necessary data
-    const cleanedCart = cart.items.map(item => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      product: item.product
-    }));
+    // Deduplicate items by productId + variant_id — guards against duplicate rows
+    // that may have been created during the attributes feature rollback
+    const deduplicatedMap = new Map();
+    cart.items.forEach(item => {
+      const key = `${item.productId}_${item.variant_id || ''}`;
+      if (deduplicatedMap.has(key)) {
+        deduplicatedMap.get(key).quantity += item.quantity;
+      } else {
+        deduplicatedMap.set(key, {
+          productId: item.productId,
+          quantity: item.quantity,
+          product: item.product
+        });
+      }
+    });
+    const cleanedCart = Array.from(deduplicatedMap.values());
 
     // Get available shipping methods
     const availableShipping = await prisma.shippingMethod.findMany({
