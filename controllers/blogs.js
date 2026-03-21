@@ -279,7 +279,6 @@ exports.getAllBlogs = async (request, reply) => {
           id: true,
           title: true,
           slug: true,
-          content: true,
           coverImage: true,
           shortDescription: true,
           tags: true,
@@ -317,6 +316,19 @@ exports.getBlogById = async (request, reply) => {
       where: {
         OR: [{ id }, { slug: id }],
         status: "PUBLISHED",
+      },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        content: true,
+        coverImage: true,
+        shortDescription: true,
+        tags: true,
+        ctaText: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 
