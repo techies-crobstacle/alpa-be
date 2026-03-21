@@ -32,6 +32,12 @@ const generateInvoiceBuffer = (order) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
+    // ── Page Border ─────────────────────────────────────────────────────────
+    // Draw a border around the entire page
+    doc.rect(20, 20, doc.page.width - 40, doc.page.height - 40)
+       .lineWidth(1)
+       .stroke();
+
     // ── Header ──────────────────────────────────────────────────────────────
     doc.fontSize(20).text('Made in Arnhem Land', 50, 50)
        .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
@@ -41,7 +47,7 @@ const generateInvoiceBuffer = (order) => {
        .fontSize(12)
        .text(`Invoice #: ${order.displayId || order.id}`, 50, 145)
        .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 50, 160)
-       .text(`Status: ${order.status}`, 50, 175);
+       .text('Payment Method: Credit/Debit Card', 50, 175);
 
     // ── Bill To ─────────────────────────────────────────────────────────────
     doc.fontSize(14).text('Bill To:', 50, 210)
@@ -100,9 +106,6 @@ const generateInvoiceBuffer = (order) => {
     doc.fontSize(14)
        .text('Total Amount:', 350, yPos)
        .text(`$${Number(order.totalAmount).toFixed(2)}`, 450, yPos);
-
-    yPos += 40;
-    doc.fontSize(12).text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPos);
 
     // ── Footer ───────────────────────────────────────────────────────────────
     yPos += 60;

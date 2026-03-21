@@ -2637,13 +2637,13 @@ const generateInvoiceBuffer = (order) => {
     const displayRef     = order.displayId != null ? `#${order.displayId}` : order.id;
 
     // ── Header ──
-    doc.fontSize(20).text('ALPA MARKETPLACE', 50, 50)
+    doc.fontSize(20).text('Made in Arnhem Land', 50, 50)
        .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
 
     // ── Invoice meta ──
     doc.fontSize(16).text('INVOICE', 50, 120)
        .fontSize(12)
-       .text(`Invoice #: ${displayRef}`, 50, 145)
+       .text(`Invoice : ${displayRef}`, 50, 145)
        .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 50, 160)
        .text(`Status: ${resolvedStatus}`, 50, 175);
     if (order.sellerName) {
