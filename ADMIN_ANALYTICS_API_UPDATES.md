@@ -100,7 +100,7 @@ GET /api/admin/analytics/revenue-chart?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
 ```
 
 ### Purpose
-Time-series data for revenue and order charts visualization.
+Time-series data for revenue/order charts visualization.
 
 ### Request Parameters
 - `startDate` (optional): Start date in YYYY-MM-DD format
@@ -116,7 +116,7 @@ Time-series data for revenue and order charts visualization.
     "endDate": "2024-01-31",
     "groupBy": "day"
   },
-  "note": "Revenue and order counts are based on orders with DELIVERED status.",
+  "note": "Revenue and order counts are based on all orders from the date they were placed (createdAt).",
   "data": [
     {
       "date": "2024-01-01",
@@ -135,6 +135,8 @@ Time-series data for revenue and order charts visualization.
 ### Grouping Logic
 - **Daily data**: For date ranges ≤ 90 days
 - **Monthly data**: For date ranges > 90 days
+
+**Note**: Both APIs now track all orders from when they were placed (createdAt), ensuring consistent data between analytics and charts.
 
 ### Frontend Integration Example
 ```javascript

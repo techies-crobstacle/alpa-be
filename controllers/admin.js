@@ -2613,33 +2613,31 @@ exports.getRevenueOrdersChart = async (request, reply) => {
     const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
     const groupByMonth = daysDifference > 90;
 
-    // Query delivered orders grouped by date or month
+    // Query all orders grouped by date or month (based on when order was placed)
     let rows;
     if (groupByMonth) {
       rows = await prisma.$queryRaw`
         SELECT
-          TO_CHAR(DATE_TRUNC('month', "updatedAt"), 'YYYY-MM-DD') AS date,
+          TO_CHAR(DATE_TRUNC('month', "createdAt"), 'YYYY-MM-DD') AS date,
           COUNT(*)::int                                            AS orders,
           COALESCE(SUM("totalAmount"), 0)::float                  AS revenue
         FROM orders
-        WHERE status = 'DELIVERED'
-          AND "updatedAt" >= ${startDate}
-          AND "updatedAt" <= ${endDate}
-        GROUP BY DATE_TRUNC('month', "updatedAt")
-        ORDER BY DATE_TRUNC('month', "updatedAt") ASC
+        WHERE "createdAt" >= ${startDate}
+          AND "createdAt" <= ${endDate}
+        GROUP BY DATE_TRUNC('month', "createdAt")
+        ORDER BY DATE_TRUNC('month', "createdAt") ASC
       `;
     } else {
       rows = await prisma.$queryRaw`
         SELECT
-          TO_CHAR(DATE("updatedAt"), 'YYYY-MM-DD') AS date,
+          TO_CHAR(DATE("createdAt"), 'YYYY-MM-DD') AS date,
           COUNT(*)::int                            AS orders,
           COALESCE(SUM("totalAmount"), 0)::float   AS revenue
         FROM orders
-        WHERE status = 'DELIVERED'
-          AND "updatedAt" >= ${startDate}
-          AND "updatedAt" <= ${endDate}
-        GROUP BY DATE("updatedAt")
-        ORDER BY DATE("updatedAt") ASC
+        WHERE "createdAt" >= ${startDate}
+          AND "createdAt" <= ${endDate}
+        GROUP BY DATE("createdAt")
+        ORDER BY DATE("createdAt") ASC
       `;
     }
 
@@ -2685,7 +2683,7 @@ exports.getRevenueOrdersChart = async (request, reply) => {
         endDate: endDate.toISOString().split('T')[0],
         groupBy: groupByMonth ? 'month' : 'day'
       },
-      note: 'Revenue and order counts are based on orders with DELIVERED status.',
+      note: 'Revenue and order counts are based on all orders from the date they were placed (createdAt).',
       data: chartData
     });
   } catch (error) {
