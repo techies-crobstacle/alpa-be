@@ -1974,8 +1974,56 @@ exports.getSalesAnalytics = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    // Get all orders with items, products, user, and seller info
+    // Extract query parameters for date filtering
+    const { startDate, endDate } = request.query;
+    
+    // Set default date range (last 30 days) if no dates provided
+    let dateFilter = {};
+    let periodInfo = {};
+    
+    if (startDate || endDate) {
+      // Use provided dates
+      const start = startDate ? new Date(startDate) : null;
+      const end = endDate ? new Date(endDate) : null;
+      
+      if (start && !isNaN(start.getTime())) {
+        dateFilter.gte = start;
+        periodInfo.startDate = start.toISOString().split('T')[0];
+      }
+      
+      if (end && !isNaN(end.getTime())) {
+        // Set end date to end of day
+        const endOfDay = new Date(end);
+        endOfDay.setHours(23, 59, 59, 999);
+        dateFilter.lte = endOfDay;
+        periodInfo.endDate = end.toISOString().split('T')[0];
+      }
+    } else {
+      // Default to last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      thirtyDaysAgo.setHours(0, 0, 0, 0);
+      
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      
+      dateFilter = {
+        gte: thirtyDaysAgo,
+        lte: today
+      };
+      
+      periodInfo = {
+        startDate: thirtyDaysAgo.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0]
+      };
+    }
+
+    // Build where clause for orders query
+    const whereClause = Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
+
+    // Get filtered orders with items, products, user, and seller info
     const orders = await prisma.order.findMany({
+      where: whereClause,
       include: {
         items: { include: { product: { include: { seller: true } } } },
         user: { select: { id: true, name: true } }
@@ -2035,7 +2083,7 @@ exports.getSalesAnalytics = async (request, reply) => {
         averageOrderValue,
         statusBreakdown,
         topProducts,
-        period: { startDate: "All time", endDate: "Present" }
+        period: periodInfo
       }
     });
   } catch (error) {
@@ -2525,20 +2573,45 @@ exports.getRevenueOrdersChart = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    const period = (request.query.period || '7D').toUpperCase();
-    const validPeriods = ['7D', '30D', '1Y'];
-    if (!validPeriods.includes(period)) {
-      return reply.status(400).send({ success: false, message: `Invalid period. Use one of: ${validPeriods.join(', ')}` });
+    // Extract query parameters for date filtering
+    const { startDate: startDateParam, endDate: endDateParam } = request.query;
+    
+    // Set default date range (last 30 days) if no dates provided
+    let startDate, endDate;
+    
+    if (startDateParam || endDateParam) {
+      // Use provided dates
+      startDate = startDateParam ? new Date(startDateParam) : new Date();
+      endDate = endDateParam ? new Date(endDateParam) : new Date();
+      
+      // Validate dates
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return reply.status(400).send({ 
+          success: false, 
+          message: 'Invalid date format. Use YYYY-MM-DD format.' 
+        });
+      }
+      
+      if (startDate > endDate) {
+        return reply.status(400).send({ 
+          success: false, 
+          message: 'Start date cannot be after end date.' 
+        });
+      }
+    } else {
+      // Default to last 30 days
+      endDate = new Date();
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
     }
 
-    // Determine interval and grouping
-    const intervalMap = { '7D': 7, '30D': 30, '1Y': 365 };
-    const days = intervalMap[period];
-    const groupByMonth = period === '1Y';
+    // Set time boundaries
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
 
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - days);
+    // Determine if we should group by month (for ranges > 90 days) or by day
+    const daysDifference = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    const groupByMonth = daysDifference > 90;
 
     // Query delivered orders grouped by date or month
     let rows;
@@ -2551,6 +2624,7 @@ exports.getRevenueOrdersChart = async (request, reply) => {
         FROM orders
         WHERE status = 'DELIVERED'
           AND "updatedAt" >= ${startDate}
+          AND "updatedAt" <= ${endDate}
         GROUP BY DATE_TRUNC('month', "updatedAt")
         ORDER BY DATE_TRUNC('month', "updatedAt") ASC
       `;
@@ -2563,6 +2637,7 @@ exports.getRevenueOrdersChart = async (request, reply) => {
         FROM orders
         WHERE status = 'DELIVERED'
           AND "updatedAt" >= ${startDate}
+          AND "updatedAt" <= ${endDate}
         GROUP BY DATE("updatedAt")
         ORDER BY DATE("updatedAt") ASC
       `;
@@ -2576,9 +2651,11 @@ exports.getRevenueOrdersChart = async (request, reply) => {
 
     const chartData = [];
     if (groupByMonth) {
-      // Iterate month by month
-      const cursor = new Date(now.getFullYear(), now.getMonth() - 11, 1); // 12 months back
-      for (let i = 0; i < 12; i++) {
+      // Iterate month by month within the date range
+      const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endCursor = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      
+      while (cursor <= endCursor) {
         const key = cursor.toISOString().slice(0, 10); // YYYY-MM-DD (1st of month)
         chartData.push({
           date: key,
@@ -2588,22 +2665,26 @@ exports.getRevenueOrdersChart = async (request, reply) => {
         cursor.setMonth(cursor.getMonth() + 1);
       }
     } else {
-      // Iterate day by day
-      for (let i = days - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+      // Iterate day by day within the date range
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        const key = cursor.toISOString().slice(0, 10); // YYYY-MM-DD
         chartData.push({
           date: key,
           orders: resultMap[key]?.orders ?? 0,
           revenue: resultMap[key]?.revenue ?? 0
         });
+        cursor.setDate(cursor.getDate() + 1);
       }
     }
 
     return reply.send({
       success: true,
-      period,
+      period: {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        groupBy: groupByMonth ? 'month' : 'day'
+      },
       note: 'Revenue and order counts are based on orders with DELIVERED status.',
       data: chartData
     });

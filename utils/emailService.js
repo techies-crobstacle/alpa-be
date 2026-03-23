@@ -3570,84 +3570,154 @@ const getPrintSafeCSS = () => `
   }
   
   @media print {
-    /* GLOBAL PRINT COLOR FORCING - Works for ALL email templates */
-    * {
+    /* FORCE PRINT COLORS - Maximum Compatibility */
+    *, *:before, *:after, 
+    html, body, div, table, tr, td, th, p, h1, h2, h3, h4, h5, h6,
+    span, strong, em, a {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
+      -webkit-filter: none !important;
+      filter: none !important;
     }
     
     /* Force body and page backgrounds to print */
+    html *, body * {
+      background-attachment: local !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      background: none transparent !important;
+    }
+    
     body, html {
       background-color: #FDF5F3 !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+      background: #FDF5F3 !important;
     }
     
-    /* === BRAND HEADER STYLING === */
-    .email-header, [style*="background:linear-gradient(135deg,#5A1E12"], [style*="background:linear-gradient(135deg, #5A1E12"] {
-      background: linear-gradient(135deg, #5A1E12 0%, #7D2E1E 100%) !important;
+    /* === BRAND HEADERS - Multiple selectors for maximum compatibility === */
+    .email-header, 
+    [style*="background:linear-gradient(135deg,#5A1E12"], 
+    [style*="background:linear-gradient(135deg, #5A1E12"],
+    [style*="background-color:#5A1E12"],
+    td[style*="background:linear-gradient(135deg,#5A1E12"] {
+      background: #5A1E12 !important; /* Fallback solid color */
+      background-color: #5A1E12 !important;
+      background-image: linear-gradient(135deg, #5A1E12 0%, #7D2E1E 100%) !important;
+      color: #ffffff !important;
+      border: 3px solid #5A1E12 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      box-shadow: inset 0 0 0 1000px #5A1E12 !important; /* Force background fill */
+    }
+    
+    /* === BRAND FOOTERS === */
+    .email-footer, 
+    [style*="background-color:#3D1009"],
+    td[style*="background-color:#3D1009"] {
+      background-color: #3D1009 !important;
+      background: #3D1009 !important;
+      color: #F0D0C8 !important;
+      border: 3px solid #3D1009 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      box-shadow: inset 0 0 0 1000px #3D1009 !important;
+    }
+    
+    /* === INVOICE META SECTIONS === */
+    [style*="background-color:#F9EDE9"],
+    [style*="background:#F9EDE9"],
+    td[style*="background-color:#F9EDE9"],
+    table[style*="background-color:#F9EDE9"] {
+      background-color: #F9EDE9 !important;
+      background: #F9EDE9 !important;
+      border: 2px solid #C4603A !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      box-shadow: inset 0 0 0 1000px #F9EDE9 !important;
+    }
+    
+    /* === INVOICE TABLE ROWS === */
+    [style*="background-color:#fdf5f3"],
+    tr[style*="background-color:#fdf5f3"],
+    td[style*="background-color:#fdf5f3"] {
+      background-color: #fdf5f3 !important;
+      background: #fdf5f3 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      box-shadow: inset 0 0 0 1000px #fdf5f3 !important;
+    }
+    
+    /* === TABLE HEADERS === */
+    thead tr, thead tr *, thead th, thead th *,
+    [style*="background-color:#5A1E12"],
+    tr[style*="background-color:#5A1E12"] {
+      background-color: #5A1E12 !important;
+      background: #5A1E12 !important;
       color: #ffffff !important;
       border: 2px solid #5A1E12 !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
-    }
-    
-    /* === BRAND FOOTER STYLING === */
-    .email-footer, [style*="background-color:#3D1009"] {
-      background-color: #3D1009 !important;
-      color: #F0D0C8 !important;
-      border: 2px solid #3D1009 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+      box-shadow: inset 0 0 0 1000px #5A1E12 !important;
     }
     
     /* === STATUS BANNERS - All Colors === */
-    [style*="background-color:#4CAF50"], /* confirmed - green */
-    [style*="background-color:#B05E2A"], /* processing/packed - brown */
-    [style*="background-color:#6B4C9A"], /* shipped - purple */
-    [style*="background-color:#C4963A"], /* delivered - amber */
-    [style*="background-color:#A03020"], /* cancelled - red */
-    [style*="background-color:#2E7D32"], /* refund - green */
-    [style*="background-color:#C4603A"] { /* default - terracotta */
+    [style*="background-color:#4CAF50"], [style*="background:#4CAF50"], /* confirmed - green */
+    [style*="background-color:#B05E2A"], [style*="background:#B05E2A"], /* processing/packed - brown */
+    [style*="background-color:#6B4C9A"], [style*="background:#6B4C9A"], /* shipped - purple */
+    [style*="background-color:#C4963A"], [style*="background:#C4963A"], /* delivered - amber */
+    [style*="background-color:#A03020"], [style*="background:#A03020"], /* cancelled - red */
+    [style*="background-color:#2E7D32"], [style*="background:#2E7D32"], /* refund - green */
+    [style*="background-color:#C4603A"], [style*="background:#C4603A"] { /* default - terracotta */
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
-      border: 2px solid currentColor !important;
-    }
-    
-    /* === INFO BOXES & ALERTS === */
-    .info-box, [style*="background:#F9EDE9"], [style*="background-color:#F9EDE9"] {
-      background-color: #F9EDE9 !important;
-      border: 2px solid #C4603A !important;
-      border-left: 4px solid #C4603A !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+      border: 3px solid currentColor !important;
+      box-shadow: inset 0 0 0 1000px currentColor !important;
     }
     
     /* === BUTTONS & CTAs === */
-    .btn, a[style*="background-color:#5A1E12"], a[style*="background-color:#C4603A"] {
+    .btn, 
+    a[style*="background-color:#5A1E12"], 
+    a[style*="background-color:#C4603A"],
+    a[style*="background:#5A1E12"], 
+    a[style*="background:#C4603A"] {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
-      border: 2px solid currentColor !important;
+      border: 3px solid currentColor !important;
+      box-shadow: inset 0 0 0 1000px currentColor !important;
     }
     
-    /* === INVOICE TABLES AND TOTALS === */
-    [style*="background-color:#fdf5f3"], /* invoice subtotal rows */
-    [style*="background-color:#F9EDE9;border-top:2px solid #C4603A"], /* grand total */
-    thead tr, thead th, [style*="background-color:#5A1E12"] {
+    /* === GMAIL COMPATIBILITY - Force all backgrounds === */
+    table, tr, td, th, div, span, p, h1, h2, h3, h4, h5, h6 {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
     
-    /* === FORCE ALL INLINE BACKGROUNDS === */
-    [style*="background"], [style*="background-color"], [style*="background:"] {
+    /* === INLINE BACKGROUND OVERRIDES === */
+    [style*="background"], 
+    [style*="background-color"], 
+    [style*="background:"] {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+      background-attachment: local !important;
     }
     
     /* === PAGE LAYOUT === */
     .email-container {
       page-break-inside: avoid !important;
+    }
+    
+    /* === GMAIL SPECIFIC HACKS === */
+    .ii a[href] { color: inherit !important; }
+    .adM { display: none !important; }
+    
+    /* === FORCE WHITE TEXT ON DARK BACKGROUNDS === */
+    [style*="#5A1E12"] *, [style*="#3D1009"] * {
+      color: #ffffff !important;
+    }
+    [style*="#F9EDE9"] * {
+      color: #333333 !important;
     }
   }
 `;
@@ -4310,7 +4380,10 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     <tr>
       <td style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!</p>
-        <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+        <p style="margin:0;color:#B8998F;font-size:10px;">
+          🖨️ <strong>Print Tip:</strong> To see colors when printing, enable "Background graphics" in your browser's print settings.
+        </p>
       </td>
     </tr>
   `;
