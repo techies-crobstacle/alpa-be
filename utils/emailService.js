@@ -6100,7 +6100,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   const st = (orderDetails.status || '').toLowerCase();
   const statusColor = statusColors[st] || '#C4603A';
   const updatedBy = orderDetails.updatedBy || 'Seller';
-  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const baseUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
 
   const msg = {
     to: adminEmail,
@@ -6136,7 +6136,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 </div>
               </td></tr>
               <tr><td style="padding:0 40px 36px;text-align:center;">
-                <a href="${baseUrl}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
+                <a href="${baseUrl}/admindashboard/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
               </td></tr>
               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
