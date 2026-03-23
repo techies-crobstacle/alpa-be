@@ -3613,6 +3613,103 @@ const generateResponsiveEmailTemplate = (options) => {
           .dark-otp-bg { background: linear-gradient(135deg, #3a3a2f 0%, #2d2d2d 100%) !important; border-color: #6B4C29 !important; }
           .dark-info-bg { background-color: #2d2d3a !important; border-color: #404055 !important; }
         }
+        
+        @media print {
+          /* Force background colors and images to print */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          
+          /* Ensure body and page backgrounds print */
+          body {
+            background-color: #FDF5F3 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          /* Brand header gradients and colors */
+          .email-header {
+            background: linear-gradient(135deg, #5A1E12 0%, #7D2E1E 100%) !important;
+            color: #ffffff !important;
+            border: 2px solid #5A1E12 !important;
+          }
+          
+          /* Brand footer colors */
+          .email-footer {
+            background-color: #3D1009 !important;
+            color: #F0D0C8 !important;
+            border: 2px solid #3D1009 !important;
+          }
+          
+          /* Table headers and branded elements */
+          thead tr {
+            background-color: #5A1E12 !important;
+            color: #ffffff !important;
+            border: 1px solid #5A1E12 !important;
+          }
+          
+          /* Status banners and accent colors */
+          .status-banner {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            border: 2px solid currentColor !important;
+          }
+          
+          /* Info boxes and alerts */
+          .info-box {
+            background-color: #F9EDE9 !important;
+            border: 2px solid #C4603A !important;
+            border-left: 4px solid #C4603A !important;
+          }
+          
+          /* Buttons and CTAs */
+          .btn {
+            background-color: #5A1E12 !important;
+            color: #ffffff !important;
+            border: 2px solid #5A1E12 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          .btn-secondary {
+            background-color: #C4603A !important;
+            color: #ffffff !important;
+            border: 2px solid #C4603A !important;
+          }
+          
+          /* OTP boxes and special elements */
+          .otp-box {
+            background: linear-gradient(135deg, #F9EDE9 0%, #FDF5F3 100%) !important;
+            border: 2px dashed #C4603A !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          /* Ensure high contrast for text */
+          .print-contrast {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+          }
+          
+          /* Force table backgrounds */
+          table {
+            background-color: #ffffff !important;
+            border-collapse: collapse !important;
+          }
+          
+          /* Make sure all branded backgrounds print */
+          [style*="background"] {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          /* Page breaks */
+          .email-container {
+            page-break-inside: avoid !important;
+          }
+        }
       </style>
     </head>
     <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
@@ -3720,6 +3817,79 @@ const sendOTPEmail = async (email, otp, name) => {
             .dark-text-secondary { color: #b0b0b0 !important; }
             .dark-otp-bg { background: linear-gradient(135deg, #3a3a2f 0%, #2d2d2d 100%) !important; border-color: #6B4C29 !important; }
             .dark-alert-bg { background-color: #3a3a2f !important; border-color: #6B4C29 !important; }
+          }
+          
+          @media print {
+            /* Force background colors and images to print */
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+            
+            /* Ensure body and page backgrounds print */
+            body {
+              background-color: #FDF5F3 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            /* Brand header gradients and colors */
+            .email-header {
+              background: linear-gradient(135deg, #5A1E12 0%, #7D2E1E 100%) !important;
+              color: #ffffff !important;
+              border: 2px solid #5A1E12 !important;
+            }
+            
+            /* Brand footer colors */
+            .email-footer {
+              background-color: #3D1009 !important;
+              color: #F0D0C8 !important;
+              border: 2px solid #3D1009 !important;
+            }
+            
+            /* OTP boxes and special elements */
+            .otp-box {
+              background: linear-gradient(135deg, #F9EDE9 0%, #FDF5F3 100%) !important;
+              border: 2px dashed #C4603A !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            .otp-code {
+              color: #5A1E12 !important;
+              background-color: transparent !important;
+            }
+            
+            /* Info boxes and alerts */
+            .info-box {
+              background-color: #F9EDE9 !important;
+              border: 2px solid #C4603A !important;
+              border-left: 4px solid #C4603A !important;
+            }
+            
+            /* Ensure high contrast for text */
+            .print-contrast {
+              color: #000000 !important;
+              background-color: #ffffff !important;
+            }
+            
+            /* Force table backgrounds */
+            table {
+              background-color: #ffffff !important;
+              border-collapse: collapse !important;
+            }
+            
+            /* Make sure all branded backgrounds print */
+            [style*="background"] {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            /* Page breaks */
+            .email-container {
+              page-break-inside: avoid !important;
+            }
           }
         </style>
       </head>
@@ -4149,6 +4319,95 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
             .dark-text { color: #e0e0e0 !important; }
             .dark-text-secondary { color: #b0b0b0 !important; }
             .dark-table-bg { background-color: #333333 !important; }
+          }
+          
+          @media print {
+            /* Force background colors and images to print */
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+            
+            /* Ensure body and page backgrounds print */
+            body {
+              background-color: #FDF5F3 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            /* Brand header gradients and colors */
+            .email-header {
+              background: linear-gradient(135deg, #5A1E12 0%, #7D2E1E 100%) !important;
+              color: #ffffff !important;
+              border: 2px solid #5A1E12 !important;
+            }
+            
+            /* Status banners - force colors to print */
+            .status-banner {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              border: 2px solid currentColor !important;
+            }
+            
+            /* Brand footer colors */
+            .email-footer {
+              background-color: #3D1009 !important;
+              color: #F0D0C8 !important;
+              border: 2px solid #3D1009 !important;
+            }
+            
+            /* Table headers and branded elements */
+            thead tr {
+              background-color: #5A1E12 !important;
+              color: #ffffff !important;
+              border: 1px solid #5A1E12 !important;
+            }
+            
+            /* Info boxes and alerts */
+            .info-box {
+              background-color: #F9EDE9 !important;
+              border: 2px solid #C4603A !important;
+              border-left: 4px solid #C4603A !important;
+            }
+            
+            /* Buttons and CTAs */
+            .btn {
+              background-color: #5A1E12 !important;
+              color: #ffffff !important;
+              border: 2px solid #5A1E12 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            .btn-secondary {
+              background-color: #C4603A !important;
+              color: #ffffff !important;
+              border: 2px solid #C4603A !important;
+            }
+            
+            /* Ensure high contrast for text */
+            .print-contrast {
+              color: #000000 !important;
+              background-color: #ffffff !important;
+            }
+            
+            /* Force table backgrounds */
+            table {
+              background-color: #ffffff !important;
+              border-collapse: collapse !important;
+            }
+            
+            /* Make sure all branded backgrounds print */
+            [style*="background"] {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            /* Page breaks */
+            .email-container {
+              page-break-inside: avoid !important;
+            }
           }
         </style>
       </head>
