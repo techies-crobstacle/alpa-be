@@ -2636,6 +2636,11 @@ const generateInvoiceBuffer = (order) => {
     const resolvedStatus = order.status || order.overallStatus || 'CONFIRMED';
     const displayRef     = order.displayId != null ? `#${order.displayId}` : order.id;
 
+    // ── Page Border ──
+    doc.rect(20, 20, doc.page.width - 40, doc.page.height - 40)
+       .lineWidth(1)
+       .stroke();
+
     // ── Header ──
     doc.fontSize(20).text('Made in Arnhem Land', 50, 50)
        .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
@@ -2645,7 +2650,7 @@ const generateInvoiceBuffer = (order) => {
        .fontSize(12)
        .text(`Invoice : ${displayRef}`, 50, 145)
        .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 50, 160)
-       .text(`Status: ${resolvedStatus}`, 50, 175);
+       .text('Payment Method: Credit/Debit Card', 50, 175);
     if (order.sellerName) {
       doc.text(`Seller: ${order.sellerName}`, 50, 190);
     }
@@ -2675,8 +2680,7 @@ const generateInvoiceBuffer = (order) => {
       for (const sub of order.subOrders) {
         const sellerLabel = sub.seller?.name || sub.sellerName || 'Unknown Seller';
         doc.fontSize(11)
-           .text(`Seller: ${sellerLabel}`, 50, yPos)
-           .text(`Sub-order Status: ${sub.status || resolvedStatus}`, 310, yPos);
+           .text(`Seller: ${sellerLabel}`, 50, yPos);
         yPos += 18;
 
         doc.fontSize(10)
