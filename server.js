@@ -34,6 +34,7 @@ const publicRoutes = require("./routes/publicRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 const { initializeLowStockScheduler } = require("./utils/lowStockScheduler");
+const { initializeUserCleanupScheduler } = require("./utils/userCleanupScheduler");
 const { backfillOrderNotifications } = require("./controllers/orderNotification");
 const { Server: SocketIOServer } = require("socket.io");
 const { initStockSocket } = require("./utils/stockSocket");
@@ -204,6 +205,11 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
       console.error('⚠️  Order notification backfill error (non-fatal):', e.message);
     }
   }, 12000); // After low-stock scheduler
+  
+  // Initialize user cleanup scheduler (daily anonymization of expired deleted users)
+  setTimeout(() => {
+    initializeUserCleanupScheduler();
+  }, 10000); // After low-stock scheduler
   
   // Initialize email verification reminder scheduler (can be disabled via env var)
   const enableEmailScheduler = process.env.ENABLE_EMAIL_SCHEDULER !== 'false';

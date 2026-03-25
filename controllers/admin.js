@@ -692,11 +692,18 @@ exports.getOrdersBySellerId = async (request, reply) => {
   }
 };
 
-// GET ALL USERS (role: "CUSTOMER")
+// GET ALL USERS (role: "CUSTOMER", excluding deleted users)
 exports.getAllUsers = async (request, reply) => {
   try {
+    const { includeDeleted = false } = request.query;
+    
+    const whereClause = {
+      role: "CUSTOMER",
+      ...(includeDeleted !== 'true' ? { isDeleted: false } : {})
+    };
+
     const users = await prisma.user.findMany({
-      where: { role: "CUSTOMER" },
+      where: whereClause,
       select: {
         id: true,
         name: true,
@@ -705,15 +712,591 @@ exports.getAllUsers = async (request, reply) => {
         role: true,
         isVerified: true,
         emailVerified: true,
+        isDeleted: true,
+        deletedAt: true,
         createdAt: true,
         updatedAt: true
-      }
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
-    return reply.status(200).send({ success: true, users, count: users.length });
+    const activeUsers = users.filter(u => !u.isDeleted);
+    const deletedUsers = users.filter(u => u.isDeleted);
+
+    return reply.status(200).send({ 
+      success: true, 
+      users: includeDeleted === 'true' ? users : activeUsers,
+      count: includeDeleted === 'true' ? users.length : activeUsers.length,
+      summary: {
+        active: activeUsers.length,
+        deleted: deletedUsers.length,
+        total: users.length
+      }
+    });
   } catch (err) {
     console.error("Get all users error:", err);
     reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// SOFT DELETE USER — moves to recycle bin (Admin only)
+exports.softDeleteUser = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { userId } = request.params;
+    const { reason } = request.body || {};
+
+    const existingUser = await prisma.user.findUnique({ 
+      where: { id: userId },
+      include: {
+        orders: { select: { id: true, displayId: true } },
+        sellerOrders: { select: { id: true, displayId: true } },
+        sellerProfile: { select: { id: true, businessName: true } }
+      }
+    });
+
+    if (!existingUser) {
+      return reply.status(404).send({ success: false, message: 'User not found' });
+    }
+
+    if (existingUser.isDeleted) {
+      return reply.status(400).send({ success: false, message: 'User is already in the recycle bin' });
+    }
+
+    // Prevent deletion of ADMIN/SUPER_ADMIN users
+    if (['ADMIN', 'SUPER_ADMIN'].includes(existingUser.role)) {
+      return reply.status(400).send({ success: false, message: 'Cannot delete admin users' });
+    }
+
+    const now = new Date();
+    const adminId = request.user.userId || request.user.uid;
+
+    // Soft delete the user - orders will be preserved due to onDelete: SetNull
+    const deletedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy: adminId,
+        deletedReason: reason || 'User account deleted by admin',
+        email: `deleted_${now.getTime()}_${existingUser.email}` // Prevent email conflicts
+      }
+    });
+
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType: ENTITY_TYPES.USER || 'USER',
+      entityId: userId,
+      action: AUDIT_ACTIONS.USER_SOFT_DELETED || 'USER_SOFT_DELETED',
+      ...meta,
+      previousData: existingUser,
+      newData: deletedUser,
+      reason: reason || `User "${existingUser.name}" moved to recycle bin`,
+    });
+
+    const orderCount = existingUser.orders.length + existingUser.sellerOrders.length;
+    
+    reply.send({
+      success: true,
+      message: `User "${existingUser.name}" moved to recycle bin. ${orderCount} orders preserved.`,
+      data: { 
+        id: userId, 
+        name: existingUser.name,
+        email: existingUser.email,
+        deletedAt: now,
+        preservedOrders: orderCount
+      }
+    });
+  } catch (error) {
+    console.error('Soft delete user error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// GET USER RECYCLE BIN — list all soft-deleted users (Admin only)
+exports.getUserRecycleBin = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { page = 1, limit = 50, role } = request.query;
+    const take = Math.min(Number(limit), 200);
+    const offset = (Number(page) - 1) * take;
+
+    const whereClause = {
+      isDeleted: true,
+      ...(role ? { role } : {})
+    };
+
+    const [deletedUsers, totalCount] = await Promise.all([
+      prisma.user.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          isVerified: true,
+          emailVerified: true,
+          createdAt: true,
+          deletedAt: true,
+          deletedBy: true,
+          deletedReason: true,
+          orders: { select: { id: true, displayId: true, totalAmount: true } },
+          sellerOrders: { select: { id: true, displayId: true, totalAmount: true } },
+          sellerProfile: { select: { businessName: true, storeName: true } }
+        },
+        orderBy: { deletedAt: 'desc' },
+        take,
+        skip: offset
+      }),
+      prisma.user.count({ where: whereClause })
+    ]);
+
+    // Include admin who deleted each user
+    const adminIds = [...new Set(deletedUsers.map(u => u.deletedBy).filter(Boolean))];
+    const admins = await prisma.user.findMany({
+      where: { id: { in: adminIds } },
+      select: { id: true, name: true, email: true }
+    });
+    const adminMap = new Map(admins.map(a => [a.id, a]));
+
+    const now = new Date();
+    const formattedUsers = deletedUsers.map(user => {
+      const daysSinceDeleted = Math.floor((now - new Date(user.deletedAt)) / (1000 * 60 * 60 * 24));
+      const daysUntilCleanup = Math.max(0, 60 - daysSinceDeleted);
+      const isAnonymized = user.email.startsWith('anonymized_');
+      
+      return {
+        ...user,
+        deletedByAdmin: adminMap.get(user.deletedBy) || null,
+        orderCount: user.orders.length + user.sellerOrders.length,
+        totalOrderValue: [...user.orders, ...user.sellerOrders]
+          .reduce((sum, order) => sum + parseFloat(order.totalAmount || 0), 0),
+        daysSinceDeleted,
+        daysUntilAutoCleanup: isAnonymized ? 0 : daysUntilCleanup,
+        autoCleanupStatus: isAnonymized 
+          ? 'ANONYMIZED' 
+          : daysUntilCleanup <= 7 
+            ? `SCHEDULED_${daysUntilCleanup}_DAYS`
+            : `PENDING_${daysUntilCleanup}_DAYS`,
+        canRestore: !isAnonymized // Cannot restore anonymized users
+      };
+    });
+
+    const summary = {
+      total: totalCount,
+      anonymized: formattedUsers.filter(u => u.autoCleanupStatus === 'ANONYMIZED').length,
+      scheduledForCleanup: formattedUsers.filter(u => u.daysUntilAutoCleanup <= 7 && u.daysUntilAutoCleanup > 0).length,
+      restorable: formattedUsers.filter(u => u.canRestore).length
+    };
+
+    reply.send({
+      success: true,
+      data: formattedUsers,
+      pagination: {
+        page: Number(page),
+        limit: take,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / take)
+      },
+      summary,
+      autoCleanupInfo: {
+        schedule: 'Daily at 2:00 AM',
+        retentionPeriod: '10 hours (TESTING)',
+        description: 'User data automatically anonymized after 10 hours in recycle bin (TESTING)'
+      }
+    });
+  } catch (error) {
+    console.error('Get user recycle bin error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// RESTORE USER from recycle bin (Admin only)
+exports.restoreUser = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const { userId } = request.params;
+
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!existingUser) {
+      return reply.status(404).send({ success: false, message: 'User not found' });
+    }
+
+    if (!existingUser.isDeleted) {
+      return reply.status(400).send({ success: false, message: 'User is not in the recycle bin' });
+    }
+
+    // Check if user has been anonymized (cannot restore anonymized users)
+    if (existingUser.email.startsWith('anonymized_')) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Cannot restore anonymized user. User data was automatically cleaned up after 10 hours in recycle bin (TESTING).'
+      });
+    }
+
+    // Check if original email is available (remove the deleted prefix)
+    const originalEmail = existingUser.email.replace(/^deleted_\d+_/, '');
+    const emailConflict = await prisma.user.findFirst({
+      where: {
+        email: originalEmail,
+        isDeleted: false,
+        id: { not: userId }
+      }
+    });
+
+    if (emailConflict) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: `Cannot restore user: email "${originalEmail}" is already in use by another active account` 
+      });
+    }
+
+    const now = new Date();
+    const adminId = request.user.userId || request.user.uid;
+
+    const restoredUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        deletedReason: null,
+        email: originalEmail // Restore original email
+      }
+    });
+
+    const meta = extractRequestMeta(request);
+    await auditLog({
+      entityType: ENTITY_TYPES.USER || 'USER',
+      entityId: userId,
+      action: AUDIT_ACTIONS.USER_RESTORED || 'USER_RESTORED',
+      ...meta,
+      previousData: existingUser,
+      newData: restoredUser,
+      reason: `User "${existingUser.name}" restored from recycle bin`,
+    });
+
+    reply.send({
+      success: true,
+      message: `User "${existingUser.name}" has been restored`,
+      data: {
+        id: userId,
+        name: restoredUser.name,
+        email: restoredUser.email,
+        restoredAt: now
+      }
+    });
+  } catch (error) {
+    console.error('Restore user error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// AUTO-CLEANUP EXPIRED USERS — anonymize data after 10 hours in recycle bin (TESTING) (Admin only)
+exports.cleanupExpiredUsers = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    const tenHoursAgo = new Date();
+    tenHoursAgo.setHours(tenHoursAgo.getHours() - 10);
+
+    // Find users deleted more than 10 hours ago (TESTING)
+    const expiredUsers = await prisma.user.findMany({
+      where: {
+        isDeleted: true,
+        deletedAt: {
+          lte: tenHoursAgo
+        },
+        // Don't process already anonymized users
+        email: {
+          not: {
+            startsWith: 'anonymized_'
+          }
+        }
+      },
+      include: {
+        orders: { select: { id: true, displayId: true } },
+        sellerOrders: { select: { id: true, displayId: true } }
+      }
+    });
+
+    if (expiredUsers.length === 0) {
+      return reply.status(200).send({
+        success: true,
+        message: 'No expired users found for cleanup',
+        processed: 0
+      });
+    }
+
+    const adminId = request.user.userId || request.user.uid;
+    const processedUsers = [];
+
+    for (const user of expiredUsers) {
+      try {
+        const anonymizedEmail = `anonymized_${user.id}@deleted.local`;
+        const orderCount = user.orders.length + user.sellerOrders.length;
+
+        // Anonymize user data but keep the record
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            name: 'Deleted User',
+            email: anonymizedEmail,
+            phone: null,
+            profileImage: null,  // Remove profile photo
+            password: 'ANONYMIZED_ACCOUNT', // Prevent any login attempts
+            deletedReason: `Auto-anonymized after 10 hours by system on ${new Date().toISOString()} (TESTING)`
+          }
+        });
+
+        // Update order records to show anonymized customer info
+        if (orderCount > 0) {
+          // Update customer orders with anonymized data
+          await prisma.order.updateMany({
+            where: { userId: user.id },
+            data: {
+              customerName: 'Deleted User',
+              customerEmail: anonymizedEmail,
+              customerPhone: 'Hidden',
+              shippingAddressLine: 'Hidden Address',
+              shippingCity: 'Hidden City',
+              shippingState: 'Hidden State',
+              shippingCountry: 'Hidden Country',
+              shippingZipCode: 'Hidden',
+              shippingPhone: 'Hidden',
+              // Keep shippingAddress JSON as null or anonymize if exists
+              shippingAddress: null
+            }
+          });
+
+          // Note: Seller orders don't need customer info updates since they're seller-specific
+        }
+
+        // Anonymize user addresses (if any remain linked)
+        await prisma.userAddress.updateMany({
+          where: { userId: user.id },
+          data: {
+            shippingAddress: 'Hidden Address',
+            city: 'Hidden City',
+            state: 'Hidden State',
+            country: 'Hidden Country',
+            zipCode: 'Hidden',
+            mobileNumber: 'Hidden'
+          }
+        });
+
+        // Anonymize all other customer data
+        await Promise.all([
+          // Site feedback
+          prisma.siteFeedback.updateMany({
+            where: { userId: user.id },
+            data: { message: 'Feedback content hidden for privacy', contactInfo: 'Hidden' }
+          }).catch(err => console.warn('[Manual-Cleanup] SiteFeedback error:', err.message)),
+          
+          // Support tickets  
+          prisma.supportTicket.updateMany({
+            where: { userId: user.id },
+            data: { 
+              message: 'Support message content hidden for privacy',
+              subject: 'Subject hidden for privacy' 
+            }
+          }).catch(err => console.warn('[Manual-Cleanup] SupportTicket error:', err.message)),
+          
+          // Product ratings/reviews
+          prisma.rating.updateMany({
+            where: { userId: user.id },
+            data: { 
+              comment: 'Review content hidden for privacy',
+              reviewerName: 'Anonymous Reviewer' 
+            }
+          }).catch(err => console.warn('[Manual-Cleanup] Rating error:', err.message)),
+          
+          // Personal notifications
+          prisma.notification.updateMany({
+            where: { 
+              userId: user.id,
+              type: { in: ['GENERAL', 'PERSONAL'] }
+            },
+            data: { message: 'Personal notification content hidden for privacy' }
+          }).catch(err => console.warn('[Manual-Cleanup] Notification error:', err.message))
+        ]);
+
+        // Log the anonymization
+        const meta = extractRequestMeta(request);
+        await auditLog({
+          entityType: ENTITY_TYPES.USER || 'USER',
+          entityId: user.id,
+          action: AUDIT_ACTIONS.USER_AUTO_ANONYMIZED || 'USER_AUTO_ANONYMIZED',
+          ...meta,
+          previousData: { name: user.name, email: user.email, phone: user.phone },
+          newData: { name: 'Deleted User', email: anonymizedEmail, phone: null },
+          reason: `Auto-anonymized after 10 hours in recycle bin (TESTING). ${orderCount} orders preserved.`,
+        });
+
+        processedUsers.push({
+          id: user.id,
+          originalName: user.name,
+          originalEmail: user.email,
+          orderCount,
+          deletedAt: user.deletedAt,
+          anonymizedAt: new Date()
+        });
+
+      } catch (userError) {
+        console.error(`Error anonymizing user ${user.id}:`, userError);
+      }
+    }
+
+    reply.send({
+      success: true,
+      message: `Successfully anonymized ${processedUsers.length} expired user accounts`,
+      processed: processedUsers.length,
+      total: expiredUsers.length,
+      data: processedUsers.map(u => ({
+        id: u.id,
+        originalName: u.originalName,
+        orderCount: u.orderCount,
+        daysSinceDeleted: Math.floor((new Date() - new Date(u.deletedAt)) / (1000 * 60 * 60 * 24)),
+        anonymizedAt: u.anonymizedAt
+      }))
+    });
+
+  } catch (error) {
+    console.error('Cleanup expired users error:', error);
+    reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// SCHEDULED AUTO-CLEANUP — Run this hourly via cron job or scheduler (TESTING: 10 hours)
+exports.autoCleanupExpiredUsers = async () => {
+  try {
+    const tenHoursAgo = new Date();
+    tenHoursAgo.setHours(tenHoursAgo.getHours() - 10);
+
+    const expiredUsers = await prisma.user.findMany({
+      where: {
+        isDeleted: true,
+        deletedAt: { lte: tenHoursAgo },
+        email: { not: { startsWith: 'anonymized_' } }
+      },
+      select: { id: true, name: true, email: true, deletedAt: true }
+    });
+
+    if (expiredUsers.length === 0) {
+      console.log('[Auto-Cleanup] No expired users to anonymize (10h testing)');
+      return { processed: 0, message: 'No expired users found' };
+    }
+
+    let processed = 0;
+    for (const user of expiredUsers) {
+      try {
+        const anonymizedEmail = `anonymized_${user.id}@deleted.local`;
+        
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            name: 'Deleted User',
+            email: anonymizedEmail,
+            phone: null,
+            profileImage: null,
+            password: 'ANONYMIZED_ACCOUNT',
+            deletedReason: `Auto-anonymized after 10 hours by system on ${new Date().toISOString()} (TESTING)`
+          }
+        });
+
+        // Update related orders
+        await prisma.order.updateMany({
+          where: { userId: user.id },
+          data: {
+            customerName: 'Deleted User',
+            customerEmail: anonymizedEmail,
+            customerPhone: 'Hidden',
+            shippingAddressLine: 'Hidden Address',
+            shippingCity: 'Hidden City', 
+            shippingState: 'Hidden State',
+            shippingCountry: 'Hidden Country',
+            shippingZipCode: 'Hidden',
+            shippingPhone: 'Hidden',
+            shippingAddress: null
+          }
+        });
+
+        // Anonymize user addresses
+        await prisma.userAddress.updateMany({
+          where: { userId: user.id },
+          data: {
+            shippingAddress: 'Hidden Address',
+            city: 'Hidden City',
+            state: 'Hidden State', 
+            country: 'Hidden Country',
+            zipCode: 'Hidden',
+            mobileNumber: 'Hidden'
+          }
+        });
+
+        // Anonymize all other customer data
+        await Promise.all([
+          // Site feedback
+          prisma.siteFeedback.updateMany({
+            where: { userId: user.id },
+            data: { message: 'Feedback content hidden for privacy', contactInfo: 'Hidden' }
+          }).catch(err => console.warn('[Auto-Cleanup] SiteFeedback error:', err.message)),
+          
+          // Support tickets  
+          prisma.supportTicket.updateMany({
+            where: { userId: user.id },
+            data: { 
+              message: 'Support message content hidden for privacy',
+              subject: 'Subject hidden for privacy' 
+            }
+          }).catch(err => console.warn('[Auto-Cleanup] SupportTicket error:', err.message)),
+          
+          // Product ratings/reviews
+          prisma.rating.updateMany({
+            where: { userId: user.id },
+            data: { 
+              comment: 'Review content hidden for privacy',
+              reviewerName: 'Anonymous Reviewer' 
+            }
+          }).catch(err => console.warn('[Auto-Cleanup] Rating error:', err.message)),
+          
+          // Personal notifications
+          prisma.notification.updateMany({
+            where: { 
+              userId: user.id,
+              type: { in: ['GENERAL', 'PERSONAL'] }
+            },
+            data: { message: 'Personal notification content hidden for privacy' }
+          }).catch(err => console.warn('[Auto-Cleanup] Notification error:', err.message))
+        ]);
+
+        processed++;
+        console.log(`[Auto-Cleanup] Anonymized user ${user.id} (${user.email})`);
+
+      } catch (userError) {
+        console.error(`[Auto-Cleanup] Failed to anonymize user ${user.id}:`, userError);
+        // Continue with next user
+      }
+    }
+
+    console.log(`[Auto-Cleanup] Successfully anonymized ${processed} expired users`);
+    return { processed, message: `Anonymized ${processed} expired users` };
+
+  } catch (error) {
+    console.error('[Auto-Cleanup] Error:', error);
+    throw error;
   }
 };
 

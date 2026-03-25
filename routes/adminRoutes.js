@@ -13,6 +13,14 @@ async function adminRoutes(fastify, options) {
 
   // ---------------- USER MANAGEMENT ----------------
   fastify.get("/users", { preHandler: adminAuth }, adminController.getAllUsers);
+  
+  // ── User Recycle Bin Management ──
+  fastify.delete("/users/:userId", { preHandler: adminAuth }, adminController.softDeleteUser);
+  fastify.get("/users/recycle-bin", { preHandler: adminAuth }, adminController.getUserRecycleBin);
+  fastify.post("/users/:userId/restore", { preHandler: adminAuth }, adminController.restoreUser);
+  
+  // Auto-cleanup for users in recycle bin (manual trigger for admins)
+  fastify.post("/users/cleanup-expired", { preHandler: adminAuth }, adminController.cleanupExpiredUsers);
 
   // ---------------- SELLER MANAGEMENT ----------------
 

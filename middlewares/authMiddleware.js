@@ -51,6 +51,14 @@ exports.authenticateSeller = async (request, reply) => {
         });
       }
 
+      // Check if user account has been deleted
+      if (user.isDeleted) {
+        return reply.status(403).send({
+          success: false,
+          message: "Account has been deactivated. Please contact support."
+        });
+      }
+
       if (user.role !== 'SELLER') {
         return reply.status(403).send({ 
           success: false, 
@@ -131,6 +139,14 @@ exports.authenticateUser = async (request, reply) => {
         });
       }
 
+      // Check if user account has been deleted
+      if (user.isDeleted) {
+        return reply.status(403).send({
+          success: false,
+          message: "Account has been deactivated. Please contact support."
+        });
+      }
+
       // Attach user to request
       request.user = {
         userId: user.id,
@@ -197,7 +213,22 @@ exports.isAdmin = async (request, reply) => {
         where: { id: userId }
       });
 
-      if (!user || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+      if (!user) {
+        return reply.status(404).send({ 
+          success: false, 
+          message: "User not found" 
+        });
+      }
+
+      // Check if user account has been deleted
+      if (user.isDeleted) {
+        return reply.status(403).send({
+          success: false,
+          message: "Account has been deactivated. Please contact support."
+        });
+      }
+
+      if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
         return reply.status(403).send({ 
           success: false, 
           message: "Admin access required" 

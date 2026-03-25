@@ -21,6 +21,10 @@ model User {
   updatedAt                       DateTime            @updatedAt
   emailVerificationDeadline       DateTime?
   emailVerificationReminderSentAt DateTime?
+  isDeleted                       Boolean             @default(false)
+  deletedAt                       DateTime?
+  deletedBy                       String?             @map("deleted_by")
+  deletedReason                   String?             @map("deleted_reason")
   cart                            Cart?
   customerCommissions             CommissionEarned[]  @relation("CustomerCommissions")
   sellerCommissions               CommissionEarned[]  @relation("SellerCommissions")
@@ -258,8 +262,8 @@ model Order {
   commissionEarned      CommissionEarned[]
   items                 OrderItem[]
   orderNotifications    OrderNotification[]
-  seller                User?               @relation("SellerOrders", fields: [sellerId], references: [id])
-  user                  User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seller                User?               @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: SetNull)
+  user                  User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   subOrders             SubOrder[]
 
   @@index([userId])
@@ -272,7 +276,7 @@ model Order {
 model SubOrder {
   id                 String              @id @default(cuid())
   parentOrderId      String
-  sellerId           String
+  sellerId           String?
   subtotal           Decimal             @db.Decimal(10, 2)
   status             OrderStatus         @default(CONFIRMED)
   trackingNumber     String?
@@ -285,8 +289,8 @@ model SubOrder {
   items              OrderItem[]
   orderNotifications OrderNotification[]
   parentOrder        Order               @relation(fields: [parentOrderId], references: [id], onDelete: Cascade)
-  seller             User                @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: Cascade)
-  sellerProfile      SellerProfile       @relation("SellerSubOrders", fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey")
+  seller             User?               @relation("SellerSubOrders", fields: [sellerId], references: [id], onDelete: SetNull)
+  sellerProfile      SellerProfile?      @relation("SellerSubOrders", fields: [sellerId], references: [userId], map: "suborder_seller_profile_fkey")
 
   @@index([parentOrderId])
   @@index([sellerId])
