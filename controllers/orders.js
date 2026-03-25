@@ -770,7 +770,7 @@ exports.getMyOrders = async (request, reply) => {
               select: {
                 id: true,
                 title: true,
-                images: true,
+                featuredImage: true,
                 price: true,
                 sellerId: true,
                 seller: {
@@ -806,7 +806,7 @@ exports.getMyOrders = async (request, reply) => {
                   select: {
                     id: true,
                     title: true,
-                    images: true,
+                    featuredImage: true,
                     price: true,
                     sellerId: true,
                     seller: {
@@ -893,7 +893,7 @@ exports.getMyOrders = async (request, reply) => {
             id: item.id,
             productId: item.productId,
             productTitle: item.product?.title || 'Product',
-            productImages: item.product?.images || [],
+            productImages: item.product?.featuredImage ? [item.product.featuredImage] : [],
             quantity: item.quantity,
             price: item.price
           }))
@@ -956,7 +956,7 @@ exports.getMyOrders = async (request, reply) => {
               id: item.id,
               productId: item.productId,
               productTitle: item.product?.title || 'Product',
-              productImages: item.product?.images || [],
+              productImages: item.product?.featuredImage ? [item.product.featuredImage] : [],
               quantity: item.quantity,
               price: item.price
             }))
