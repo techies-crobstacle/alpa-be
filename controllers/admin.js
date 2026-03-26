@@ -870,7 +870,7 @@ exports.getUserRecycleBin = async (request, reply) => {
     const formattedUsers = deletedUsers.map(user => {
       const minutesSinceDeleted = Math.floor((now - new Date(user.deletedAt)) / (1000 * 60));
       const minutesUntilCleanup = Math.max(0, 15 - minutesSinceDeleted);
-      const isAnonymized = user.email.startsWith('anonymized_');
+      const isAnonymized = user.email.includes('@deleted.local');
       
       return {
         ...user,
@@ -937,7 +937,7 @@ exports.restoreUser = async (request, reply) => {
     }
 
     // Check if user has been anonymized (cannot restore anonymized users)
-    if (existingUser.email.startsWith('anonymized_')) {
+    if (existingUser.email.includes('@deleted.local')) {
       return reply.status(400).send({
         success: false,
         message: 'Cannot restore anonymized user. User data was automatically cleaned up after 15 minutes in recycle bin (TESTING).'
@@ -1022,7 +1022,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
         // Don't process already anonymized users
         email: {
           not: {
-            startsWith: 'anonymized_'
+            contains: '@deleted.local'
           }
         }
       },
@@ -1045,7 +1045,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
 
     for (const user of expiredUsers) {
       try {
-        const anonymizedEmail = `anonymized_${user.id}@deleted.local`;
+        const anonymizedEmail = `user${Date.now().toString().slice(-6)}@deleted.local`;
         const orderCount = user.orders.length + user.sellerOrders.length;
 
         // Anonymize user data but keep the record
@@ -1102,26 +1102,17 @@ exports.cleanupExpiredUsers = async (request, reply) => {
           // Site feedback
           prisma.siteFeedback.updateMany({
             where: { userId: user.id },
-            data: { message: 'Feedback content hidden for privacy', contactInfo: 'Hidden' }
+            data: { 
+              name: 'Anonymous User',
+              email: 'hidden@privacy.local'
+            }
           }).catch(err => console.warn('[Manual-Cleanup] SiteFeedback error:', err.message)),
           
-          // Support tickets  
-          prisma.supportTicket.updateMany({
-            where: { userId: user.id },
-            data: { 
-              message: 'Support message content hidden for privacy',
-              subject: 'Subject hidden for privacy' 
-            }
-          }).catch(err => console.warn('[Manual-Cleanup] SupportTicket error:', err.message)),
+          // Support tickets (no content changes needed - only user identity removal)
+          // Support tickets will show as from deleted user through userId=null relationship
           
-          // Product ratings/reviews
-          prisma.rating.updateMany({
-            where: { userId: user.id },
-            data: { 
-              comment: 'Review content hidden for privacy',
-              reviewerName: 'Anonymous Reviewer' 
-            }
-          }).catch(err => console.warn('[Manual-Cleanup] Rating error:', err.message)),
+          // Product ratings/reviews (keep review content, identity removed through userId=null)
+          // Ratings will show as anonymous through the deleted user relationship
           
           // Personal notifications (belonging to deleted user)
           prisma.notification.updateMany({
@@ -1220,7 +1211,7 @@ exports.autoCleanupExpiredUsers = async () => {
       where: {
         isDeleted: true,
         deletedAt: { lte: fifteenMinutesAgo },
-        email: { not: { startsWith: 'anonymized_' } }
+        email: { not: { contains: '@deleted.local' } }
       },
       select: { id: true, name: true, email: true, deletedAt: true }
     });
@@ -1233,7 +1224,7 @@ exports.autoCleanupExpiredUsers = async () => {
     let processed = 0;
     for (const user of expiredUsers) {
       try {
-        const anonymizedEmail = `anonymized_${user.id}@deleted.local`;
+        const anonymizedEmail = `user${Date.now().toString().slice(-6)}@deleted.local`;
         
         await prisma.user.update({
           where: { id: user.id },
@@ -1279,32 +1270,20 @@ exports.autoCleanupExpiredUsers = async () => {
 
         // Anonymize all other customer data
         await Promise.all([
-          // Site feedback (correct fields: comment, name, email)
+          // Site feedback (preserve content, anonymize identity)
           prisma.siteFeedback.updateMany({
             where: { userId: user.id },
             data: { 
-              comment: 'Feedback content hidden for privacy',
               name: 'Anonymous User',
               email: 'hidden@privacy.local'
             }
           }).catch(err => console.warn('[Auto-Cleanup] SiteFeedback error:', err.message)),
           
-          // Support tickets  
-          prisma.supportTicket.updateMany({
-            where: { userId: user.id },
-            data: { 
-              message: 'Support message content hidden for privacy',
-              subject: 'Subject hidden for privacy' 
-            }
-          }).catch(err => console.warn('[Auto-Cleanup] SupportTicket error:', err.message)),
+          // Support tickets (no content changes needed - only user identity removal)
+          // Support tickets will show as from deleted user through userId=null relationship
           
-          // Product ratings/reviews (only comment field available)
-          prisma.rating.updateMany({
-            where: { userId: user.id },
-            data: { 
-              comment: 'Review content hidden for privacy'
-            }
-          }).catch(err => console.warn('[Auto-Cleanup] Rating error:', err.message)),
+          // Product ratings/reviews (keep review content, identity removed through userId=null)
+          // Ratings will show as anonymous through the deleted user relationship
           
           // General notifications only (PERSONAL type doesn't exist)
           prisma.notification.updateMany({
