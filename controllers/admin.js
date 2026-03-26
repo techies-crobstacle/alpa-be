@@ -868,8 +868,8 @@ exports.getUserRecycleBin = async (request, reply) => {
 
     const now = new Date();
     const formattedUsers = deletedUsers.map(user => {
-      const daysSinceDeleted = Math.floor((now - new Date(user.deletedAt)) / (1000 * 60 * 60 * 24));
-      const daysUntilCleanup = Math.max(0, 60 - daysSinceDeleted);
+      const minutesSinceDeleted = Math.floor((now - new Date(user.deletedAt)) / (1000 * 60));
+      const minutesUntilCleanup = Math.max(0, 15 - minutesSinceDeleted);
       const isAnonymized = user.email.startsWith('anonymized_');
       
       return {
@@ -878,13 +878,13 @@ exports.getUserRecycleBin = async (request, reply) => {
         orderCount: user.orders.length + user.sellerOrders.length,
         totalOrderValue: [...user.orders, ...user.sellerOrders]
           .reduce((sum, order) => sum + parseFloat(order.totalAmount || 0), 0),
-        daysSinceDeleted,
-        daysUntilAutoCleanup: isAnonymized ? 0 : daysUntilCleanup,
+        minutesSinceDeleted,
+        minutesUntilAutoCleanup: isAnonymized ? 0 : minutesUntilCleanup,
         autoCleanupStatus: isAnonymized 
           ? 'ANONYMIZED' 
-          : daysUntilCleanup <= 7 
-            ? `SCHEDULED_${daysUntilCleanup}_DAYS`
-            : `PENDING_${daysUntilCleanup}_DAYS`,
+          : minutesUntilCleanup <= 5 
+            ? `SCHEDULED_${minutesUntilCleanup}_MINUTES`
+            : `PENDING_${minutesUntilCleanup}_MINUTES`,
         canRestore: !isAnonymized // Cannot restore anonymized users
       };
     });
@@ -892,7 +892,7 @@ exports.getUserRecycleBin = async (request, reply) => {
     const summary = {
       total: totalCount,
       anonymized: formattedUsers.filter(u => u.autoCleanupStatus === 'ANONYMIZED').length,
-      scheduledForCleanup: formattedUsers.filter(u => u.daysUntilAutoCleanup <= 7 && u.daysUntilAutoCleanup > 0).length,
+      scheduledForCleanup: formattedUsers.filter(u => u.minutesUntilAutoCleanup <= 5 && u.minutesUntilAutoCleanup > 0).length,
       restorable: formattedUsers.filter(u => u.canRestore).length
     };
 
@@ -907,9 +907,9 @@ exports.getUserRecycleBin = async (request, reply) => {
       },
       summary,
       autoCleanupInfo: {
-        schedule: 'Daily at 2:00 AM',
-        retentionPeriod: '10 hours (TESTING)',
-        description: 'User data automatically anonymized after 10 hours in recycle bin (TESTING)'
+        schedule: 'Every 5 minutes (TESTING)',
+        retentionPeriod: '15 minutes (TESTING)',
+        description: 'User data automatically anonymized after 15 minutes in recycle bin (TESTING)'
       }
     });
   } catch (error) {
@@ -940,7 +940,7 @@ exports.restoreUser = async (request, reply) => {
     if (existingUser.email.startsWith('anonymized_')) {
       return reply.status(400).send({
         success: false,
-        message: 'Cannot restore anonymized user. User data was automatically cleaned up after 10 hours in recycle bin (TESTING).'
+        message: 'Cannot restore anonymized user. User data was automatically cleaned up after 15 minutes in recycle bin (TESTING).'
       });
     }
 
@@ -1002,22 +1002,22 @@ exports.restoreUser = async (request, reply) => {
   }
 };
 
-// AUTO-CLEANUP EXPIRED USERS — anonymize data after 10 hours in recycle bin (TESTING) (Admin only)
+// AUTO-CLEANUP EXPIRED USERS — anonymize data after 15 minutes in recycle bin (TESTING) (Admin only)
 exports.cleanupExpiredUsers = async (request, reply) => {
   try {
     if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    const tenHoursAgo = new Date();
-    tenHoursAgo.setHours(tenHoursAgo.getHours() - 10);
+    const fifteenMinutesAgo = new Date();
+    fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
 
-    // Find users deleted more than 10 hours ago (TESTING)
+    // Find users deleted more than 15 minutes ago (TESTING)
     const expiredUsers = await prisma.user.findMany({
       where: {
         isDeleted: true,
         deletedAt: {
-          lte: tenHoursAgo
+          lte: fifteenMinutesAgo
         },
         // Don't process already anonymized users
         email: {
@@ -1057,7 +1057,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
             phone: null,
             profileImage: null,  // Remove profile photo
             password: 'ANONYMIZED_ACCOUNT', // Prevent any login attempts
-            deletedReason: `Auto-anonymized after 10 hours by system on ${new Date().toISOString()} (TESTING)`
+            deletedReason: `Auto-anonymized after 8 hours by system on ${new Date().toISOString()} (TESTING)`
           }
         });
 
@@ -1123,15 +1123,46 @@ exports.cleanupExpiredUsers = async (request, reply) => {
             }
           }).catch(err => console.warn('[Manual-Cleanup] Rating error:', err.message)),
           
-          // Personal notifications
+          // Personal notifications (belonging to deleted user)
           prisma.notification.updateMany({
             where: { 
               userId: user.id,
               type: { in: ['GENERAL', 'PERSONAL'] }
             },
-            data: { message: 'Personal notification content hidden for privacy' }
+            data: { 
+              title: 'Notification from Deleted User',
+              message: 'Personal notification content hidden for privacy',
+              metadata: null // Clear any personal metadata
+            }
           }).catch(err => console.warn('[Manual-Cleanup] Notification error:', err.message))
         ]);
+        
+        // Update notifications containing user name (separate process)
+        try {
+          const userNotifications = await prisma.notification.findMany({
+            where: {
+              OR: [
+                { message: { contains: user.name } },
+                { title: { contains: user.name } }
+              ]
+            },
+            select: { id: true, title: true, message: true }
+          });
+          
+          for (const notif of userNotifications) {
+            await prisma.notification.update({
+              where: { id: notif.id },
+              data: {
+                title: notif.title.replace(new RegExp(user.name, 'gi'), 'Deleted User'),
+                message: notif.message.replace(new RegExp(user.name, 'gi'), 'Deleted User')
+              }
+            });
+          }
+          
+          console.log(`[Manual-Cleanup] Updated ${userNotifications.length} notifications containing user name`);
+        } catch (notifError) {
+          console.warn('[Manual-Cleanup] Notification content update error:', notifError.message);
+        }
 
         // Log the anonymization
         const meta = extractRequestMeta(request);
@@ -1142,7 +1173,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
           ...meta,
           previousData: { name: user.name, email: user.email, phone: user.phone },
           newData: { name: 'Deleted User', email: anonymizedEmail, phone: null },
-          reason: `Auto-anonymized after 10 hours in recycle bin (TESTING). ${orderCount} orders preserved.`,
+          reason: `Auto-anonymized after 15 minutes in recycle bin (TESTING). ${orderCount} orders preserved.`,
         });
 
         processedUsers.push({
@@ -1168,7 +1199,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
         id: u.id,
         originalName: u.originalName,
         orderCount: u.orderCount,
-        daysSinceDeleted: Math.floor((new Date() - new Date(u.deletedAt)) / (1000 * 60 * 60 * 24)),
+        minutesSinceDeleted: Math.floor((new Date() - new Date(u.deletedAt)) / (1000 * 60)),
         anonymizedAt: u.anonymizedAt
       }))
     });
@@ -1179,23 +1210,23 @@ exports.cleanupExpiredUsers = async (request, reply) => {
   }
 };
 
-// SCHEDULED AUTO-CLEANUP — Run this hourly via cron job or scheduler (TESTING: 10 hours)
+// SCHEDULED AUTO-CLEANUP — Run this every 5 minutes via cron job or scheduler (TESTING: 15 minutes)
 exports.autoCleanupExpiredUsers = async () => {
   try {
-    const tenHoursAgo = new Date();
-    tenHoursAgo.setHours(tenHoursAgo.getHours() - 10);
+    const fifteenMinutesAgo = new Date();
+    fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
 
     const expiredUsers = await prisma.user.findMany({
       where: {
         isDeleted: true,
-        deletedAt: { lte: tenHoursAgo },
+        deletedAt: { lte: fifteenMinutesAgo },
         email: { not: { startsWith: 'anonymized_' } }
       },
       select: { id: true, name: true, email: true, deletedAt: true }
     });
 
     if (expiredUsers.length === 0) {
-      console.log('[Auto-Cleanup] No expired users to anonymize (10h testing)');
+      console.log('[Auto-Cleanup] No expired users to anonymize (15min testing)');
       return { processed: 0, message: 'No expired users found' };
     }
 
@@ -1212,7 +1243,7 @@ exports.autoCleanupExpiredUsers = async () => {
             phone: null,
             profileImage: null,
             password: 'ANONYMIZED_ACCOUNT',
-            deletedReason: `Auto-anonymized after 10 hours by system on ${new Date().toISOString()} (TESTING)`
+            deletedReason: `Auto-anonymized after 8 hours by system on ${new Date().toISOString()} (TESTING)`
           }
         });
 
@@ -1248,10 +1279,14 @@ exports.autoCleanupExpiredUsers = async () => {
 
         // Anonymize all other customer data
         await Promise.all([
-          // Site feedback
+          // Site feedback (correct fields: comment, name, email)
           prisma.siteFeedback.updateMany({
             where: { userId: user.id },
-            data: { message: 'Feedback content hidden for privacy', contactInfo: 'Hidden' }
+            data: { 
+              comment: 'Feedback content hidden for privacy',
+              name: 'Anonymous User',
+              email: 'hidden@privacy.local'
+            }
           }).catch(err => console.warn('[Auto-Cleanup] SiteFeedback error:', err.message)),
           
           // Support tickets  
@@ -1263,23 +1298,50 @@ exports.autoCleanupExpiredUsers = async () => {
             }
           }).catch(err => console.warn('[Auto-Cleanup] SupportTicket error:', err.message)),
           
-          // Product ratings/reviews
+          // Product ratings/reviews (only comment field available)
           prisma.rating.updateMany({
             where: { userId: user.id },
             data: { 
-              comment: 'Review content hidden for privacy',
-              reviewerName: 'Anonymous Reviewer' 
+              comment: 'Review content hidden for privacy'
             }
           }).catch(err => console.warn('[Auto-Cleanup] Rating error:', err.message)),
           
-          // Personal notifications
+          // General notifications only (PERSONAL type doesn't exist)
           prisma.notification.updateMany({
             where: { 
               userId: user.id,
-              type: { in: ['GENERAL', 'PERSONAL'] }
+              type: 'GENERAL'
             },
-            data: { message: 'Personal notification content hidden for privacy' }
-          }).catch(err => console.warn('[Auto-Cleanup] Notification error:', err.message))
+            data: { 
+              message: 'Personal notification content hidden for privacy',
+              title: 'Privacy Notice'
+            }
+          }).catch(err => console.warn('[Auto-Cleanup] Notification error:', err.message)),
+          
+          // Notifications mentioning deleted user's name in content  
+          (async () => {
+            const userNotifications = await prisma.notification.findMany({
+              where: {
+                OR: [
+                  { message: { contains: user.name } },
+                  { title: { contains: user.name } }
+                ]
+              },
+              select: { id: true, title: true, message: true }
+            });
+            
+            for (const notif of userNotifications) {
+              await prisma.notification.update({
+                where: { id: notif.id },
+                data: {
+                  title: notif.title.replace(new RegExp(user.name, 'gi'), 'Deleted User'),
+                  message: notif.message.replace(new RegExp(user.name, 'gi'), 'Deleted User')
+                }
+              });
+            }
+            
+            console.log(`[Auto-Cleanup] Updated ${userNotifications.length} notifications containing user name`);
+          })().catch(err => console.warn('[Auto-Cleanup] Notification content error:', err.message))
         ]);
 
         processed++;

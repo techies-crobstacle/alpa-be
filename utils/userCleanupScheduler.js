@@ -1,7 +1,7 @@
 /**
  * User Cleanup Scheduler
- * Auto-anonymizes user data after 10 hours in recycle bin (TESTING)
- * Runs hourly to check for expired users
+ * Auto-anonymizes user data after 15 minutes in recycle bin (TESTING)
+ * Runs every 5 minutes to check for expired users
  */
 
 const cron = require('node-cron');
@@ -23,10 +23,10 @@ const initializeUserCleanupScheduler = () => {
     return;
   }
 
-  console.log('🔔 Initializing user cleanup scheduler (TESTING: every hour, 10h cleanup)...');
+  console.log('🔔 Initializing user cleanup scheduler (TESTING: every 5 minutes, 15min cleanup)...');
 
-  // Run every hour for testing (instead of daily)
-  const task = cron.schedule('0 * * * *', async () => {
+  // Run every 5 minutes for testing (instead of hourly)
+  const task = cron.schedule('*/5 * * * *', async () => {
     try {
       console.log('⏰ [User Cleanup] Running scheduled cleanup...');
       const result = await autoCleanupExpiredUsers();
@@ -48,7 +48,7 @@ const initializeUserCleanupScheduler = () => {
   task.start();
   schedulerRunning = true;
   
-  console.log('✅ User cleanup scheduler initialized - will run every hour (TESTING)');
+  console.log('✅ User cleanup scheduler initialized - will run every 5 minutes (TESTING)');
 
   // Return task for testing/manual control
   return task;
