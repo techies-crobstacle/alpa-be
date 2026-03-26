@@ -341,7 +341,7 @@ exports.createOrder = async (request, reply) => {
             shippingPhone: mobileNumber,
             paymentMethod,
             overallStatus: "CONFIRMED",
-            customerName: user.name,
+            customerName: user.isDeleted ? 'Deleted User' : user.name,
             customerEmail: user.email,
             customerPhone: mobileNumber || user.phone || ''
           }
@@ -440,7 +440,7 @@ exports.createOrder = async (request, reply) => {
             paymentMethod,
             overallStatus: "CONFIRMED",
             status: "CONFIRMED", // Set individual status for single order
-            customerName: user.name,
+            customerName: user.isDeleted ? 'Deleted User' : user.name,
             customerEmail: user.email,
             customerPhone: mobileNumber || user.phone || ''
           }
@@ -501,7 +501,7 @@ exports.createOrder = async (request, reply) => {
         orderId: commissionOrderId,
         sellerId,
         orderValue: sellerData.totalAmount,
-        customerName: user.name,
+        customerName: user.isDeleted ? 'Deleted User' : user.name,
         customerEmail: user.email,
         customerId: userId || null,
         sellerName: sellerData.sellerName || null
@@ -529,7 +529,7 @@ exports.createOrder = async (request, reply) => {
 
     // Create notifications for the main order (parent or single)
     const orderNotificationData = {
-      customerName: user.name,
+      customerName: user.isDeleted ? 'Deleted User' : user.name,
       sellerName: sellerNameList.length > 0 ? sellerNameList.join(', ') : 'Unknown',
       totalAmount: totalAmount.toFixed(2),
       itemCount: cart.items.length,
@@ -550,7 +550,7 @@ exports.createOrder = async (request, reply) => {
         : orderId;
         
       notifySellerNewOrder(sellerId, sellerOrderId, {
-        customerName: user.name,
+        customerName: user.isDeleted ? 'Deleted User' : user.name,
         totalAmount: sellerData.totalAmount.toFixed(2),
         itemCount: sellerData.productCount,
         productNames: sellerData.products.map(p => p.title).filter(Boolean)
@@ -643,7 +643,7 @@ exports.createOrder = async (request, reply) => {
                   products: sellerData.products,
                   shippingAddress,
                   paymentMethod,
-                  customerName: user.name,
+                  customerName: user.isDeleted ? 'Deleted User' : user.name,
                   customerEmail: user.email,
                   customerPhone: mobileNumber || user.phone || ''
                 });
@@ -679,7 +679,7 @@ exports.createOrder = async (request, reply) => {
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
                   displayId: mainOrder.displayId,
-                  customerName: user.name,
+                  customerName: user.isDeleted ? 'Deleted User' : user.name,
                   customerEmail: user.email,
                   customerPhone: mobileNumber || user.phone || '',
                   sellerNames: sellerNameList.join(', ') || 'Unknown',
@@ -1161,7 +1161,7 @@ exports.cancelOrder = async (request, reply) => {
 
     // Notify all admins (in-app + email) — now includes seller name(s)
     notifyAdminOrderStatusChange(orderId, 'cancelled', {
-      customerName: order.customerName || 'Customer',
+      customerName: (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer',
       sellerName: cancelledSellerNameStr,
       totalAmount: order.totalAmount.toString(),
       itemCount: order.items?.length || 0,
@@ -2813,7 +2813,7 @@ exports.downloadInvoice = async (request, reply) => {
       }
       invoiceShape = {
         ...orderRecord,
-        customerName:  orderRecord.user?.name  || orderRecord.customerName,
+        customerName:  (orderRecord.user?.isDeleted ? 'Deleted User' : orderRecord.user?.name) || orderRecord.customerName,
         customerEmail: orderRecord.user?.email || orderRecord.customerEmail,
         customerPhone: orderRecord.user?.phone || orderRecord.customerPhone,
       };
@@ -2983,7 +2983,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
     if (orderRecord) {
       invoiceShape = {
         ...orderRecord,
-        customerName:  orderRecord.user?.name  || orderRecord.customerName,
+        customerName:  (orderRecord.user?.isDeleted ? 'Deleted User' : orderRecord.user?.name) || orderRecord.customerName,
         customerEmail: orderRecord.user?.email || orderRecord.customerEmail,
         customerPhone: orderRecord.user?.phone || orderRecord.customerPhone,
       };

@@ -166,7 +166,7 @@ exports.createPaymentIntent = async (request, reply) => {
       status: "CONFIRMED",
       paymentStatus: "PENDING",
       stripePaymentIntentId: paymentIntent.id,
-      customerName: user.name,
+      customerName: user.isDeleted ? 'Deleted User' : user.name,
       customerEmail: user.email,
       customerPhone: mobileNumber || user.phone || "",
     };

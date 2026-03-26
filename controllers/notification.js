@@ -48,7 +48,15 @@ const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDet
     'ORDER_STATUS_CHANGED',
     orderId,
     'order',
-    { status, ...orderDetails }
+    {
+      status,
+      totalAmount: orderDetails.totalAmount,
+      itemCount: orderDetails.itemCount,
+      reason: orderDetails.reason,
+      trackingNumber: orderDetails.trackingNumber,
+      estimatedDelivery: orderDetails.estimatedDelivery
+      // Exclude customerName from metadata to prevent exposing deleted user info
+    }
   );
 };
 
@@ -137,7 +145,15 @@ const notifySellerOrderStatusChange = async (sellerId, orderId, status, orderDet
     'ORDER_STATUS_CHANGED',
     orderId,
     'order',
-    { status, ...orderDetails }
+    {
+      status,
+      totalAmount: orderDetails.totalAmount,
+      itemCount: orderDetails.itemCount,
+      reason: orderDetails.reason,
+      trackingNumber: orderDetails.trackingNumber,
+      estimatedDelivery: orderDetails.estimatedDelivery
+      // Exclude customerName from metadata to prevent exposing deleted user info
+    }
   );
 };
 
@@ -455,7 +471,17 @@ const notifyAdminOrderStatusChange = async (orderId, status, orderDetails = {}) 
       'ORDER_STATUS_CHANGED',
       orderId,
       'order',
-      { status, ...orderDetails }
+      {
+        status,
+        sellerName: orderDetails.sellerName,
+        totalAmount: orderDetails.totalAmount,
+        itemCount: orderDetails.itemCount,
+        reason: orderDetails.reason,
+        trackingNumber: orderDetails.trackingNumber,
+        estimatedDelivery: orderDetails.estimatedDelivery,
+        updatedBy: orderDetails.updatedBy
+        // Exclude customerName from metadata to prevent exposing deleted user info
+      }
     );
     if (notification) notifications.push(notification);
   }

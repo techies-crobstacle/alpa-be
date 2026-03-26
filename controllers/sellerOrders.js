@@ -629,7 +629,7 @@ exports.updateOrderStatus = async (request, reply) => {
     // Send notifications and emails for the order status update
     const customer = orderRecord.customer;
     const customerEmail = customer?.email || orderRecord.customerEmail;
-    const customerName = customer?.name || orderRecord.customerName || 'Customer';
+    const customerName = (customer?.isDeleted ? 'Deleted User' : customer?.name) || orderRecord.customerName || 'Customer';
     
     if (customerEmail) {
       console.log(`📧 Sending status update email to customer: ${customerEmail}`);
@@ -902,7 +902,7 @@ exports.updateTrackingInfo = async (request, reply) => {
 
     // ── Notifications & emails ────────────────────────────────────────────
     const customerEmail = order.user?.email || order.customerEmail;
-    const customerName  = order.user?.name  || order.customerName || 'Customer';
+    const customerName  = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
 
     if (customerEmail) {
       console.log(`📧 Sending tracking info email to customer: ${customerEmail}`);
