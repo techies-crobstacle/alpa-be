@@ -1128,29 +1128,76 @@ exports.cleanupExpiredUsers = async (request, reply) => {
           }).catch(err => console.warn('[Manual-Cleanup] Notification error:', err.message))
         ]);
         
-        // Update notifications containing user name (separate process)
+        // Update notifications containing user name or email (separate process)
         try {
-          const userNotifications = await prisma.notification.findMany({
-            where: {
-              OR: [
-                { message: { contains: user.name } },
-                { title: { contains: user.name } }
-              ]
-            },
-            select: { id: true, title: true, message: true }
-          });
-          
-          for (const notif of userNotifications) {
-            await prisma.notification.update({
-              where: { id: notif.id },
-              data: {
-                title: notif.title.replace(new RegExp(user.name, 'gi'), 'Deleted User'),
-                message: notif.message.replace(new RegExp(user.name, 'gi'), 'Deleted User')
-              }
-            });
+          const orConditions = [];
+          if (user.name) {
+            orConditions.push({ message: { contains: user.name } });
+            orConditions.push({ title: { contains: user.name } });
           }
-          
-          console.log(`[Manual-Cleanup] Updated ${userNotifications.length} notifications containing user name`);
+          if (user.email) {
+            orConditions.push({ message: { contains: user.email } });
+            orConditions.push({ title: { contains: user.email } });
+          }
+
+          if (orConditions.length > 0) {
+            const userNotifications = await prisma.notification.findMany({
+              where: { OR: orConditions },
+              select: { id: true, title: true, message: true, metadata: true }
+            });
+            
+            for (const notif of userNotifications) {
+              let updatedTitle = notif.title || '';
+              let updatedMessage = notif.message || '';
+
+              if (user.name) {
+                const nameRe = new RegExp(user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                updatedTitle = updatedTitle.replace(nameRe, 'Deleted User');
+                updatedMessage = updatedMessage.replace(nameRe, 'Deleted User');
+              }
+              if (user.email) {
+                const emailRe = new RegExp(user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                updatedTitle = updatedTitle.replace(emailRe, 'hidden@privacy.local');
+                updatedMessage = updatedMessage.replace(emailRe, 'hidden@privacy.local');
+              }
+
+              // Also sanitize metadata JSON
+              let updatedMetadata = notif.metadata;
+              if (updatedMetadata) {
+                try {
+                  let metaStr = typeof updatedMetadata === 'string'
+                    ? updatedMetadata
+                    : JSON.stringify(updatedMetadata);
+                  if (user.name) {
+                    metaStr = metaStr.replace(
+                      new RegExp(user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                      'Deleted User'
+                    );
+                  }
+                  if (user.email) {
+                    metaStr = metaStr.replace(
+                      new RegExp(user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                      'hidden@privacy.local'
+                    );
+                  }
+                  updatedMetadata = JSON.parse(metaStr);
+                } catch (_) {
+                  // If metadata can't be parsed/stringified safely, leave as-is
+                }
+              }
+
+              await prisma.notification.update({
+                where: { id: notif.id },
+                data: {
+                  title: updatedTitle,
+                  message: updatedMessage,
+                  metadata: updatedMetadata
+                }
+              });
+            }
+            
+            console.log(`[Manual-Cleanup] Updated ${userNotifications.length} notifications containing user name/email`);
+          }
         } catch (notifError) {
           console.warn('[Manual-Cleanup] Notification content update error:', notifError.message);
         }
@@ -1297,29 +1344,76 @@ exports.autoCleanupExpiredUsers = async () => {
             }
           }).catch(err => console.warn('[Auto-Cleanup] Notification error:', err.message)),
           
-          // Notifications mentioning deleted user's name in content  
+          // Notifications mentioning deleted user's name or email in content  
           (async () => {
+            const orConditions = [];
+            if (user.name) {
+              orConditions.push({ message: { contains: user.name } });
+              orConditions.push({ title: { contains: user.name } });
+            }
+            if (user.email) {
+              orConditions.push({ message: { contains: user.email } });
+              orConditions.push({ title: { contains: user.email } });
+            }
+
+            if (orConditions.length === 0) return;
+
             const userNotifications = await prisma.notification.findMany({
-              where: {
-                OR: [
-                  { message: { contains: user.name } },
-                  { title: { contains: user.name } }
-                ]
-              },
-              select: { id: true, title: true, message: true }
+              where: { OR: orConditions },
+              select: { id: true, title: true, message: true, metadata: true }
             });
             
             for (const notif of userNotifications) {
+              let updatedTitle = notif.title || '';
+              let updatedMessage = notif.message || '';
+
+              if (user.name) {
+                const nameRe = new RegExp(user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                updatedTitle = updatedTitle.replace(nameRe, 'Deleted User');
+                updatedMessage = updatedMessage.replace(nameRe, 'Deleted User');
+              }
+              if (user.email) {
+                const emailRe = new RegExp(user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                updatedTitle = updatedTitle.replace(emailRe, 'hidden@privacy.local');
+                updatedMessage = updatedMessage.replace(emailRe, 'hidden@privacy.local');
+              }
+
+              // Also sanitize metadata JSON
+              let updatedMetadata = notif.metadata;
+              if (updatedMetadata) {
+                try {
+                  let metaStr = typeof updatedMetadata === 'string'
+                    ? updatedMetadata
+                    : JSON.stringify(updatedMetadata);
+                  if (user.name) {
+                    metaStr = metaStr.replace(
+                      new RegExp(user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                      'Deleted User'
+                    );
+                  }
+                  if (user.email) {
+                    metaStr = metaStr.replace(
+                      new RegExp(user.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                      'hidden@privacy.local'
+                    );
+                  }
+                  updatedMetadata = JSON.parse(metaStr);
+                } catch (_) {
+                  // If metadata can't be parsed/stringified safely, leave as-is
+                }
+              }
+
               await prisma.notification.update({
                 where: { id: notif.id },
                 data: {
-                  title: notif.title.replace(new RegExp(user.name, 'gi'), 'Deleted User'),
-                  message: notif.message.replace(new RegExp(user.name, 'gi'), 'Deleted User')
+                  title: updatedTitle,
+                  message: updatedMessage,
+                  metadata: updatedMetadata
                 }
               });
             }
             
-            console.log(`[Auto-Cleanup] Updated ${userNotifications.length} notifications containing user name`);
+            console.log(`[Auto-Cleanup] Updated ${userNotifications.length} notifications containing user name/email`);
           })().catch(err => console.warn('[Auto-Cleanup] Notification content error:', err.message))
         ]);
 
