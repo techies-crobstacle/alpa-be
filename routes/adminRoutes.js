@@ -22,6 +22,9 @@ async function adminRoutes(fastify, options) {
   // Auto-cleanup for users in recycle bin (manual trigger for admins)
   fastify.post("/users/cleanup-expired", { preHandler: adminAuth }, adminController.cleanupExpiredUsers);
 
+  // One-time backfill: anonymize stale PII in site_feedback & contact_messages for already-deleted users
+  fastify.post("/users/backfill-pii-anonymization", { preHandler: adminAuth }, adminController.backfillPiiAnonymization);
+
   // ---------------- SELLER MANAGEMENT ----------------
 
   // Get all sellers (with optional status filter)

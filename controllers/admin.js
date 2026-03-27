@@ -789,9 +789,12 @@ exports.softDeleteUser = async (request, reply) => {
     // Immediately anonymize PII from all related tables — don't wait for 15-min scheduler
     const immediateCleanupErrors = [];
 
-    // 1. Site feedback — has its own name/email columns copied at submission time
+    // 1. Site feedback — match by userId AND by original email (covers guest submissions)
+    const siteFeedbackWhere = existingUser.email
+      ? { OR: [{ userId }, { email: existingUser.email }] }
+      : { userId };
     await prisma.siteFeedback.updateMany({
-      where: { userId },
+      where: siteFeedbackWhere,
       data: { name: 'Anonymous User', email: 'hidden@privacy.local' }
     }).catch(err => immediateCleanupErrors.push(`siteFeedback: ${err.message}`));
 
@@ -803,7 +806,13 @@ exports.softDeleteUser = async (request, reply) => {
       }).catch(err => immediateCleanupErrors.push(`contactMessage: ${err.message}`));
     }
 
-    // 2. Notifications — clear any message/title text containing the user's name or email
+    // 3. Commission records — store customerName/customerEmail directly, match by customerId
+    await prisma.commissionEarned.updateMany({
+      where: { customerId: userId },
+      data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
+    }).catch(err => immediateCleanupErrors.push(`commissionEarned: ${err.message}`));
+
+    // 4. Notifications — clear any message/title text containing the user's name or email
     try {
       const orConditions = [];
       if (existingUser.name) {
@@ -1185,6 +1194,12 @@ exports.cleanupExpiredUsers = async (request, reply) => {
               }).catch(err => console.warn('[Manual-Cleanup] ContactMessage error:', err.message))
             : Promise.resolve(),
 
+          // Commission records — store customerName/customerEmail directly
+          prisma.commissionEarned.updateMany({
+            where: { customerId: user.id },
+            data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
+          }).catch(err => console.warn('[Manual-Cleanup] CommissionEarned error:', err.message)),
+
           // Support tickets (no content changes needed - only user identity removal)
           // Support tickets will show as from deleted user through userId=null relationship
           
@@ -1325,6 +1340,80 @@ exports.cleanupExpiredUsers = async (request, reply) => {
   }
 };
 
+// BACKFILL PII ANONYMIZATION — one-time fix for records created before the auto-anonymize code was deployed
+// Finds all soft-deleted users and anonymizes any stale PII in site_feedback and contact_messages
+exports.backfillPiiAnonymization = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ message: 'Access denied. Admins only.' });
+    }
+
+    // Get all deleted users (both anonymized and non-anonymized)
+    const deletedUsers = await prisma.user.findMany({
+      where: { isDeleted: true },
+      select: { id: true, name: true, email: true }
+    });
+
+    let siteFeedbackFixed = 0;
+    let contactMessageFixed = 0;
+
+    for (const user of deletedUsers) {
+      // Recover original email: remove the deleted_ prefix if present, or use as-is for @deleted.local
+      const originalEmail = user.email.startsWith('deleted_')
+        ? user.email.replace(/^deleted_\d+_/, '')
+        : user.email; // already anonymized — use it to catch anything missed
+
+      // Fix site_feedback rows still holding real email
+      const sfResult = await prisma.siteFeedback.updateMany({
+        where: {
+          OR: [
+            { userId: user.id },
+            ...(originalEmail && !originalEmail.includes('@deleted.local')
+              ? [{ email: originalEmail }]
+              : [])
+          ],
+          NOT: { email: 'hidden@privacy.local' } // skip already-anonymized rows
+        },
+        data: { name: 'Anonymous User', email: 'hidden@privacy.local' }
+      }).catch(() => ({ count: 0 }));
+      siteFeedbackFixed += sfResult.count;
+
+      // Fix contact_message rows still holding real email
+      if (originalEmail && !originalEmail.includes('@deleted.local')) {
+        const cmResult = await prisma.contactMessage.updateMany({
+          where: {
+            email: originalEmail,
+            NOT: { email: 'hidden@privacy.local' }
+          },
+          data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+        }).catch(() => ({ count: 0 }));
+        contactMessageFixed += cmResult.count;
+      }
+
+      // Fix commission_earned rows still holding real customer name/email
+      await prisma.commissionEarned.updateMany({
+        where: {
+          customerId: user.id,
+          NOT: { customerEmail: 'hidden@privacy.local' }
+        },
+        data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
+      }).catch(() => {});
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Backfill complete',
+      fixed: {
+        siteFeedbackRows: siteFeedbackFixed,
+        contactMessageRows: contactMessageFixed
+      }
+    });
+  } catch (error) {
+    console.error('Backfill PII anonymization error:', error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
 // SCHEDULED AUTO-CLEANUP — Run this every 5 minutes via cron job or scheduler (TESTING: 15 minutes)
 exports.autoCleanupExpiredUsers = async () => {
   try {
@@ -1410,6 +1499,12 @@ exports.autoCleanupExpiredUsers = async () => {
                 data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
               }).catch(err => console.warn('[Auto-Cleanup] ContactMessage error:', err.message))
             : Promise.resolve(),
+
+          // Commission records — store customerName/customerEmail directly
+          prisma.commissionEarned.updateMany({
+            where: { customerId: user.id },
+            data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
+          }).catch(err => console.warn('[Auto-Cleanup] CommissionEarned error:', err.message)),
 
           // Support tickets (no content changes needed - only user identity removal)
           // Support tickets will show as from deleted user through userId=null relationship
