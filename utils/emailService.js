@@ -230,7 +230,7 @@
 //               <!-- Footer -->
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-//                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email —— please do not reply.</p>
+//                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email &mdash; please do not reply.</p>
 //                   <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;� 2026 Made in Arnhem Land. All rights reserved.</p>
 //                 </td>
 //               </tr>
@@ -467,7 +467,7 @@
 //     <tr>
 //       <td style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
 //         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!</p>
-//         <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//         <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //       </td>
 //     </tr>
 //   `;
@@ -744,7 +744,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 
@@ -821,7 +821,7 @@
 //               <!-- Alert banner -->
 //               <tr>
 //                 <td style="background-color:#C4603A;padding:12px 40px;text-align:center;">
-//                   <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">⚠️ Action Required —— please process this order promptly</p>
+//                   <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">⚠️ Action Required &mdash; please process this order promptly</p>
 //                 </td>
 //               </tr>
 //               <!-- Seller greeting -->
@@ -893,7 +893,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller! 💼</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -971,7 +971,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Customer Support</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1190,7 +1190,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1298,7 +1298,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1412,7 +1412,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Made in Arnhem Land family!   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1548,7 +1548,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1650,7 +1650,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1762,7 +1762,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1882,7 +1882,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -1974,7 +1974,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -2065,7 +2065,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -2405,7 +2405,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Admin Notification</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -2488,7 +2488,7 @@
 //                 <a href="${baseUrl}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
 //               </td></tr>
 //               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-//                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //               </td></tr>
 //             </table>
 //           </td></tr>
@@ -2553,7 +2553,7 @@
 //                 <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
 //                   <table width="100%" cellpadding="0" cellspacing="0">
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
-//                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` � ${orderDetails.sellerName}` : ''}</td></tr>
+//                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` &bull; ${orderDetails.sellerName}` : ''}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
 //                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${st.toUpperCase()}</span></td></tr>
 //                     ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
@@ -2566,7 +2566,7 @@
 //                 <a href="${baseUrl}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
 //               </td></tr>
 //               <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-//                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //               </td></tr>
 //             </table>
 //           </td></tr>
@@ -2652,7 +2652,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -2747,7 +2747,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -2852,7 +2852,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Admin Notifications   </p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -2996,7 +2996,7 @@
 //               </tr>
 //               <tr>
 //                 <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
-//                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required —� Review &amp; Approve or Reject</p>
+//                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required &mdash; Review &amp; Approve or Reject</p>
 //                 </td>
 //               </tr>
 //               <tr>
@@ -3266,7 +3266,7 @@
 //               </tr>
 //               <tr>
 //                 <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
-//                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change —— Pending Your Review</p>
+//                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change &mdash; Pending Your Review</p>
 //                 </td>
 //               </tr>
 //               <tr>
@@ -3379,7 +3379,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -3462,7 +3462,7 @@
 //               <tr>
 //                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
 //                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
-//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+//                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
 //                 </td>
 //               </tr>
 //             </table>
@@ -3928,7 +3928,7 @@ const sendOTPEmail = async (email, otp, name) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email —— please do not reply.</p>
+                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email &mdash; please do not reply.</p>
                   <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;� 2026 Made in Arnhem Land. All rights reserved.</p>
                 </td>
               </tr>
@@ -4166,7 +4166,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     <tr>
       <td style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!</p>
-        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
         <p style="margin:0;color:#B8998F;font-size:10px;">
           🖨️ <strong>Print Tip:</strong> To see colors when printing, enable "Background graphics" in your browser's print settings.
         </p>
@@ -4345,7 +4345,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 
               <!-- Status Banner -->
               <tr>
-                <td style="background-color:${statusColor};padding:18px 40px;text-align:center;">
+                <td bgcolor="${statusColor}" style="background-color:${statusColor};padding:18px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:16px;font-weight:600;line-height:1.5;">${statusMessage}</p>
                 </td>
               </tr>
@@ -4361,7 +4361,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- Order Meta -->
               <tr>
                 <td style="padding:0 40px 20px;">
-                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td style="padding:20px;">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Details</p>
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
@@ -4375,12 +4375,12 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                       ${orderDetails.paymentMethod ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod}</td></tr>` : ''}
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
-                        <td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;">${(orderDetails.status || '').toUpperCase()}</span></td>
+                        <td style="padding:6px 0;text-align:right;"><table cellpadding="0" cellspacing="0" align="right"><tr><td bgcolor="${statusColor}" style="background-color:${statusColor};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;-webkit-text-fill-color:#ffffff;">${(orderDetails.status || '').toUpperCase()}</td></tr></table></td>
                       </tr>
                       ${orderDetails.trackingNumber && orderDetails.status?.toLowerCase() !== 'delivered' ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Tracking Number</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
                       ${orderDetails.estimatedDelivery && orderDetails.status?.toLowerCase() !== 'delivered' ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Est. Delivery</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date(orderDetails.estimatedDelivery).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td></tr>` : ''}
                     </table>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
 
@@ -4495,7 +4495,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
 
@@ -4572,7 +4572,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Alert banner -->
               <tr>
                 <td style="background-color:#C4603A;padding:12px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">⚠️ Action Required —— please process this order promptly</p>
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">⚠️ Action Required &mdash; please process this order promptly</p>
                 </td>
               </tr>
               <!-- Seller greeting -->
@@ -4644,7 +4644,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller! 💼</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -4722,7 +4722,7 @@ const sendContactFormEmail = async (email, name, subject, message) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Customer Support</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5035,7 +5035,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5143,7 +5143,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5257,7 +5257,7 @@ const sendSellerApprovedEmail = async (email, name) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Made in Arnhem Land family!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5393,7 +5393,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5495,7 +5495,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5607,7 +5607,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5727,7 +5727,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5819,7 +5819,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -5910,7 +5910,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -6250,7 +6250,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Admin Notification</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -6321,7 +6321,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
-              <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
+              <tr><td bgcolor="${statusColor}" style="background-color:${statusColor};padding:14px 40px;text-align:center;">
                 <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} is now <strong>${statusLabel}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
@@ -6329,22 +6329,22 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <p style="color:#666;font-size:14px;line-height:1.7;margin:0;">Admin has updated the status of one of your orders. Please review the details below.</p>
               </td></tr>
               <tr><td style="padding:0 40px 20px;">
-                <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td style="padding:20px;">
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${statusLabel.toUpperCase()}</span></td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><table cellpadding="0" cellspacing="0" align="right"><tr><td bgcolor="${statusColor}" style="background-color:${statusColor};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;-webkit-text-fill-color:#ffffff;">${statusLabel.toUpperCase()}</td></tr></table></td></tr>
                     ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
                     ${orderDetails.reason ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Reason</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.reason}</td></tr>` : ''}
                     ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking #</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
                   </table>
-                </div>
+                </td></tr></table>
               </td></tr>
               <tr><td style="padding:0 40px 36px;text-align:center;">
                 <a href="${baseUrl}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
               </td></tr>
-              <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+              <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
               </td></tr>
             </table>
           </td></tr>
@@ -6409,31 +6409,31 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Admin Panel</p>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
-              <tr><td style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} ➟ <strong>${st.toUpperCase()}</strong></p>
+              <tr><td bgcolor="${statusColor}" style="background-color:${statusColor};padding:14px 40px;text-align:center;">
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order #${orderDetails.displayId || ''} &rarr; <strong>${st.toUpperCase()}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
                 <p style="color:#666;font-size:14px;line-height:1.7;margin:0;">An order status has been updated by <strong>${updatedBy}${orderDetails.sellerName ? ` (${orderDetails.sellerName})` : ''}</strong>.</p>
               </td></tr>
               <tr><td style="padding:0 40px 20px;">
-                <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td style="padding:20px;">
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td></tr>
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` � ${orderDetails.sellerName}` : ''}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` &bull; ${orderDetails.sellerName}` : ''}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><span style="background-color:${statusColor};color:#fff;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;">${st.toUpperCase()}</span></td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><table cellpadding="0" cellspacing="0" align="right"><tr><td bgcolor="${statusColor}" style="background-color:${statusColor};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;-webkit-text-fill-color:#ffffff;">${st.toUpperCase()}</td></tr></table></td></tr>
                     ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
                     ${orderDetails.reason ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Reason</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.reason}</td></tr>` : ''}
                     ${orderDetails.trackingNumber ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Tracking #</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.trackingNumber}</td></tr>` : ''}
                   </table>
-                </div>
+                </td></tr></table>
               </td></tr>
               <tr><td style="padding:0 40px 36px;text-align:center;">
                 <a href="${baseUrl}/admindashboard/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
               </td></tr>
-              <tr><td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —� please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+              <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
               </td></tr>
             </table>
           </td></tr>
@@ -6519,7 +6519,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -6614,7 +6614,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Supporting Aboriginal Artists   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -6719,7 +6719,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Admin Notifications   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -6863,7 +6863,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
               </tr>
               <tr>
                 <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required —� Review &amp; Approve or Reject</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required &mdash; Review &amp; Approve or Reject</p>
                 </td>
               </tr>
               <tr>
@@ -7133,7 +7133,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
               </tr>
               <tr>
                 <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change —— Pending Your Review</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change &mdash; Pending Your Review</p>
                 </td>
               </tr>
               <tr>
@@ -7246,7 +7246,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>
@@ -7329,7 +7329,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email —— please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>

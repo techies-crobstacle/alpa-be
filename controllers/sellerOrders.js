@@ -691,9 +691,9 @@ exports.updateOrderStatus = async (request, reply) => {
         notifyAdminOrderStatusChange(orderRecord.id, normalizedStatus.toLowerCase(), adminDetails)
           .catch(err => console.error("Admin notification error (non-blocking):", err.message));
         
-        // Email all admins
+        // Email super admins only
         const admins = await prisma.user.findMany({ 
-          where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } }, 
+          where: { role: 'SUPER_ADMIN' }, 
           select: { email: true, name: true } 
         });
         
@@ -944,7 +944,7 @@ exports.updateTrackingInfo = async (request, reply) => {
           customerName, sellerName: seller?.name || 'Unknown',
           totalAmount: order.totalAmount.toString(), itemCount: order.items.length, trackingNumber
         }).catch(err => console.error("Admin in-app notification error (non-blocking):", err.message));
-        prisma.user.findMany({ where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } }, select: { email: true, name: true } })
+        prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
           .then(admins => {
             for (const admin of admins) {
               if (admin.email) {
