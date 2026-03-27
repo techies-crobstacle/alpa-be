@@ -1,6 +1,8 @@
 const prisma = require("../config/prisma");
 
-// ADD PRODUCT TO WISHLIST
+// ADD / TOGGLE PRODUCT IN WISHLIST
+// If the product is already in the wishlist it will be removed (toggle behaviour).
+// Response always includes `action` ("added" | "removed") and `isInWishlist` (bool).
 exports.addToWishlist = async (request, reply) => {
   try {
     const userId = request.user.userId;
@@ -37,13 +39,25 @@ exports.addToWishlist = async (request, reply) => {
     });
 
     if (existingWishlist) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Product already in wishlist" 
+      // Already in wishlist — remove it (toggle off)
+      await prisma.wishlist.delete({
+        where: {
+          userId_productId: {
+            userId,
+            productId
+          }
+        }
+      });
+
+      return reply.status(200).send({
+        success: true,
+        message: "Product removed from wishlist",
+        action: "removed",
+        isInWishlist: false
       });
     }
 
-    // Add to wishlist
+    // Not in wishlist — add it (toggle on)
     const wishlistItem = await prisma.wishlist.create({
       data: {
         userId,
@@ -62,9 +76,11 @@ exports.addToWishlist = async (request, reply) => {
       }
     });
 
-    return reply.status(201).send({
+    return reply.status(200).send({
       success: true,
-      message: "Product added to wishlist successfully",
+      message: "Product added to wishlist",
+      action: "added",
+      isInWishlist: true,
       wishlistItem
     });
 
