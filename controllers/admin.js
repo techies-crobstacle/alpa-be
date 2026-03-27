@@ -786,6 +786,75 @@ exports.softDeleteUser = async (request, reply) => {
       }
     });
 
+    // Immediately anonymize PII from all related tables — don't wait for 15-min scheduler
+    const immediateCleanupErrors = [];
+
+    // 1. Site feedback — has its own name/email columns copied at submission time
+    await prisma.siteFeedback.updateMany({
+      where: { userId },
+      data: { name: 'Anonymous User', email: 'hidden@privacy.local' }
+    }).catch(err => immediateCleanupErrors.push(`siteFeedback: ${err.message}`));
+
+    // 2. Contact messages — no userId FK, must match by original email
+    if (existingUser.email) {
+      await prisma.contactMessage.updateMany({
+        where: { email: existingUser.email },
+        data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+      }).catch(err => immediateCleanupErrors.push(`contactMessage: ${err.message}`));
+    }
+
+    // 2. Notifications — clear any message/title text containing the user's name or email
+    try {
+      const orConditions = [];
+      if (existingUser.name) {
+        orConditions.push({ message: { contains: existingUser.name } });
+        orConditions.push({ title:   { contains: existingUser.name } });
+      }
+      if (existingUser.email) {
+        orConditions.push({ message: { contains: existingUser.email } });
+        orConditions.push({ title:   { contains: existingUser.email } });
+      }
+      if (orConditions.length > 0) {
+        const affectedNotifs = await prisma.notification.findMany({
+          where: { OR: orConditions },
+          select: { id: true, title: true, message: true, metadata: true }
+        });
+        for (const notif of affectedNotifs) {
+          let title   = notif.title   || '';
+          let message = notif.message || '';
+          if (existingUser.name) {
+            const re = new RegExp(existingUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            title   = title.replace(re, 'Deleted User');
+            message = message.replace(re, 'Deleted User');
+          }
+          if (existingUser.email) {
+            const re = new RegExp(existingUser.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            title   = title.replace(re, 'hidden@privacy.local');
+            message = message.replace(re, 'hidden@privacy.local');
+          }
+          let metadata = notif.metadata;
+          if (metadata) {
+            try {
+              let s = typeof metadata === 'string' ? metadata : JSON.stringify(metadata);
+              if (existingUser.name)  s = s.replace(new RegExp(existingUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),  'gi'), 'Deleted User');
+              if (existingUser.email) s = s.replace(new RegExp(existingUser.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), 'hidden@privacy.local');
+              metadata = JSON.parse(s);
+            } catch (_) {}
+          }
+          await prisma.notification.update({
+            where: { id: notif.id },
+            data: { title, message, metadata }
+          });
+        }
+      }
+    } catch (err) {
+      immediateCleanupErrors.push(`notifications: ${err.message}`);
+    }
+
+    if (immediateCleanupErrors.length > 0) {
+      console.warn(`[SoftDelete] Cleanup warnings for user ${userId}:`, immediateCleanupErrors);
+    }
+
     const meta = extractRequestMeta(request);
     await auditLog({
       entityType: ENTITY_TYPES.USER || 'USER',
@@ -1107,7 +1176,15 @@ exports.cleanupExpiredUsers = async (request, reply) => {
               email: 'hidden@privacy.local'
             }
           }).catch(err => console.warn('[Manual-Cleanup] SiteFeedback error:', err.message)),
-          
+
+          // Contact messages — no userId FK, match by original email
+          user.email
+            ? prisma.contactMessage.updateMany({
+                where: { email: user.email },
+                data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+              }).catch(err => console.warn('[Manual-Cleanup] ContactMessage error:', err.message))
+            : Promise.resolve(),
+
           // Support tickets (no content changes needed - only user identity removal)
           // Support tickets will show as from deleted user through userId=null relationship
           
@@ -1325,7 +1402,15 @@ exports.autoCleanupExpiredUsers = async () => {
               email: 'hidden@privacy.local'
             }
           }).catch(err => console.warn('[Auto-Cleanup] SiteFeedback error:', err.message)),
-          
+
+          // Contact messages — no userId FK, match by original email
+          user.email
+            ? prisma.contactMessage.updateMany({
+                where: { email: user.email },
+                data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+              }).catch(err => console.warn('[Auto-Cleanup] ContactMessage error:', err.message))
+            : Promise.resolve(),
+
           // Support tickets (no content changes needed - only user identity removal)
           // Support tickets will show as from deleted user through userId=null relationship
           
