@@ -7359,6 +7359,219 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
   }
 };
 
+// ─── Refund Request Confirmation Email ───────────────────────────────────────
+const sendRefundRequestConfirmationEmail = async (email, customerName, refundDetails) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Refund Request Confirmation");
+    console.log("=".repeat(50));
+    console.log(`To: ${email}`);
+    console.log(`Order: ${refundDetails.displayId}`);
+    console.log(`Type: ${refundDetails.requestType}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const isFullRefund = refundDetails.requestType === 'REFUND';
+  const requestLabel = isFullRefund ? 'Full Refund' : 'Partial Refund';
+  const accentColor  = isFullRefund ? '#6B4C9A' : '#C4603A';
+  const baseUrl      = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+
+  const trackUrl = refundDetails.isGuest
+    ? `${baseUrl}/guest/track-order?orderId=${refundDetails.displayId}&email=${encodeURIComponent(email)}`
+    : `${dashboardUrl}/customerdashboard/orders`;
+
+  const refundTrackUrl = refundDetails.isGuest
+    ? `${baseUrl}/guest/refund`
+    : `${dashboardUrl}/customerdashboard/orders`;
+
+  const itemRows = (refundDetails.items || []).map(item => `
+    <tr style="border-bottom:1px solid #EDD8CC;">
+      <td style="padding:9px 12px;color:#333;font-size:14px;">${item.title || 'Product'}</td>
+      <td style="padding:9px 12px;text-align:center;color:#555;font-size:14px;">${item.quantity || 1}</td>
+    </tr>
+  `).join('');
+
+  const msg = {
+    to: email,
+    from: { name: senderName, email: senderEmail },
+    subject: `${requestLabel} Request Received – Order #${refundDetails.displayId} | Made in Arnhem Land`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          @media screen and (max-width: 640px) {
+            .email-container { width: 100% !important; max-width: calc(100% - 20px) !important; }
+            .email-body { padding: 20px !important; }
+          }
+        </style>
+      </head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="620" cellpadding="0" cellspacing="0" class="email-container" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
+
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">🔄 ${requestLabel} Request Received</h1>
+                </td>
+              </tr>
+
+              <!-- Status banner -->
+              <tr>
+                <td bgcolor="${accentColor}" style="background-color:${accentColor};padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">We have received your request and our team is reviewing it.</p>
+                </td>
+              </tr>
+
+              <!-- Greeting -->
+              <tr>
+                <td class="email-body" style="padding:30px 40px 0;">
+                  <p style="color:#3D1009;font-size:16px;margin:0 0 6px;">Hi <strong>${customerName}</strong>,</p>
+                  <p style="color:#666;font-size:14px;line-height:1.7;margin:0 0 24px;">
+                    Thank you for reaching out. Your <strong>${requestLabel.toLowerCase()}</strong> request for order 
+                    <strong>#${refundDetails.displayId}</strong> has been successfully submitted and is currently 
+                    <strong>under review</strong> by our team.
+                  </p>
+                </td>
+              </tr>
+
+              <!-- Request Summary -->
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;">
+                    <tr><td style="padding:20px;">
+                      <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Request Details</p>
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${refundDetails.displayId}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Request Type</strong></td>
+                          <td style="padding:6px 0;text-align:right;">
+                            <table cellpadding="0" cellspacing="0" align="right"><tr>
+                              <td bgcolor="${accentColor}" style="background-color:${accentColor};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;">${requestLabel.toUpperCase()}</td>
+                            </tr></table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">Under Review</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date Submitted</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td>
+                        </tr>
+                        ${refundDetails.totalAmount ? `
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">$${parseFloat(refundDetails.totalAmount).toFixed(2)}</td>
+                        </tr>` : ''}
+                      </table>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Reason -->
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <div style="background:#FFF8F6;border-left:4px solid ${accentColor};border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Reason Provided</p>
+                    <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${refundDetails.reason}</p>
+                  </div>
+                </td>
+              </tr>
+
+              ${itemRows ? `
+              <!-- Items requested -->
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Items in Request</p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
+                    <thead>
+                      <tr style="background-color:#5A1E12;">
+                        <th style="padding:10px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
+                        <th style="padding:10px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>${itemRows}</tbody>
+                  </table>
+                </td>
+              </tr>` : ''}
+
+              <!-- What happens next -->
+              <tr>
+                <td style="padding:0 40px 28px;">
+                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #C4603A;">
+                    <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What Happens Next?</p>
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding:5px 0;color:#555;font-size:14px;line-height:1.6;">
+                          <span style="color:${accentColor};font-weight:700;">1.</span>&nbsp; Our team will review your request within <strong>1–3 business days</strong>.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:5px 0;color:#555;font-size:14px;line-height:1.6;">
+                          <span style="color:${accentColor};font-weight:700;">2.</span>&nbsp; You will receive an email update once a decision has been made.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:5px 0;color:#555;font-size:14px;line-height:1.6;">
+                          <span style="color:${accentColor};font-weight:700;">3.</span>&nbsp; If approved, refunds are typically processed within <strong>3–5 business days</strong> to your original payment method.
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- CTA -->
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                    <td style="padding-right:8px;text-align:right;">
+                      <a href="${trackUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📦 View Order</a>
+                    </td>
+                    <td style="padding-left:8px;text-align:left;">
+                      <a href="${refundTrackUrl}" style="display:inline-block;background-color:${accentColor};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">🔄 Track Request</a>
+                    </td>
+                  </tr></table>
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">We appreciate your patience and will resolve this as quickly as possible.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                </td>
+              </tr>
+
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `
+  };
+
+  try {
+    await sgMail.send(buildMsg(msg));
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Refund request confirmation email error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = { 
   generateOTP, 
   sendOTPEmail, 
@@ -7391,7 +7604,8 @@ module.exports = {
   sendAdminOrderStatusEmail,
   sendSuperAdminBankChangeRequestEmail,
   sendSellerBankChangeApprovedEmail,
-  sendSellerBankChangeRejectedEmail
+  sendSellerBankChangeRejectedEmail,
+  sendRefundRequestConfirmationEmail
 };
 
 

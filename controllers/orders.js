@@ -25,7 +25,8 @@ const {
   sendAdminNewOrderEmail,
   sendSellerLowStockEmail,
   sendSellerOrderStatusEmail,
-  sendAdminOrderStatusEmail
+  sendAdminOrderStatusEmail,
+  sendRefundRequestConfirmationEmail
 } = require("../utils/emailService");
 const {
   notifyCustomerOrderStatusChange,
@@ -1395,6 +1396,20 @@ exports.requestRefund = async (request, reply) => {
       }
     });
 
+    // Send confirmation email to customer
+    const customerEmail = order.user?.email;
+    const customerNameForEmail = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
+    if (customerEmail) {
+      sendRefundRequestConfirmationEmail(customerEmail, customerNameForEmail, {
+        displayId: order.displayId,
+        requestType: normalizedRequestType,
+        reason: finalReason,
+        totalAmount: order.totalAmount,
+        isGuest: false,
+        items: items && Array.isArray(items) ? items : []
+      }).catch(err => console.error('Refund confirmation email error (non-blocking):', err.message));
+    }
+
     return reply.status(200).send({
       success: true,
       message: `${ticketTitle} submitted successfully`,
@@ -1646,6 +1661,16 @@ exports.requestGuestRefund = async (request, reply) => {
         }
       });
     }
+
+    // Send confirmation email to guest customer
+    sendRefundRequestConfirmationEmail(normalizedEmail, order.customerName || 'Customer', {
+      displayId: order.displayId,
+      requestType: normalizedRequestType,
+      reason: finalReason,
+      totalAmount: order.totalAmount,
+      isGuest: true,
+      items: items && Array.isArray(items) ? items : []
+    }).catch(err => console.error('Guest refund confirmation email error (non-blocking):', err.message));
 
     return reply.status(200).send({
       success: true,
