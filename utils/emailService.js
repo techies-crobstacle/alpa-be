@@ -4475,8 +4475,17 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <tr>
                 <td style="padding:10px 40px 36px;text-align:center;">
                   ${orderDetails.status?.toLowerCase() === 'delivered' ? `
-                    <!-- Delivered: Only show Download Invoice -->
-                    <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+                    <!-- Delivered: Download Invoice + Issue with order (guests only) -->
+                    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+                      <td style="text-align:center;padding-bottom:12px;" colspan="2">
+                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">📄 Download Invoice</a>
+                      </td>
+                    </tr>${orderDetails.isGuest ? `
+                    <tr>
+                      <td style="text-align:center;padding-top:4px;" colspan="2">
+                        <a href="https://apla-fe.vercel.app/guest/refund" style="display:inline-block;background-color:#ffffff;color:#7D2E1E;padding:11px 24px;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;border:2px solid #C4603A;">⚠️ Issue with your order? Request a refund</a>
+                      </td>
+                    </tr>` : ''}</table>
                   ` : `
                     <!-- Other statuses: Show both buttons -->
                     <table width="100%" cellpadding="0" cellspacing="0"><tr>

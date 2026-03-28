@@ -651,6 +651,7 @@ exports.updateOrderStatus = async (request, reply) => {
         shippingCountry: orderRecord.parentOrder.shippingCountry,
         shippingPhone: orderRecord.parentOrder.shippingPhone,
         isGuest: !orderRecord.parentOrder.userId,
+        orderSummary: (orderRecord.parentOrder?.shippingAddress || {}).orderSummary || undefined,
         products: orderRecord.items.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
@@ -816,6 +817,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         shippingZipCode: subOrderRecord.parentOrder.shippingZipCode,
         shippingCountry: subOrderRecord.parentOrder.shippingCountry,
         shippingPhone: subOrderRecord.parentOrder.shippingPhone,
+        shippingAddress: subOrderRecord.parentOrder.shippingAddress,
         userId: subOrderRecord.parentOrder.userId,
         createdAt: subOrderRecord.createdAt,
         parentOrderId: subOrderRecord.parentOrderId
@@ -922,6 +924,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
         isGuest: !order.userId,
+        orderSummary: (order.shippingAddress || {}).orderSummary || undefined,
         products: order.items?.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
