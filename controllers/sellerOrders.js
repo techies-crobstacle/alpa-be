@@ -990,6 +990,266 @@ exports.updateTrackingInfo = async (request, reply) => {
   }
 };
 
+// SELLER/ADMIN — BULK UPDATE ORDER STATUS
+exports.bulkUpdateOrderStatus = async (request, reply) => {
+  try {
+    const userId   = request.user.userId;
+    const userRole = request.user.role;
+    const isAdmin  = ['ADMIN', 'SUPER_ADMIN'].includes(userRole);
+
+    const { orderIds, status, trackingNumber, estimatedDelivery, statusReason } = request.body;
+
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return reply.status(400).send({ success: false, message: "orderIds array is required" });
+    }
+
+    const normalizedStatus = normalizeOrderStatus(status);
+    if (!normalizedStatus) {
+      return reply.status(400).send({
+        success: false,
+        message: `Invalid status. Allowed values: ${VALID_TARGET_STATUSES.join(', ')}`
+      });
+    }
+
+    const results = [];
+
+    for (const orderEntry of orderIds) {
+      // Each entry can be a plain string ID or an object { id, trackingNumber, estimatedDelivery, statusReason }
+      const orderId               = typeof orderEntry === 'string' ? orderEntry : orderEntry.id;
+      const entryTracking         = typeof orderEntry === 'object' ? (orderEntry.trackingNumber    ?? trackingNumber)    : trackingNumber;
+      const entryEstimatedDelivery= typeof orderEntry === 'object' ? (orderEntry.estimatedDelivery ?? estimatedDelivery) : estimatedDelivery;
+      const entryStatusReason     = typeof orderEntry === 'object' ? (orderEntry.statusReason      ?? statusReason)      : statusReason;
+
+      if (!orderId || typeof orderId !== 'string') {
+        results.push({ orderId, success: false, message: "Invalid or missing order ID" });
+        continue;
+      }
+
+      try {
+        // ── Resolve order record (sub-order, direct, or legacy) ───────────
+        let orderRecord = null;
+        let isDirectOrder = false;
+        let isSubOrder    = false;
+        let isLegacyOrder = false;
+
+        // 1. Try direct / legacy order first
+        const directOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          include: {
+            user:  true,
+            items: { include: { product: true } }
+          }
+        });
+
+        if (directOrder) {
+          if (directOrder.sellerId) {
+            orderRecord  = {
+              id:             directOrder.id,
+              sellerId:       directOrder.sellerId,
+              status:         directOrder.status || directOrder.overallStatus,
+              trackingNumber: directOrder.trackingNumber,
+              estimatedDelivery: directOrder.estimatedDelivery,
+              statusReason:   directOrder.statusReason,
+              subtotal:       directOrder.totalAmount,
+              items:          directOrder.items,
+              parentOrder:    directOrder,
+              customer:       directOrder.user,
+              customerName:   directOrder.customerName,
+              customerEmail:  directOrder.customerEmail,
+            };
+            isDirectOrder = true;
+          } else {
+            // Legacy: no sellerId on order — check items
+            const sellerItems = directOrder.items.filter(i => i.product?.sellerId === userId);
+            if (sellerItems.length > 0 || isAdmin) {
+              const effectiveItems = isAdmin ? directOrder.items : sellerItems;
+              orderRecord = {
+                id:             directOrder.id,
+                sellerId:       isAdmin ? (directOrder.sellerId || userId) : userId,
+                status:         directOrder.status || directOrder.overallStatus,
+                trackingNumber: directOrder.trackingNumber,
+                estimatedDelivery: directOrder.estimatedDelivery,
+                statusReason:   directOrder.statusReason,
+                subtotal:       effectiveItems.reduce((s, i) => s + parseFloat(i.price || 0) * i.quantity, 0),
+                items:          effectiveItems,
+                parentOrder:    directOrder,
+                customer:       directOrder.user,
+                customerName:   directOrder.customerName,
+                customerEmail:  directOrder.customerEmail,
+              };
+              isLegacyOrder = true;
+            }
+          }
+        }
+
+        // 2. Fall back to sub-order
+        if (!orderRecord) {
+          const subRec = await prisma.subOrder.findUnique({
+            where: { id: orderId },
+            include: {
+              parentOrder: { include: { user: true } },
+              items: { include: { product: true } }
+            }
+          });
+
+          if (subRec) {
+            orderRecord = {
+              id:             subRec.id,
+              sellerId:       subRec.sellerId,
+              status:         subRec.status,
+              trackingNumber: subRec.trackingNumber,
+              estimatedDelivery: subRec.estimatedDelivery,
+              statusReason:   subRec.statusReason,
+              subtotal:       subRec.subtotal,
+              items:          subRec.items,
+              parentOrder:    subRec.parentOrder,
+              customer:       subRec.parentOrder.user,
+              customerName:   subRec.parentOrder.customerName,
+              customerEmail:  subRec.parentOrder.customerEmail,
+            };
+            isSubOrder = true;
+          }
+        }
+
+        if (!orderRecord) {
+          results.push({ orderId, success: false, message: "Order not found" });
+          continue;
+        }
+
+        // ── Permission check ──────────────────────────────────────────────
+        if (!isAdmin && orderRecord.sellerId !== userId) {
+          results.push({ orderId, success: false, message: "Unauthorized — not your order" });
+          continue;
+        }
+
+        // ── Validate transition ───────────────────────────────────────────
+        const transitionCheck = validateStatusTransition({
+          currentStatus: orderRecord.status,
+          nextStatus:    normalizedStatus,
+          trackingNumber:    entryTracking,
+          estimatedDelivery: entryEstimatedDelivery,
+          reason:            entryStatusReason
+        });
+        if (!transitionCheck.isValid) {
+          results.push({ orderId, success: false, message: transitionCheck.message });
+          continue;
+        }
+
+        // ── Build update payload ──────────────────────────────────────────
+        const updateData = { status: normalizedStatus, updatedAt: new Date() };
+        if (entryTracking          !== undefined) updateData.trackingNumber    = entryTracking;
+        if (entryEstimatedDelivery !== undefined) updateData.estimatedDelivery = entryEstimatedDelivery ? new Date(entryEstimatedDelivery) : null;
+        if (entryStatusReason      !== undefined) updateData.statusReason      = entryStatusReason;
+
+        // ── Persist ───────────────────────────────────────────────────────
+        if (isDirectOrder || isLegacyOrder) {
+          await prisma.order.update({
+            where: { id: orderId },
+            data:  { ...updateData, overallStatus: normalizedStatus }
+          });
+        } else {
+          // Sub-order
+          await prisma.subOrder.update({ where: { id: orderId }, data: updateData });
+
+          // ── Aggregate parent order status ─────────────────────────────
+          const [parentRecord, allSiblings] = await Promise.all([
+            prisma.order.findUnique({
+              where:  { id: orderRecord.parentOrder.id },
+              select: { status: true, overallStatus: true }
+            }),
+            prisma.subOrder.findMany({
+              where:  { parentOrderId: orderRecord.parentOrder.id },
+              select: { status: true }
+            })
+          ]);
+
+          const currentParentStatus = parentRecord?.status || parentRecord?.overallStatus || 'CONFIRMED';
+          const siblingStatuses     = allSiblings.map(s => s.status);
+          let   newParentStatus     = currentParentStatus;
+
+          const allTerminal = siblingStatuses.every(s => TERMINAL_STATUSES.includes(s));
+          if (allTerminal) {
+            newParentStatus = siblingStatuses.every(s => s === 'CANCELLED') ? 'CANCELLED' : 'PARTIAL_REFUND';
+          } else {
+            const active = siblingStatuses.filter(s => !TERMINAL_STATUSES.includes(s));
+            if (active.length > 0) {
+              const minIndex = Math.min(...active.map(s => {
+                const idx = ORDER_STATUS_SEQUENCE.indexOf(s);
+                return idx === -1 ? Infinity : idx;
+              }));
+              if (minIndex !== Infinity) newParentStatus = ORDER_STATUS_SEQUENCE[minIndex];
+            }
+          }
+
+          if (newParentStatus !== currentParentStatus) {
+            await prisma.order.update({
+              where: { id: orderRecord.parentOrder.id },
+              data:  { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
+            });
+          }
+        }
+
+        // ── Non-blocking notifications ────────────────────────────────────
+        const customer      = orderRecord.customer;
+        const customerEmail = customer?.email || orderRecord.customerEmail;
+        const customerName  = (customer?.isDeleted ? 'Deleted User' : customer?.name) || orderRecord.customerName || 'Customer';
+
+        if (customerEmail) {
+          sendOrderStatusEmail(customerEmail, customerName, {
+            displayId:         orderRecord.parentOrder?.displayId || orderRecord.id,
+            status:            normalizedStatus.toLowerCase(),
+            reason:            entryStatusReason || undefined,
+            trackingNumber:    entryTracking || orderRecord.trackingNumber,
+            estimatedDelivery: entryEstimatedDelivery || orderRecord.estimatedDelivery,
+            totalAmount:       orderRecord.subtotal,
+            paymentMethod:     orderRecord.parentOrder?.paymentMethod,
+            orderDate:         orderRecord.createdAt,
+            products: orderRecord.items.map(item => ({
+              title:    item.product?.title || 'Product',
+              quantity: item.quantity,
+              price:    parseFloat(item.price)
+            }))
+          }).catch(err => console.error("Bulk status email error (non-blocking):", err.message));
+        }
+
+        if (customer?.id) {
+          notifyCustomerOrderStatusChange(customer.id, orderRecord.id, normalizedStatus.toLowerCase(), {
+            totalAmount: String(orderRecord.subtotal),
+            itemCount:   orderRecord.items.length,
+            reason:         entryStatusReason || undefined,
+            trackingNumber: entryTracking || updateData.trackingNumber
+          }).catch(err => console.error("Bulk customer notification error (non-blocking):", err.message));
+        }
+
+        results.push({
+          orderId,
+          success: true,
+          status:  mapStatusForDisplay(normalizedStatus),
+          type:    isDirectOrder ? 'DIRECT' : (isLegacyOrder ? 'LEGACY' : 'SUB_ORDER')
+        });
+
+      } catch (innerErr) {
+        console.error(`Bulk status update error for orderId ${orderId}:`, innerErr.message);
+        results.push({ orderId, success: false, message: innerErr.message });
+      }
+    }
+
+    const succeeded = results.filter(r => r.success).length;
+    const failed    = results.length - succeeded;
+
+    return reply.status(200).send({
+      success: true,
+      message: `Bulk update complete — ${succeeded} updated, ${failed} failed.`,
+      updatedStatus: normalizedStatus,
+      results
+    });
+
+  } catch (error) {
+    console.error("Bulk update order status error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 // SELLER — BULK UPDATE STOCK
 exports.bulkUpdateStock = async (request, reply) => {
   try {

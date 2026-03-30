@@ -1402,6 +1402,7 @@ exports.requestRefund = async (request, reply) => {
     if (customerEmail) {
       sendRefundRequestConfirmationEmail(customerEmail, customerNameForEmail, {
         displayId: order.displayId,
+        ticketId: supportTicket.id,
         requestType: normalizedRequestType,
         reason: finalReason,
         totalAmount: order.totalAmount,
@@ -1665,6 +1666,7 @@ exports.requestGuestRefund = async (request, reply) => {
     // Send confirmation email to guest customer
     sendRefundRequestConfirmationEmail(normalizedEmail, order.customerName || 'Customer', {
       displayId: order.displayId,
+      ticketId: supportTicket.id,
       requestType: normalizedRequestType,
       reason: finalReason,
       totalAmount: order.totalAmount,

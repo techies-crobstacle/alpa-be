@@ -4415,52 +4415,6 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     </thead>
                     <tbody>${productRows}</tbody>
                     <tfoot>
-                      <!-- Subtotal row -->
-                      <tr style="background-color:#fdf5f3;">
-                        <td colspan="3" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">Subtotal (inc. GST)</td>
-                        <td style="padding:10px 12px;text-align:right;color:#333;font-size:14px;">$${
-                          orderDetails.orderSummary
-                            ? parseFloat(orderDetails.orderSummary.subtotal || 0).toFixed(2)
-                            : (parseFloat(orderDetails.totalAmount || 0)).toFixed(2)
-                        }</td>
-                      </tr>
-                      <!-- Shipping row -->
-                      <tr style="background-color:#fdf5f3;">
-                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
-                          Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` — ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
-                        </td>
-                        <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
-                          orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0
-                            ? `$${parseFloat(orderDetails.orderSummary.shippingCost).toFixed(2)}`
-                            : '<span style="color:#2e7d32;font-weight:600;">FREE</span>'
-                        }</td>
-                      </tr>
-                      <!-- Coupon Discount row (only shown when a coupon was applied) -->
-                      ${orderDetails.orderSummary?.discountAmount && parseFloat(orderDetails.orderSummary.discountAmount) > 0 ? `
-                      <tr style="background-color:#fdf5f3;">
-                        <td colspan="3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
-                        <td style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
-                      </tr>` : ''}
-                      <!-- GST extracted row -->
-                      <tr style="background-color:#fdf5f3;border-top:1px dashed #ddd;">
-                        <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">
-                          GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
-                        </td>
-                        <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
-                          orderDetails.orderSummary
-                            ? parseFloat(orderDetails.orderSummary.gstAmount || 0).toFixed(2)
-                            : '0.00'
-                        }</td>
-                      </tr>
-                      <!-- Net ex-GST row -->
-                      <tr style="background-color:#fdf5f3;">
-                        <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">Net amount (ex. GST)</td>
-                        <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
-                          orderDetails.orderSummary
-                            ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
-                            : '0.00'
-                        }</td>
-                      </tr>
                       <!-- Grand Total row -->
                       <tr style="background-color:#F9EDE9;border-top:2px solid #C4603A;">
                         <td colspan="3" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
@@ -7449,6 +7403,10 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                     <tr><td style="padding:20px;">
                       <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Request Details</p>
                       <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Request ID</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${refundDetails.ticketId || '—'}</td>
+                        </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
                           <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${refundDetails.displayId}</td>
