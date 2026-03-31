@@ -62,7 +62,9 @@ const ALLOWED_ORIGINS = [
   'https://alpa-dashboard.vercel.app',   // Dashboard (seller/admin portal)
   'http://localhost:3000',               // Local dev — website
   'http://localhost:3001',               // Local dev — dashboard
-  'http://localhost:3002',               // Local dev — extra port
+  'http://localhost:3002',
+  'https://usa.authpoint.watchguard.com',
+                 // Local dev — extra port
 ];
 
 app.register(require("@fastify/cors"), {
