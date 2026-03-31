@@ -34,7 +34,18 @@ async function authRoutes(fastify, options) {
       session: false 
   }));
 
-  // Receives the SAML assertion from AuthPoint
+  // Receives the SAML assertion posted back to /saml/login (AuthPoint ACS URL)
+  fastify.post("/saml/login",
+      {
+        preValidation: fastifyPassport.authenticate("saml", {
+            failureRedirect: "/login?error=saml_fail",
+            session: false
+        })
+      },
+      samlCallback
+  );
+
+  // Receives the SAML assertion from AuthPoint (alternate ACS URL /saml/callback)
   fastify.post("/saml/callback", 
       {
         preValidation: fastifyPassport.authenticate("saml", { 
