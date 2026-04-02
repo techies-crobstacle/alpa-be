@@ -1,10 +1,14 @@
 /**
  * User Cleanup Scheduler
- * Auto-anonymizes user data after 15 minutes in recycle bin (TESTING)
- * Runs every 5 minutes to check for expired users
+ * Auto-anonymizes user data after the specified retention time in the recycle bin
+ * Runs on a configured interval to check for expired users
  */
 
 const cron = require('node-cron');
+
+// Configuration
+const SCHEDULER_INTERVAL = '*/5 * * * *'; // How often the cron job runs (currently: every 5 minutes)
+const CLEANUP_RETENTION_MINUTES = 15; // How many minutes a user stays in the recycle bin before being anonymized
 
 // Global flag to prevent multiple schedulers
 let schedulerRunning = false;
@@ -14,7 +18,6 @@ const { autoCleanupExpiredUsers } = require('../controllers/admin');
 
 /**
  * Initialize the user cleanup scheduler
- * Runs hourly to check for users ready for anonymization (TESTING: 10 hours)
  */
 const initializeUserCleanupScheduler = () => {
   // Prevent multiple schedulers (important for cloud deployments)
@@ -23,13 +26,14 @@ const initializeUserCleanupScheduler = () => {
     return;
   }
 
-  console.log('🔔 Initializing user cleanup scheduler (TESTING: every 5 minutes, 15min cleanup)...');
+  console.log(`🔔 Initializing user cleanup scheduler (Runs: ${SCHEDULER_INTERVAL}, Retention: ${CLEANUP_RETENTION_MINUTES}min)...`);
 
-  // Run every 5 minutes for testing (instead of hourly)
-  const task = cron.schedule('*/5 * * * *', async () => {
+  // Run on the specified interval
+  const task = cron.schedule(SCHEDULER_INTERVAL, async () => {
     try {
       console.log('⏰ [User Cleanup] Running scheduled cleanup...');
-      const result = await autoCleanupExpiredUsers();
+      // Pass the retention minutes directly from the config
+      const result = await autoCleanupExpiredUsers(CLEANUP_RETENTION_MINUTES);
       
       if (result.processed > 0) {
         console.log(`✅ [User Cleanup] Successfully anonymized ${result.processed} expired users`);
@@ -48,7 +52,7 @@ const initializeUserCleanupScheduler = () => {
   task.start();
   schedulerRunning = true;
   
-  console.log('✅ User cleanup scheduler initialized - will run every 5 minutes (TESTING)');
+  console.log(`✅ User cleanup scheduler initialized - will run according to interval (${SCHEDULER_INTERVAL}) with ${CLEANUP_RETENTION_MINUTES}m retention`);
 
   // Return task for testing/manual control
   return task;
@@ -57,10 +61,10 @@ const initializeUserCleanupScheduler = () => {
 /**
  * Manual cleanup trigger (for testing or admin actions)
  */
-const runManualCleanup = async () => {
+const runManualCleanup = async (retentionMinutes = CLEANUP_RETENTION_MINUTES) => {
   try {
-    console.log('🔧 [User Cleanup] Running manual cleanup...');
-    const result = await autoCleanupExpiredUsers();
+    console.log(`🔧 [User Cleanup] Running manual cleanup (Retention: ${retentionMinutes} minutes)...`);
+    const result = await autoCleanupExpiredUsers(retentionMinutes);
     console.log(`✅ [User Cleanup] Manual cleanup completed - ${result.processed} users processed`);
     return result;
   } catch (error) {

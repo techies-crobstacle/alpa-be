@@ -263,7 +263,7 @@ exports.getProductRatings = async (request, reply) => {
     const ratings = ratingsArray.slice(startIndex, endIndex).map(r => ({
       id: r.id,
       userId: r.userId,
-      userName: (r.user && r.user.isDeleted) ? 'Anonymous User' : (r.user ? r.user.name : 'Anonymous User'),
+      userName: (r.user && r.user.isDeleted) ? 'Deleted User' : (r.user ? r.user.name : 'Deleted User'),
       rating: r.rating,
       comment: r.comment,
       createdAt: r.createdAt,

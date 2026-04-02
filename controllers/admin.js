@@ -795,14 +795,14 @@ exports.softDeleteUser = async (request, reply) => {
       : { userId };
     await prisma.siteFeedback.updateMany({
       where: siteFeedbackWhere,
-      data: { name: 'Anonymous User', email: 'hidden@privacy.local' }
+      data: { name: 'Deleted User', email: 'hidden@privacy.local' }
     }).catch(err => immediateCleanupErrors.push(`siteFeedback: ${err.message}`));
 
     // 2. Contact messages — no userId FK, must match by original email
     if (existingUser.email) {
       await prisma.contactMessage.updateMany({
         where: { email: existingUser.email },
-        data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+        data: { fullName: 'Deleted User', email: 'hidden@privacy.local', phoneNumber: null }
       }).catch(err => immediateCleanupErrors.push(`contactMessage: ${err.message}`));
     }
 
@@ -1181,7 +1181,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
           prisma.siteFeedback.updateMany({
             where: { userId: user.id },
             data: { 
-              name: 'Anonymous User',
+              name: 'Deleted User',
               email: 'hidden@privacy.local'
             }
           }).catch(err => console.warn('[Manual-Cleanup] SiteFeedback error:', err.message)),
@@ -1190,7 +1190,7 @@ exports.cleanupExpiredUsers = async (request, reply) => {
           user.email
             ? prisma.contactMessage.updateMany({
                 where: { email: user.email },
-                data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+                data: { fullName: 'Deleted User', email: 'hidden@privacy.local', phoneNumber: null }
               }).catch(err => console.warn('[Manual-Cleanup] ContactMessage error:', err.message))
             : Promise.resolve(),
 
@@ -1374,7 +1374,7 @@ exports.backfillPiiAnonymization = async (request, reply) => {
           ],
           NOT: { email: 'hidden@privacy.local' } // skip already-anonymized rows
         },
-        data: { name: 'Anonymous User', email: 'hidden@privacy.local' }
+        data: { name: 'Deleted User', email: 'hidden@privacy.local' }
       }).catch(() => ({ count: 0 }));
       siteFeedbackFixed += sfResult.count;
 
@@ -1385,7 +1385,7 @@ exports.backfillPiiAnonymization = async (request, reply) => {
             email: originalEmail,
             NOT: { email: 'hidden@privacy.local' }
           },
-          data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+          data: { fullName: 'Deleted User', email: 'hidden@privacy.local', phoneNumber: null }
         }).catch(() => ({ count: 0 }));
         contactMessageFixed += cmResult.count;
       }
@@ -1415,22 +1415,22 @@ exports.backfillPiiAnonymization = async (request, reply) => {
 };
 
 // SCHEDULED AUTO-CLEANUP — Run this every 5 minutes via cron job or scheduler (TESTING: 15 minutes)
-exports.autoCleanupExpiredUsers = async () => {
+exports.autoCleanupExpiredUsers = async (retentionMinutes = 15) => {
   try {
-    const fifteenMinutesAgo = new Date();
-    fifteenMinutesAgo.setMinutes(fifteenMinutesAgo.getMinutes() - 15);
+    const cutoffTime = new Date();
+    cutoffTime.setMinutes(cutoffTime.getMinutes() - retentionMinutes);
 
     const expiredUsers = await prisma.user.findMany({
       where: {
         isDeleted: true,
-        deletedAt: { lte: fifteenMinutesAgo },
+        deletedAt: { lte: cutoffTime },
         email: { not: { contains: '@deleted.local' } }
       },
       select: { id: true, name: true, email: true, deletedAt: true }
     });
 
     if (expiredUsers.length === 0) {
-      console.log('[Auto-Cleanup] No expired users to anonymize (15min testing)');
+      console.log(`[Auto-Cleanup] No expired users to anonymize (${retentionMinutes}min testing)`);
       return { processed: 0, message: 'No expired users found' };
     }
 
@@ -1447,7 +1447,7 @@ exports.autoCleanupExpiredUsers = async () => {
             phone: null,
             profileImage: null,
             password: 'ANONYMIZED_ACCOUNT',
-            deletedReason: `Auto-anonymized after 8 hours by system on ${new Date().toISOString()} (TESTING)`
+            deletedReason: `Auto-anonymized after ${retentionMinutes} minutes by system on ${new Date().toISOString()}`
           }
         });
 
@@ -1487,7 +1487,7 @@ exports.autoCleanupExpiredUsers = async () => {
           prisma.siteFeedback.updateMany({
             where: { userId: user.id },
             data: { 
-              name: 'Anonymous User',
+              name: 'Deleted User',
               email: 'hidden@privacy.local'
             }
           }).catch(err => console.warn('[Auto-Cleanup] SiteFeedback error:', err.message)),
@@ -1496,7 +1496,7 @@ exports.autoCleanupExpiredUsers = async () => {
           user.email
             ? prisma.contactMessage.updateMany({
                 where: { email: user.email },
-                data: { fullName: 'Anonymous User', email: 'hidden@privacy.local', phoneNumber: null }
+                data: { fullName: 'Deleted User', email: 'hidden@privacy.local', phoneNumber: null }
               }).catch(err => console.warn('[Auto-Cleanup] ContactMessage error:', err.message))
             : Promise.resolve(),
 
@@ -1520,7 +1520,8 @@ exports.autoCleanupExpiredUsers = async () => {
             },
             data: { 
               message: 'Personal notification content hidden for privacy',
-              title: 'Privacy Notice'
+              title: 'Privacy Notice',
+              metadata: null
             }
           }).catch(err => console.warn('[Auto-Cleanup] Notification error:', err.message)),
           
