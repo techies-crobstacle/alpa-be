@@ -1,4 +1,67 @@
 const { validateLocation } = require('../utils/googleLocationService');
+const axios = require('axios');
+
+const COUNTRY_API_HEADERS = {
+  'X-CSCAPI-KEY': process.env.COUNTRY_STATE_CITY_API_KEY
+};
+
+// In-memory cache to prevent hitting the 100 req/day API limit!
+const locationCache = {
+  countries: null,
+  states: {},
+  cities: {}
+};
+
+const getCountries = async (request, reply) => {
+  try {
+    if (locationCache.countries) {
+      return reply.send({ success: true, data: locationCache.countries });
+    }
+    const { data } = await axios.get('https://api.countrystatecity.in/v1/countries', {
+      headers: COUNTRY_API_HEADERS
+    });
+    locationCache.countries = data; // Save to cache
+    return reply.send({ success: true, data });
+  } catch (error) {
+    console.error('❌ Error fetching countries:', error?.response?.data || error.message);
+    return reply.code(500).send({ success: false, message: 'Failed to fetch countries' });
+  }
+};
+
+const getStates = async (request, reply) => {
+  const { ciso } = request.params;
+  try {
+    if (locationCache.states[ciso]) {
+      return reply.send({ success: true, data: locationCache.states[ciso] });
+    }
+    const { data } = await axios.get(`https://api.countrystatecity.in/v1/countries/${ciso}/states`, {
+      headers: COUNTRY_API_HEADERS
+    });
+    locationCache.states[ciso] = data; // Save to cache
+    return reply.send({ success: true, data });
+  } catch (error) {
+    console.error('❌ Error fetching states:', error?.response?.data || error.message);
+    return reply.code(500).send({ success: false, message: 'Failed to fetch states' });
+  }
+};
+
+const getCities = async (request, reply) => {
+  const { ciso, siso } = request.params;
+  const cacheKey = `${ciso}-${siso}`;
+  try {
+    if (locationCache.cities[cacheKey]) {
+      return reply.send({ success: true, data: locationCache.cities[cacheKey] });
+    }
+    const { data } = await axios.get(`https://api.countrystatecity.in/v1/countries/${ciso}/states/${siso}/cities`, {
+      headers: COUNTRY_API_HEADERS
+    });
+    locationCache.cities[cacheKey] = data; // Save to cache
+    return reply.send({ success: true, data });
+  } catch (error) {
+    console.error('❌ Error fetching cities:', error?.response?.data || error.message);
+    return reply.code(500).send({ success: false, message: 'Failed to fetch cities' });
+  }
+};
 
 // Backend: Accept place_id and validate via Geocoding API
 const validate = async (request, reply) => {
@@ -104,4 +167,4 @@ const autocomplete = async (request, reply) => {
   }
 };
 
-module.exports = { validate, autocomplete };
+module.exports = { validate, autocomplete, getCountries, getStates, getCities };

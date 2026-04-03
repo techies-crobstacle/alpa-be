@@ -156,12 +156,12 @@ exports.createPaymentIntent = async (request, reply) => {
       shippingAddressLine:
         typeof shippingAddress === "string"
           ? shippingAddress
-          : shippingAddress?.addressLine,
-      shippingCity: city,
-      shippingState: state,
-      shippingZipCode: zipCode,
-      shippingCountry: country,
-      shippingPhone: mobileNumber,
+          : shippingAddress?.shippingAddress || shippingAddress?.addressLine || shippingAddress?.address || "",
+      shippingCity: city || shippingAddress?.city || "",
+      shippingState: state || shippingAddress?.state || "",
+      shippingZipCode: zipCode || shippingAddress?.zipCode || "",
+      shippingCountry: country || shippingAddress?.country || "Australia",
+      shippingPhone: mobileNumber || shippingAddress?.mobileNumber || user.phone || "",
       paymentMethod: "Credit/Debit Card",
       status: "CONFIRMED",
       paymentStatus: "PENDING",
@@ -715,11 +715,13 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       discountAmount: discountAmount > 0 ? discountAmount : null,
       shippingAddress: shippingAddressData,
       shippingAddressLine:
-        typeof shippingAddress === "string" ? shippingAddress : shippingAddress?.addressLine,
-      shippingCity: city,
-      shippingState: state,
-      shippingZipCode: zipCode,
-      shippingCountry: country,
+        typeof shippingAddress === "string"
+          ? shippingAddress
+          : shippingAddress?.shippingAddress || shippingAddress?.addressLine || shippingAddress?.address || "",
+      shippingCity: city || shippingAddress?.city || "",
+      shippingState: state || shippingAddress?.state || "",
+      shippingZipCode: zipCode || shippingAddress?.zipCode || "",
+      shippingCountry: country || shippingAddress?.country || "Australia",
       shippingPhone: mobileNumber || customerPhone,
       paymentMethod: "Credit/Debit Card",
       status: "CONFIRMED",
