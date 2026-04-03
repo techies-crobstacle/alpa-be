@@ -23,5 +23,5 @@ async function wishlistRoutes(fastify, options) {
   // Move wishlist item to cart
   fastify.post("/move-to-cart/:productId", { preHandler: authenticateUser }, wishlistController.moveToCart);
 }
-
+// fix
 module.exports = wishlistRoutes;
