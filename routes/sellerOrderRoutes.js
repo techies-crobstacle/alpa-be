@@ -25,6 +25,12 @@ async function sellerOrderRoutes(fastify, options) {
 
   // Get sales analytics
   fastify.get("/analytics", { preHandler: authenticateSeller }, sellerOrderController.getSalesAnalytics);
+
+  // Get all refund requests for orders containing this seller's products
+  fastify.get("/refund-requests", { preHandler: authenticateSeller }, sellerOrderController.getSellerRefundRequests);
+
+  // Get a single refund request detail (only if the order belongs to this seller)
+  fastify.get("/refund-requests/:requestId", { preHandler: authenticateSeller }, sellerOrderController.getSellerRefundRequestById);
 }
 
 module.exports = sellerOrderRoutes;

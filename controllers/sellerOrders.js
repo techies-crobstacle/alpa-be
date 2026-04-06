@@ -1634,5 +1634,316 @@ exports.getSalesAnalytics = async (request, reply) => {
   }
 };
 
+// ── Helpers for refund request formatting ───────────────────────────────────
 
+const formatRequestTypeLabel = (type) => {
+  if (!type) return null;
+  const map = {
+    REFUND:          'Full Refund',
+    PARTIAL_REFUND:  'Partial Refund'
+  };
+  return map[type.toUpperCase()] || type;
+};
 
+const parseRefundReason = (message) => {
+  // Stop reason at "Requested Items:" list or JSON block so we don't capture extra content
+  const reasonMatch = (message || '').match(/Reason:\s*([\s\S]+?)(?=\nRequested Items:|\n---ITEMS_JSON---|$)/i);
+  return reasonMatch?.[1]?.trim() || null;
+};
+
+const parseRequestedItems = (message) => {
+  try {
+    const match = (message || '').match(/---ITEMS_JSON---\n([\s\S]+)/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[1].trim());
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const getSellerItemsForOrder = (order, sellerId) => {
+  // Items directly on the order belonging to this seller
+  const directItems = (order.items || []).filter(i => i.product?.sellerId === sellerId);
+  // Items via sub-orders belonging to this seller
+  const subOrderItems = (order.subOrders || [])
+    .filter(s => s.sellerId === sellerId)
+    .flatMap(s => s.items || []);
+  const combined = directItems.length > 0 ? directItems : subOrderItems;
+  return combined.map(item => ({
+    id:         item.id,
+    productId:  item.product?.id || item.productId,
+    title:      item.product?.title || 'Product',
+    image:      item.product?.featuredImage || null,
+    category:   item.product?.category || null,
+    sellerName: item.product?.sellerName || null,
+    quantity:   item.quantity,
+    price:      item.price
+  }));
+};
+
+// SELLER — LIST ALL REFUND REQUESTS FOR THIS SELLER'S ORDERS
+exports.getSellerRefundRequests = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+
+    // Step 1: Collect all order IDs that involve this seller
+    const [directOrderIds, subOrderRefs, oldOrderIds] = await Promise.all([
+      prisma.order.findMany({
+        where: { sellerId },
+        select: { id: true }
+      }),
+      prisma.subOrder.findMany({
+        where: { sellerId },
+        select: { parentOrderId: true }
+      }),
+      prisma.order.findMany({
+        where: {
+          sellerId: null,
+          items: { some: { product: { sellerId } } }
+        },
+        select: { id: true }
+      })
+    ]);
+
+    const allOrderIds = [...new Set([
+      ...directOrderIds.map(o => o.id),
+      ...subOrderRefs.map(s => s.parentOrderId),
+      ...oldOrderIds.map(o => o.id)
+    ])];
+
+    if (allOrderIds.length === 0) {
+      return reply.status(200).send({ success: true, requests: [], count: 0 });
+    }
+
+    // Step 2: Fetch refund request tickets for those orders
+    const tickets = await prisma.supportTicket.findMany({
+      where: {
+        category: 'REFUND_REQUEST',
+        orderId: { in: allOrderIds }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (tickets.length === 0) {
+      return reply.status(200).send({ success: true, requests: [], count: 0 });
+    }
+
+    // Step 3: Fetch orders with seller-relevant items
+    const ticketOrderIds = [...new Set(tickets.map(t => t.orderId).filter(Boolean))];
+    const orders = await prisma.order.findMany({
+      where: { id: { in: ticketOrderIds } },
+      select: {
+        id: true,
+        displayId: true,
+        status: true,
+        overallStatus: true,
+        totalAmount: true,
+        customerName: true,
+        customerEmail: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+        items: {
+          include: {
+            product: {
+              select: { id: true, title: true, featuredImage: true, price: true, category: true, sellerName: true, sellerId: true }
+            }
+          }
+        },
+        subOrders: {
+          where: { sellerId },
+          select: {
+            id: true,
+            sellerId: true,
+            subDisplayId: true,
+            items: {
+              include: {
+                product: {
+                  select: { id: true, title: true, featuredImage: true, price: true, category: true, sellerName: true, sellerId: true }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const orderMap = new Map(orders.map(o => [o.id, o]));
+
+    const requests = tickets.map(ticket => {
+      const order = ticket.orderId ? orderMap.get(ticket.orderId) : null;
+      const sellerItems = order ? getSellerItemsForOrder(order, sellerId) : [];
+      const customerName = order?.user?.name || order?.customerName || null;
+      const customerEmail = order?.user?.email || order?.customerEmail || null;
+      const requestedItems = parseRequestedItems(ticket.message);
+      const sellerSubOrder = order?.subOrders?.find(s => s.sellerId === sellerId);
+      const subOrderDisplayId = sellerSubOrder?.subDisplayId
+        ? `#${sellerSubOrder.subDisplayId}`
+        : null;
+
+      // Filter requestedItems to only this seller's products
+      const sellerProductIds = new Set(sellerItems.map(i => i.productId).filter(Boolean));
+      const filteredRequestedItems = requestedItems
+        ? requestedItems.filter(ri => sellerProductIds.has(ri.productId))
+        : null;
+
+      return {
+        id:                 ticket.id,
+        requestId:          ticket.id,
+        orderId:            ticket.orderId,
+        orderDisplayId:     order ? `#${order.displayId}` : null,
+        subOrderDisplayId,
+        requestType:        formatRequestTypeLabel(ticket.requestType),
+        subject:            ticket.subject,
+        reason:             parseRefundReason(ticket.message),
+        status:             ticket.status,
+        priority:           ticket.priority,
+        attachments:        ticket.attachments || [],
+        adminResponse:      ticket.response,
+        customerName,
+        customerEmail,
+        order: order ? {
+          id:          order.id,
+          displayId:   `#${order.displayId}`,
+          status:      order.status || order.overallStatus,
+          totalAmount: order.totalAmount,
+          createdAt:   order.createdAt
+        } : null,
+        requestedItems: filteredRequestedItems,
+        sellerItems,
+        createdAt:  ticket.createdAt,
+        updatedAt:  ticket.updatedAt
+      };
+    });
+
+    return reply.status(200).send({
+      success: true,
+      requests,
+      count: requests.length
+    });
+  } catch (error) {
+    console.error('Get seller refund requests error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// SELLER — GET SINGLE REFUND REQUEST DETAIL
+exports.getSellerRefundRequestById = async (request, reply) => {
+  try {
+    const sellerId = request.user.userId;
+    const { requestId } = request.params;
+
+    const ticket = await prisma.supportTicket.findFirst({
+      where: {
+        id: requestId,
+        category: 'REFUND_REQUEST'
+      }
+    });
+
+    if (!ticket) {
+      return reply.status(404).send({ success: false, message: 'Refund request not found' });
+    }
+
+    if (!ticket.orderId) {
+      return reply.status(403).send({ success: false, message: 'Not authorized to view this request' });
+    }
+
+    // Verify the order belongs to this seller
+    const order = await prisma.order.findFirst({
+      where: {
+        id: ticket.orderId,
+        OR: [
+          { sellerId },
+          { subOrders: { some: { sellerId } } },
+          { items: { some: { product: { sellerId } } } }
+        ]
+      },
+      select: {
+        id: true,
+        displayId: true,
+        status: true,
+        overallStatus: true,
+        totalAmount: true,
+        customerName: true,
+        customerEmail: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+        items: {
+          include: {
+            product: {
+              select: { id: true, title: true, featuredImage: true, price: true, category: true, sellerName: true, sellerId: true }
+            }
+          }
+        },
+        subOrders: {
+          where: { sellerId },
+          select: {
+            id: true,
+            sellerId: true,
+            subDisplayId: true,
+            items: {
+              include: {
+                product: {
+                  select: { id: true, title: true, featuredImage: true, price: true, category: true, sellerName: true, sellerId: true }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(403).send({ success: false, message: 'Not authorized to view this request' });
+    }
+
+    const sellerItems = getSellerItemsForOrder(order, sellerId);
+    const customerName  = order.user?.name  || order.customerName  || null;
+    const customerEmail = order.user?.email || order.customerEmail || null;
+    const requestedItems = parseRequestedItems(ticket.message);
+    const sellerSubOrder = order.subOrders?.find(s => s.sellerId === sellerId);
+    const subOrderDisplayId = sellerSubOrder?.subDisplayId
+      ? `#${sellerSubOrder.subDisplayId}`
+      : null;
+
+    // Filter requestedItems to only this seller's products
+    const sellerProductIds = new Set(sellerItems.map(i => i.productId).filter(Boolean));
+    const filteredRequestedItems = requestedItems
+      ? requestedItems.filter(ri => sellerProductIds.has(ri.productId))
+      : null;
+
+    return reply.status(200).send({
+      success: true,
+      request: {
+        id:               ticket.id,
+        requestId:        ticket.id,
+        orderId:          ticket.orderId,
+        orderDisplayId:   `#${order.displayId}`,
+        subOrderDisplayId,
+        requestType:      formatRequestTypeLabel(ticket.requestType),
+        subject:          ticket.subject,
+        reason:           parseRefundReason(ticket.message),
+        status:           ticket.status,
+        priority:         ticket.priority,
+        attachments:      ticket.attachments || [],
+        adminResponse:    ticket.response,
+        customerName,
+        customerEmail,
+        order: {
+          id:          order.id,
+          displayId:   `#${order.displayId}`,
+          status:      order.status || order.overallStatus,
+          totalAmount: order.totalAmount,
+          createdAt:   order.createdAt
+        },
+        requestedItems: filteredRequestedItems,
+        sellerItems,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Get seller refund request by id error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};

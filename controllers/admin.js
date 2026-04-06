@@ -291,6 +291,7 @@ exports.getAllOrders = async (request, reply) => {
       itemCount:    order.items.length,
       createdAt:    order.createdAt,
       updatedAt:    order.updatedAt,
+      ...(order.user ? {} : { isGuest: 'guest' }),
     }));
 
     // Group sub-orders by parentOrderId so we can assign A/B/C suffixes correctly
@@ -323,6 +324,7 @@ exports.getAllOrders = async (request, reply) => {
         itemCount:       subOrder.items.length,
         createdAt:       subOrder.createdAt,
         updatedAt:       subOrder.updatedAt,
+        ...(subOrder.parentOrder?.user ? {} : { isGuest: 'guest' }),
       };
     });
 
@@ -364,6 +366,7 @@ exports.getAllOrders = async (request, reply) => {
         itemCount:       group.items.length,
         createdAt:       order.createdAt,
         updatedAt:       order.updatedAt,
+        ...(order.user ? {} : { isGuest: 'guest' }),
       }));
     }).flat();
 
@@ -597,7 +600,8 @@ exports.getOrdersBySellerId = async (request, reply) => {
       
       items: trimItems(subOrder.items),
       isSubOrder: true,
-      sellerSpecific: true
+      sellerSpecific: true,
+      ...(subOrder.parentOrder?.user ? {} : { isGuest: 'guest' })
     });});
 
     // Transform direct orders
@@ -633,7 +637,8 @@ exports.getOrdersBySellerId = async (request, reply) => {
       user: order.user,
       items: trimItems(order.items),
       isSubOrder: false,
-      sellerSpecific: true
+      sellerSpecific: true,
+      ...(order.user ? {} : { isGuest: 'guest' })
     }));
 
     // Transform legacy multi-seller old orders (show only this seller's items)
@@ -667,7 +672,8 @@ exports.getOrdersBySellerId = async (request, reply) => {
       user: order.user,
       items: trimItems(order.items),
       isSubOrder: true,
-      sellerSpecific: true
+      sellerSpecific: true,
+      ...(order.user ? {} : { isGuest: 'guest' })
     }));
 
     // Combine all order types and sort by creation date (newest first)
@@ -4171,6 +4177,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
           : 'LEGACY';
 
       // ── Customer ──
+      const isGuest = !order.user && !order.userId;
       const customer = order.user
         ? { id: order.user.id,  name: order.user.name,  email: order.user.email,  phone: order.user.phone  }
         : { id: null,           name: order.customerName, email: order.customerEmail, phone: order.customerPhone };
@@ -4199,6 +4206,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         id:                    order.id,
         displayId:             toDisplayId(order.displayId),
         orderType:             detectedType,
+        ...(isGuest ? { isGuest: 'guest' } : {}),
         status:                resolvedStatus,
         overallStatus:         resolvedStatus,
         paymentStatus:         order.paymentStatus,
@@ -4719,6 +4727,188 @@ exports.deleteSponsoredSection = async (request, reply) => {
   } catch (error) {
     console.error('deleteSponsoredSection error:', error);
     return reply.status(500).send({ success: false, error: error.message });
+  }
+};
+
+// ADMIN - GET ALL REFUND REQUESTS
+exports.getAllRefundRequests = async (request, reply) => {
+  try {
+    const page = parseInt(request.query.page) || 1;
+    const limit = parseInt(request.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const statusFilter = request.query.status;
+    let whereClause = {
+      category: 'REFUND_REQUEST'
+    };
+
+    if (statusFilter && statusFilter !== 'ALL') {
+      whereClause.status = statusFilter;
+    }
+
+    const [tickets, totalCount] = await Promise.all([
+      prisma.supportTicket.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          user: { select: { id: true, name: true, email: true } }
+        }
+      }),
+      prisma.supportTicket.count({ where: whereClause })
+    ]);
+
+    // Fetch order details manually since there's no direct relation in Prisma
+    const orderIds = [...new Set(tickets.map(t => t.orderId).filter(Boolean))];
+    let ordersMap = new Map();
+    if (orderIds.length > 0) {
+      const orders = await prisma.order.findMany({
+        where: { id: { in: orderIds } },
+        select: {
+          id: true,
+          displayId: true,
+          totalAmount: true,
+          status: true,
+          items: {
+            select: {
+              id: true,
+              quantity: true,
+              price: true,
+              product: {
+                select: {
+                  id: true,
+                  title: true,
+                  featuredImage: true,
+                  price: true,
+                  category: true,
+                  sellerName: true,
+                  sellerId: true
+                }
+              }
+            }
+          },
+          subOrders: {
+            select: {
+              id: true,
+              sellerId: true,
+              items: {
+                select: {
+                  id: true,
+                  quantity: true,
+                  price: true,
+                  product: {
+                    select: {
+                      id: true,
+                      title: true,
+                      featuredImage: true,
+                      price: true,
+                      category: true,
+                      sellerName: true,
+                      sellerId: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      orders.forEach(o => ordersMap.set(o.id, o));
+    }
+
+    const parseRequestedItems = (message) => {
+      try {
+        const match = (message || '').match(/---ITEMS_JSON---\n([\s\S]+)/);
+        if (!match) return null;
+        const parsed = JSON.parse(match[1].trim());
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const parseRefundReason = (message) => {
+      const reasonMatch = (message || '').match(/Reason:\s*([\s\S]+?)(?=\nRequested Items:|\n---ITEMS_JSON---|$)/i);
+      return reasonMatch?.[1]?.trim() || null;
+    };
+
+    const formatOrderItems = (order) => {
+      if (!order) return [];
+      const direct = (order.items || []).map(item => ({
+        id:          item.id,
+        productId:   item.product?.id || null,
+        title:       item.product?.title || 'Product',
+        image:       item.product?.featuredImage || null,
+        category:    item.product?.category || null,
+        sellerName:  item.product?.sellerName || null,
+        sellerId:    item.product?.sellerId || null,
+        quantity:    item.quantity,
+        price:       item.price
+      }));
+      const fromSubs = (order.subOrders || []).flatMap(s =>
+        (s.items || []).map(item => ({
+          id:          item.id,
+          productId:   item.product?.id || null,
+          title:       item.product?.title || 'Product',
+          image:       item.product?.featuredImage || null,
+          category:    item.product?.category || null,
+          sellerName:  item.product?.sellerName || null,
+          sellerId:    item.product?.sellerId || null,
+          quantity:    item.quantity,
+          price:       item.price
+        }))
+      );
+      return direct.length > 0 ? direct : fromSubs;
+    };
+
+    const formattedTickets = tickets.map(ticket => {
+      const order = ordersMap.get(ticket.orderId);
+      const requestTypeDisplay =
+        ticket.requestType === 'REFUND' ? 'Full Refund' :
+        ticket.requestType === 'PARTIAL_REFUND' ? 'Partial Refund' :
+        ticket.requestType || null;
+      const allOrderItems = formatOrderItems(order);
+      // Build a productId → image lookup from the DB-fetched order items
+      const imageByProductId = Object.fromEntries(
+        allOrderItems.map(i => [i.productId, i.image]).filter(([id]) => id)
+      );
+      const rawRequestedItems = parseRequestedItems(ticket.message);
+      // Enrich requested items with the product image
+      const requestedItems = rawRequestedItems
+        ? rawRequestedItems.map(ri => ({
+            ...ri,
+            image: imageByProductId[ri.productId] ?? null
+          }))
+        : null;
+      return {
+        ...ticket,
+        requestType: requestTypeDisplay,
+        reason: parseRefundReason(ticket.message),
+        orderStatus: order?.status || 'UNKNOWN',
+        orderDisplayId: order ? `#${order.displayId}` : null,
+        orderTotalAmount: order?.totalAmount || 0,
+        isGuest: !ticket.userId,
+        // requestedItems: only what the customer selected (null = full order / no selection)
+        requestedItems,
+        // orderItems: all items in the order (for admin context)
+        orderItems: allOrderItems
+      };
+    });
+
+    return reply.status(200).send({
+      success: true,
+      data: formattedTickets,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching refund requests:', error);
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 

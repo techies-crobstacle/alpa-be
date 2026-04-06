@@ -1,6 +1,11 @@
 const prisma = require("../config/prisma");
 const crypto = require("crypto");
+const path = require('path');
+const fs = require('fs');
+const { pipeline } = require('stream/promises');
+const os = require('os');
 const { checkInventory } = require("../utils/checkInventory");
+const { uploadToCloudinary } = require('../config/cloudinary');
 
 // ─── Short Display ID Generator ───────────────────────────────────────────────
 const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -1221,16 +1226,17 @@ exports.cancelOrder = async (request, reply) => {
   }
 };
 
-const formatRefundRequestFromTicket = (ticket) => {
+const formatRefundRequestFromTicket = (ticket, orderDisplayId = null) => {
   const message = ticket.message || '';
-  const orderIdMatch = message.match(/Order ID:\s*(.+)/i);
   const requestTypeMatch = message.match(/Request Type:\s*(.+)/i);
-  const reasonMatch = message.match(/Reason:\s*([\s\S]+)/i);
+  // Stop reason at "Requested Items:" or "---ITEMS_JSON---" delimiter so we don't capture the items blob
+  const reasonMatch = message.match(/Reason:\s*([\s\S]+?)(?=\nRequested Items:|\n---ITEMS_JSON---|$)/i);
 
   return {
     id: ticket.id,
     requestId: ticket.id,
-    orderId: ticket.orderId || orderIdMatch?.[1]?.trim() || null,
+    orderId: ticket.orderId || null,
+    orderDisplayId: orderDisplayId ? `#${orderDisplayId}` : null,
     requestType: ticket.requestType || requestTypeMatch?.[1]?.trim() || null,
     reason: reasonMatch?.[1]?.trim() || null,
     guestEmail: ticket.guestEmail || null,
@@ -1293,19 +1299,22 @@ exports.requestRefund = async (request, reply) => {
 
     const orderId = order.id; // resolve to internal CUID for all remaining operations
 
+    // For multi-seller orders overallStatus tracks aggregate; for direct orders status tracks lifecycle
+    const effectiveStatus = order.overallStatus || order.status;
+
     if (order.userId !== userId) {
       return reply.status(403).send({ success: false, message: "Not authorized" });
     }
 
-    if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(order.status)) {
+    if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(effectiveStatus)) {
       return reply.status(400).send({
         success: false,
-        message: `Refund request cannot be initiated for order in ${order.status} status`
+        message: `Refund request cannot be initiated for order in ${effectiveStatus} status`
       });
     }
 
     const transitionValidation = validateStatusTransition({
-      currentStatus: order.status,
+      currentStatus: effectiveStatus,
       nextStatus: normalizedRequestType,
       reason: finalReason
     });
@@ -1317,22 +1326,30 @@ exports.requestRefund = async (request, reply) => {
       });
     }
 
+    const sanitizedItems = (items && Array.isArray(items) && items.length > 0) ? items : [];
+
     let itemsMessage = '';
-    if (items && Array.isArray(items) && items.length > 0) {
-      itemsMessage = `\nRequested Items:\n` + items.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
+    if (sanitizedItems.length > 0) {
+      itemsMessage = `\nRequested Items:\n` + sanitizedItems.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
     }
 
-    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Refund Request' : 'Partial Refund Request';
-    const readableOrderId = orderId.slice(-8).toUpperCase();
+    // Append structured JSON so seller/admin APIs can parse exact requested items
+    const itemsJson = sanitizedItems.length > 0
+      ? `\n---ITEMS_JSON---\n${JSON.stringify(sanitizedItems)}`
+      : '';
+
+    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Full Refund Request' : 'Partial Refund Request';
+    const requestTypeLabel = normalizedRequestType === 'REFUND' ? 'Full Refund' : 'Partial Refund';
+    const readableOrderId = order.displayId;
     const supportTicket = await prisma.supportTicket.create({
       data: {
         userId,
         orderId,
         requestType: normalizedRequestType,
         subject: `${ticketTitle} for Order #${readableOrderId}`,
-        message: `Order ID: ${displayId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}${itemsMessage}`,
+        message: `Order ID: ${displayId}\nRequest Type: ${requestTypeLabel}\nReason: ${finalReason}${itemsMessage}${itemsJson}`,
         category: 'REFUND_REQUEST',
-        priority: 'MEDIUM',
+        // priority: 'MEDIUM',
         attachments: images && Array.isArray(images) ? images : []
       }
     });
@@ -1396,6 +1413,25 @@ exports.requestRefund = async (request, reply) => {
       }
     });
 
+    // Email all super-admins about the new refund request (non-blocking)
+    prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
+      .then(adminUsers => {
+        const emailStatus = normalizedRequestType === 'REFUND' ? 'refund' : 'partial_refund';
+        const customerLabel = order.customerName || order.user?.name || 'Customer';
+        for (const admin of adminUsers) {
+          if (admin.email) {
+            sendAdminOrderStatusEmail(admin.email, admin.name, {
+              displayId: order.displayId,
+              status: emailStatus,
+              updatedBy: `Customer (${ticketTitle})`,
+              customerName: customerLabel,
+              reason: finalReason,
+              totalAmount: order.totalAmount
+            }).catch(err => console.error('Admin refund email error (non-blocking):', err.message));
+          }
+        }
+      }).catch(err => console.error('Admin list error for refund email (non-blocking):', err.message));
+
     // Send confirmation email to customer
     const customerEmail = order.user?.email;
     const customerNameForEmail = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
@@ -1417,6 +1453,7 @@ exports.requestRefund = async (request, reply) => {
       request: {
         id: supportTicket.id,
         orderId,
+        displayId: order.displayId,
         requestType: normalizedRequestType,
         reason: finalReason,
         supportTicketId: supportTicket.id,
@@ -1430,12 +1467,12 @@ exports.requestRefund = async (request, reply) => {
   }
 };
 
-// USER — TRACK MY REFUND / PARTIAL REFUND REQUESTS
+// USER — TRACK MY FULL REFUND / PARTIAL REFUND REQUESTS
 exports.getMyRefundRequests = async (request, reply) => {
   try {
     const userId = request.user.userId;
 
-    const requests = await prisma.supportTicket.findMany({
+    const tickets = await prisma.supportTicket.findMany({
       where: {
         userId,
         category: 'REFUND_REQUEST'
@@ -1456,7 +1493,19 @@ exports.getMyRefundRequests = async (request, reply) => {
       }
     });
 
-    const formattedRequests = requests.map(formatRefundRequestFromTicket);
+    // Batch-fetch displayIds for all linked orders in one query
+    const orderIds = [...new Set(tickets.map(t => t.orderId).filter(Boolean))];
+    const linkedOrders = orderIds.length
+      ? await prisma.order.findMany({
+          where: { id: { in: orderIds } },
+          select: { id: true, displayId: true }
+        })
+      : [];
+    const displayIdMap = Object.fromEntries(linkedOrders.map(o => [o.id, o.displayId]));
+
+    const formattedRequests = tickets.map(t =>
+      formatRefundRequestFromTicket(t, displayIdMap[t.orderId] ?? null)
+    );
 
     return reply.status(200).send({
       success: true,
@@ -1503,9 +1552,18 @@ exports.getRefundRequestById = async (request, reply) => {
       });
     }
 
+    let orderDisplayId = null;
+    if (ticket.orderId) {
+      const linked = await prisma.order.findUnique({
+        where: { id: ticket.orderId },
+        select: { displayId: true }
+      });
+      orderDisplayId = linked?.displayId ?? null;
+    }
+
     return reply.status(200).send({
       success: true,
-      request: formatRefundRequestFromTicket(ticket)
+      request: formatRefundRequestFromTicket(ticket, orderDisplayId)
     });
   } catch (error) {
     console.error('Get refund request by id error:', error);
@@ -1513,17 +1571,201 @@ exports.getRefundRequestById = async (request, reply) => {
   }
 };
 
+// GUEST & USER — FIND ORDER FOR REFUND (Find eligible delivered items)
+exports.findOrderForRefund = async (request, reply) => {
+  try {
+    const { orderId, customerEmail } = request.body?.orderId ? request.body : request.query;
+
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({ success: false, message: "Order ID and customer email are required" });
+    }
+
+    const displayId = orderId.replace(/^#/, '').trim();
+    const normalizedEmail = customerEmail.trim().toLowerCase();
+
+    const order = await prisma.order.findUnique({
+      where: { displayId },
+      include: {
+        user: { select: { email: true } },
+        seller: { select: { id: true, name: true } },
+        items: {
+          include: {
+            product: { select: { id: true, title: true, featuredImage: true, price: true, sellerId: true } }
+          }
+        },
+        subOrders: {
+          include: {
+            items: {
+              include: {
+                product: { select: { id: true, title: true, featuredImage: true, price: true, sellerId: true } }
+              }
+            },
+            seller: { select: { id: true, name: true } },
+            sellerProfile: { select: { businessName: true, storeName: true } }
+          }
+        }
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ success: false, message: "Order not found" });
+    }
+
+    // Verify email (Check both guest email and registered user email)
+    const orderEmail = (order.user?.email || order.customerEmail || '').trim().toLowerCase();
+    if (orderEmail !== normalizedEmail) {
+      return reply.status(403).send({ success: false, message: "Email does not match the order records" });
+    }
+
+    const isMultiSellerOrder = order.subOrders && order.subOrders.length > 0;
+    let availableDeliveries = [];
+
+    if (isMultiSellerOrder) {
+      // Only include sub-orders that are DELIVERED
+      const deliveredSubOrders = order.subOrders.filter(sub => sub.status === 'DELIVERED');
+      
+      availableDeliveries = deliveredSubOrders.map(sub => {
+        const sellerName = sub.sellerProfile?.businessName || sub.sellerProfile?.storeName || sub.seller?.name || 'Unknown Seller';
+        return {
+          id: sub.id, // Internal subOrderId 
+          displayId: order.displayId,
+          sellerId: sub.sellerId,
+          sellerName: sellerName,
+          status: sub.status,
+          deliveredAt: sub.updatedAt,
+          items: sub.items.map(item => ({
+            productId: item.product?.id,
+            title: item.product?.title || 'Product',
+            image: item.product?.featuredImage || null,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        };
+      });
+    } else {
+      // Direct order or old order without sub-orders
+      const status = order.status || order.overallStatus;
+      // Also allow 'DELIVERED' status 
+      if (status === 'DELIVERED') {
+        const sellerName = order.seller?.name || 'Unknown Seller'; 
+        availableDeliveries = [{
+          id: order.id,
+          displayId: order.displayId,
+          sellerId: order.sellerId,
+          sellerName: sellerName,
+          status: status,
+          deliveredAt: order.updatedAt,
+          items: order.items.map(item => ({
+            productId: item.product?.id,
+            title: item.product?.title || 'Product',
+            image: item.product?.featuredImage || null,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        }];
+      }
+    }
+
+    return reply.status(200).send({
+      success: true,
+      order: {
+        id: order.id,
+        displayId: order.displayId,
+        customerName: order.user?.name || order.customerName,
+        customerEmail: order.user?.email || order.customerEmail,
+        isGuest: !order.userId,
+        eligibleRefundOrders: availableDeliveries
+      }
+    });
+
+  } catch (error) {
+    console.error('Find order for refund error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 // GUEST — REQUEST REFUND / PARTIAL REFUND
 exports.requestGuestRefund = async (request, reply) => {
   try {
-    const { orderId: displayId, customerEmail, requestType, reason, statusReason, items, images } = request.body || {};
+    // Parse multipart/form-data (supports optional image file uploads)
+    let payloadOrderId, customerEmail, requestType, reason, statusReason, items, uploadedImageUrls = [];
 
-    if (!displayId || !customerEmail) {
+    if (request.isMultipart()) {
+      const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      const MAX_IMAGES = 5;
+      const tempFiles = [];
+
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          if (uploadedImageUrls.length >= MAX_IMAGES) {
+            part.file.resume(); // drain stream and skip
+            continue;
+          }
+          if (!ALLOWED_MIME_TYPES.includes(part.mimetype)) {
+            part.file.resume();
+            continue;
+          }
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = path.extname(part.filename) || '.jpg';
+          const filepath = path.join(os.tmpdir(), `refund-${uniqueSuffix}${ext}`);
+          let size = 0;
+          part.file.on('data', chunk => {
+            size += chunk.length;
+            if (size > MAX_FILE_SIZE) part.file.destroy(new Error('File exceeds 5MB limit'));
+          });
+          try {
+            await pipeline(part.file, fs.createWriteStream(filepath));
+            tempFiles.push(filepath);
+          } catch (e) {
+            if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+          }
+        } else {
+          // Text fields
+          if (part.fieldname === 'orderId') payloadOrderId = part.value;
+          else if (part.fieldname === 'customerEmail') customerEmail = part.value;
+          else if (part.fieldname === 'requestType') requestType = part.value;
+          else if (part.fieldname === 'reason') reason = part.value;
+          else if (part.fieldname === 'statusReason') statusReason = part.value;
+          else if (part.fieldname === 'items') {
+            try { items = JSON.parse(part.value); } catch { items = []; }
+          }
+        }
+      }
+
+      // Upload collected temp files to Cloudinary
+      for (const filepath of tempFiles) {
+        try {
+          const result = await uploadToCloudinary(filepath, 'refund-evidence');
+          uploadedImageUrls.push(result.url);
+        } catch (e) {
+          console.error('Refund image upload error:', e.message);
+        } finally {
+          if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+        }
+      }
+    } else {
+      // JSON body fallback
+      const body = request.body || {};
+      payloadOrderId = body.orderId;
+      customerEmail = body.customerEmail;
+      requestType = body.requestType;
+      reason = body.reason;
+      statusReason = body.statusReason;
+      items = body.items;
+      // If caller already passed pre-uploaded URLs
+      if (Array.isArray(body.images)) uploadedImageUrls = body.images;
+    }
+
+    if (!payloadOrderId || !customerEmail) {
       return reply.status(400).send({
         success: false,
         message: 'orderId and customerEmail are required'
       });
     }
+
+    const displayId = payloadOrderId.replace(/^#/, '').trim();
 
     const normalizedRequestType = normalizeOrderStatus(requestType);
     if (!['REFUND', 'PARTIAL_REFUND'].includes(normalizedRequestType)) {
@@ -1545,6 +1787,7 @@ exports.requestGuestRefund = async (request, reply) => {
     const order = await prisma.order.findUnique({
       where: { displayId },
       include: {
+        user: { select: { email: true } },
         items: {
           include: {
             product: {
@@ -1563,14 +1806,8 @@ exports.requestGuestRefund = async (request, reply) => {
       return reply.status(404).send({ success: false, message: 'Order not found' });
     }
 
-    if (order.userId) {
-      return reply.status(400).send({
-        success: false,
-        message: 'This endpoint is for guest orders only'
-      });
-    }
-
-    if ((order.customerEmail || '').trim().toLowerCase() !== normalizedEmail) {
+    const orderEmail = order.user?.email || order.customerEmail || '';
+    if (orderEmail.trim().toLowerCase() !== normalizedEmail) {
       return reply.status(403).send({ success: false, message: 'Email does not match order' });
     }
 
@@ -1601,20 +1838,20 @@ exports.requestGuestRefund = async (request, reply) => {
       itemsMessage = `\nRequested Items:\n` + items.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
     }
 
-    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Refund Request' : 'Partial Refund Request';
-    const readableOrderId = orderId.slice(-8).toUpperCase();
-
+    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Full Refund Request' : 'Partial Refund Request';
+    const readableOrderId = order.displayId;
+    const requestTypeLabel = normalizedRequestType === 'REFUND' ? 'Full Refund' : 'Partial Refund';
     const supportTicket = await prisma.supportTicket.create({
       data: {
-        userId: null,
+        userId: order.userId || null,
         orderId,
         guestEmail: normalizedEmail,
         requestType: normalizedRequestType,
         subject: `${ticketTitle} for Order #${readableOrderId}`,
-        message: `Order ID: ${displayId}\nRequest Type: ${normalizedRequestType}\nReason: ${finalReason}${itemsMessage}`,
+        message: `Order ID: ${displayId}\nRequest Type: ${requestTypeLabel}\nReason: ${finalReason}${itemsMessage}`,
         category: 'REFUND_REQUEST',
         priority: 'MEDIUM',
-        attachments: images && Array.isArray(images) ? images : []
+        attachments: uploadedImageUrls
       }
     });
 
@@ -1674,16 +1911,39 @@ exports.requestGuestRefund = async (request, reply) => {
       items: items && Array.isArray(items) ? items : []
     }).catch(err => console.error('Guest refund confirmation email error (non-blocking):', err.message));
 
+    // Email all super-admins about the new guest refund request (non-blocking)
+    prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
+      .then(adminUsers => {
+        const emailStatus = normalizedRequestType === 'REFUND' ? 'refund' : 'partial_refund';
+        for (const admin of adminUsers) {
+          if (admin.email) {
+            sendAdminOrderStatusEmail(admin.email, admin.name, {
+              displayId: order.displayId,
+              status: emailStatus,
+              updatedBy: `Guest Customer (${ticketTitle})`,
+              customerName: order.customerName || normalizedEmail,
+              reason: finalReason,
+              totalAmount: order.totalAmount
+            }).catch(err => console.error('Admin guest refund email error (non-blocking):', err.message));
+          }
+        }
+      }).catch(err => console.error('Admin list error for guest refund email (non-blocking):', err.message));
+
     return reply.status(200).send({
       success: true,
       message: `${ticketTitle} submitted successfully`,
+      ticketId: supportTicket.id,
+      supportTicketId: supportTicket.id,
       request: {
         id: supportTicket.id,
         requestId: supportTicket.id,
+        supportTicketId: supportTicket.id,
         orderId,
+        displayId: order.displayId,
         requestType: normalizedRequestType,
         reason: finalReason,
         guestEmail: normalizedEmail,
+        attachments: uploadedImageUrls,
         status: supportTicket.status,
         createdAt: supportTicket.createdAt
       }
@@ -1748,7 +2008,9 @@ exports.getGuestRefundRequests = async (request, reply) => {
       }
     });
 
-    const formattedRequests = requests.map(formatRefundRequestFromTicket);
+    const formattedRequests = requests.map(t =>
+      formatRefundRequestFromTicket(t, order.displayId)
+    );
 
     return reply.status(200).send({
       success: true,
@@ -1825,7 +2087,7 @@ exports.getGuestRefundRequestById = async (request, reply) => {
 
     return reply.status(200).send({
       success: true,
-      request: formatRefundRequestFromTicket(ticket)
+      request: formatRefundRequestFromTicket(ticket, order.displayId)
     });
   } catch (error) {
     console.error('Get guest refund request by id error:', error);

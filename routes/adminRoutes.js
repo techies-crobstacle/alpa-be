@@ -11,6 +11,9 @@ async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
   const adminAuth = isAdmin;
 
+  // ---------------- REFUND MANAGEMENT ----------------
+  fastify.get("/refund-requests", { preHandler: adminAuth }, adminController.getAllRefundRequests);
+
   // ---------------- USER MANAGEMENT ----------------
   fastify.get("/users", { preHandler: adminAuth }, adminController.getAllUsers);
   
