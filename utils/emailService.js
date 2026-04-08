@@ -7530,8 +7530,397 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
   }
 };
 
+// ── Refund Status Update Email (Customer) ────────────────────────────────────
+// Sent when admin changes refund request status to APPROVED, REJECTED, or COMPLETED.
+// refundDetails: { displayId, status, adminMessage?, requestType, totalAmount?, requestedItems?, isGuest? }
+const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Refund Status Update (Customer)");
+    console.log(`To: ${email} | Order: ${refundDetails.displayId} | Status: ${refundDetails.status}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const st = (refundDetails.status || '').toUpperCase();
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+  const baseUrl      = process.env.FRONTEND_URL  || 'https://apla-fe.vercel.app';
+  const trackUrl     = refundDetails.isGuest
+    ? `${baseUrl}/guest/track-order?orderId=${refundDetails.displayId}&email=${encodeURIComponent(email)}`
+    : `${dashboardUrl}/customerdashboard/orders`;
+
+  const config = {
+    APPROVED: {
+      icon: '✅', color: '#2E7D32', label: 'Approved',
+      headline: 'Your Refund Has Been Approved',
+      banner: 'Great news — your refund request has been reviewed and approved.',
+      body: `We are pleased to let you know that your refund request for order <strong>#${refundDetails.displayId}</strong> has been <strong>approved</strong> by our team.<br><br>
+             Please allow <strong>5–6 business days</strong> for the refunded amount to reflect in your original payment method. Processing times may vary depending on your bank or payment provider.`,
+      note: null
+    },
+    REJECTED: {
+      icon: '❌', color: '#A03020', label: 'Rejected',
+      headline: 'Refund Request Outcome',
+      banner: 'Your refund request has been reviewed.',
+      body: `We regret to inform you that your refund request for order <strong>#${refundDetails.displayId}</strong> has not been approved at this time.<br><br>
+             If you believe this decision was made in error or would like further clarification, please contact our support team.`,
+      note: 'If you have questions, please reach out to our customer support team.'
+    },
+    COMPLETED: {
+      icon: '💰', color: '#1565C0', label: 'Completed',
+      headline: 'Refund Payment Completed',
+      banner: 'Your refund has been processed and payment issued.',
+      body: `Your refund for order <strong>#${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
+             The refunded amount should appear in your account within <strong>1–3 business days</strong> depending on your bank. If you have not received it after 5 business days, please contact your bank or reach out to us.`,
+      note: null
+    }
+  }[st] || {
+    icon: '🔄', color: '#C4603A', label: st,
+    headline: 'Refund Request Updated',
+    banner: `Your refund request status has been updated to ${st}.`,
+    body: `Your refund request for order <strong>#${refundDetails.displayId}</strong> has been updated.`,
+    note: null
+  };
+
+  const items = refundDetails.requestedItems || refundDetails.items || [];
+  const itemRows = items.map(item => `
+    <tr style="border-bottom:1px solid #EDD8CC;">
+      <td style="padding:9px 12px;color:#333;font-size:14px;">${item.title || 'Product'}</td>
+      <td style="padding:9px 12px;text-align:center;color:#555;font-size:14px;">${item.quantity || 1}</td>
+    </tr>
+  `).join('');
+
+  const requestLabel = refundDetails.requestType === 'REFUND' ? 'Full Refund'
+    : refundDetails.requestType === 'PARTIAL_REFUND' ? 'Partial Refund'
+    : 'Refund';
+
+  const msg = {
+    to: email,
+    from: { name: senderName, email: senderEmail },
+    subject: `${config.icon} Refund ${config.label} – Order #${refundDetails.displayId} | Made in Arnhem Land`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          ${getPrintSafeCSS()}
+          @media screen and (max-width: 640px) {
+            .email-container { width: 100% !important; max-width: calc(100% - 20px) !important; }
+            .email-body { padding: 20px !important; }
+          }
+        </style>
+      </head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="620" cellpadding="0" cellspacing="0" class="email-container" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
+
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${config.icon} ${config.headline}</h1>
+                </td>
+              </tr>
+
+              <tr>
+                <td bgcolor="${config.color}" style="background-color:${config.color};padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">${config.banner}</p>
+                </td>
+              </tr>
+
+              <tr>
+                <td class="email-body" style="padding:30px 40px 20px;">
+                  <p style="color:#3D1009;font-size:16px;margin:0 0 12px;">Hi <strong>${customerName}</strong>,</p>
+                  <p style="color:#555;font-size:14px;line-height:1.8;margin:0;">${config.body}</p>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;">
+                    <tr><td style="padding:20px;">
+                      <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Refund Summary</p>
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${refundDetails.displayId}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Refund Type</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${requestLabel}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
+                          <td style="padding:6px 0;text-align:right;">
+                            <table cellpadding="0" cellspacing="0" align="right"><tr>
+                              <td bgcolor="${config.color}" style="background-color:${config.color};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;">${config.label.toUpperCase()}</td>
+                            </tr></table>
+                          </td>
+                        </tr>
+                        ${refundDetails.totalAmount ? `
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td>
+                          <td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(refundDetails.totalAmount).toFixed(2)}</td>
+                        </tr>` : ''}
+                        ${refundDetails.adminMessage ? `
+                        <tr><td colspan="2" style="padding:10px 0 0;border-top:1px solid #EDD8CC;"></td></tr>
+                        <tr>
+                          <td colspan="2">
+                            <div style="background:#FFF8F6;border-left:4px solid ${config.color};border-radius:0 6px 6px 0;padding:12px 14px;margin-top:4px;">
+                              <p style="margin:0 0 4px;color:#5A1E12;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Message from our team</p>
+                              <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${refundDetails.adminMessage}</p>
+                            </div>
+                          </td>
+                        </tr>` : ''}
+                      </table>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>
+
+              ${itemRows ? `
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Items in This Refund</p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
+                    <thead>
+                      <tr style="background-color:#5A1E12;">
+                        <th style="padding:10px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
+                        <th style="padding:10px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>${itemRows}</tbody>
+                  </table>
+                </td>
+              </tr>` : ''}
+
+              ${config.note ? `
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <div style="background:#FFF8F6;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:14px 16px;">
+                    <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">💬 ${config.note}</p>
+                  </div>
+                </td>
+              </tr>` : ''}
+
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${trackUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 32px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View My Orders</a>
+                </td>
+              </tr>
+
+              <tr>
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. © 2026 Made in Arnhem Land.</p>
+                </td>
+              </tr>
+
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `
+  };
+
+  try {
+    await sgMail.send(buildMsg(msg));
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Refund status update (customer) email error:', error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ── Refund Status Update Email (Seller) ──────────────────────────────────────
+// Sent to each seller involved when admin acts on a refund request.
+// refundDetails: { displayId, status, adminMessage?, requestType, customerName, totalAmount?, requestedItems? }
+const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("📧 DEVELOPMENT MODE - Refund Status Update (Seller)");
+    console.log(`To: ${email} | Seller: ${sellerName} | Order: ${refundDetails.displayId} | Status: ${refundDetails.status}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const st           = (refundDetails.status || '').toUpperCase();
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+
+  const config = {
+    APPROVED: {
+      icon: '✅', color: '#2E7D32', label: 'Approved',
+      banner: 'A refund request for one of your orders has been approved.',
+      body: `A refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>#${refundDetails.displayId}</strong> has been <strong>approved</strong> by admin.<br><br>
+             The refund will be processed to the customer's original payment method. This will be reflected in your revenue and commission records.`
+    },
+    REJECTED: {
+      icon: '❌', color: '#A03020', label: 'Rejected',
+      banner: 'A refund request for one of your orders has been reviewed.',
+      body: `The refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>#${refundDetails.displayId}</strong> has been <strong>rejected</strong> by admin. No changes will be made to the order or your revenue.`
+    },
+    COMPLETED: {
+      icon: '💰', color: '#1565C0', label: 'Completed',
+      banner: 'A refund payment has been completed for one of your orders.',
+      body: `The refund for order <strong>#${refundDetails.displayId}</strong> (customer: <strong>${refundDetails.customerName || 'Customer'}</strong>) has been <strong>fully processed</strong> and payment has been issued.<br><br>
+             Your commission and revenue records for this order have been updated accordingly.`
+    }
+  }[st] || {
+    icon: '🔄', color: '#C4603A', label: st,
+    banner: `A refund request status has been updated to ${st}.`,
+    body: `Refund request status for order <strong>#${refundDetails.displayId}</strong> has been updated to ${st}.`
+  };
+
+  const items = refundDetails.requestedItems || refundDetails.items || [];
+  const itemNames = items.map(i => i.title || 'Product').filter(Boolean);
+  const itemRows = items.map(item => `
+    <tr style="border-bottom:1px solid #EDD8CC;">
+      <td style="padding:9px 12px;color:#333;font-size:14px;">${item.title || 'Product'}</td>
+      <td style="padding:9px 12px;text-align:center;color:#555;font-size:14px;">${item.quantity || 1}</td>
+    </tr>
+  `).join('');
+
+  const requestLabel = refundDetails.requestType === 'REFUND' ? 'Full Refund'
+    : refundDetails.requestType === 'PARTIAL_REFUND' ? 'Partial Refund'
+    : 'Refund';
+
+  const subjectItems = itemNames.length
+    ? ` (${itemNames.slice(0, 2).join(', ')}${itemNames.length > 2 ? ` +${itemNames.length - 2} more` : ''})`
+    : '';
+
+  const msg = {
+    to: email,
+    from: { name: senderName, email: senderEmail },
+    subject: `${config.icon} Refund ${config.label} – Order #${refundDetails.displayId}${subjectItems} | Made in Arnhem Land`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>${getPrintSafeCSS()}</style>
+      </head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
+
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                  <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${config.icon} Refund Request ${config.label}</h1>
+                </td>
+              </tr>
+
+              <tr>
+                <td bgcolor="${config.color}" style="background-color:${config.color};padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">${config.banner}</p>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:30px 40px 20px;">
+                  <p style="color:#3D1009;font-size:16px;margin:0 0 12px;">Hi <strong>${sellerName}</strong>,</p>
+                  <p style="color:#555;font-size:14px;line-height:1.8;margin:0;">${config.body}</p>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;">
+                    <tr><td style="padding:20px;">
+                      <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Refund Details</p>
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${refundDetails.displayId}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${refundDetails.customerName || 'Customer'}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Refund Type</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${requestLabel}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Status</strong></td>
+                          <td style="padding:6px 0;text-align:right;">
+                            <table cellpadding="0" cellspacing="0" align="right"><tr>
+                              <td bgcolor="${config.color}" style="background-color:${config.color};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;">${config.label.toUpperCase()}</td>
+                            </tr></table>
+                          </td>
+                        </tr>
+                        ${refundDetails.totalAmount ? `
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td>
+                          <td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(refundDetails.totalAmount).toFixed(2)}</td>
+                        </tr>` : ''}
+                        ${refundDetails.adminMessage ? `
+                        <tr><td colspan="2" style="padding:10px 0 0;"></td></tr>
+                        <tr>
+                          <td colspan="2">
+                            <div style="background:#FFF8F6;border-left:4px solid ${config.color};border-radius:0 6px 6px 0;padding:12px 14px;margin-top:4px;">
+                              <p style="margin:0 0 4px;color:#5A1E12;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Admin Note</p>
+                              <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${refundDetails.adminMessage}</p>
+                            </div>
+                          </td>
+                        </tr>` : ''}
+                      </table>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>
+
+              ${itemRows ? `
+              <tr>
+                <td style="padding:0 40px 24px;">
+                  <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Products in This Refund</p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
+                    <thead>
+                      <tr style="background-color:#5A1E12;">
+                        <th style="padding:10px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
+                        <th style="padding:10px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>${itemRows}</tbody>
+                  </table>
+                </td>
+              </tr>` : ''}
+
+              <tr>
+                <td style="padding:0 40px 36px;text-align:center;">
+                  <a href="${dashboardUrl}/seller/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 32px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Seller Dashboard</a>
+                </td>
+              </tr>
+
+              <tr>
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. © 2026 Made in Arnhem Land.</p>
+                </td>
+              </tr>
+
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `
+  };
+
+  try {
+    await sgMail.send(buildMsg(msg));
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Refund status update (seller) email error:', error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = { 
-  generateOTP, 
   sendOTPEmail, 
   testEmailConfig,
   sendOrderConfirmationEmail,
@@ -7563,7 +7952,9 @@ module.exports = {
   sendSuperAdminBankChangeRequestEmail,
   sendSellerBankChangeApprovedEmail,
   sendSellerBankChangeRejectedEmail,
-  sendRefundRequestConfirmationEmail
+  sendRefundRequestConfirmationEmail,
+  sendRefundStatusUpdateEmail,
+  sendSellerRefundStatusEmail
 };
 
 

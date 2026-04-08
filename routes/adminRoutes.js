@@ -13,6 +13,8 @@ async function adminRoutes(fastify, options) {
 
   // ---------------- REFUND MANAGEMENT ----------------
   fastify.get("/refund-requests", { preHandler: adminAuth }, adminController.getAllRefundRequests);
+  // PUT /admin/refund-requests/:id/status — body: { status: 'APPROVED'|'REJECTED'|'COMPLETED', message?: string }
+  fastify.put("/refund-requests/:id/status", { preHandler: adminAuth }, adminController.updateRefundRequestStatus);
 
   // ---------------- USER MANAGEMENT ----------------
   fastify.get("/users", { preHandler: adminAuth }, adminController.getAllUsers);

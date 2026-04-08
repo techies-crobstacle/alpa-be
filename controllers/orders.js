@@ -1228,19 +1228,30 @@ exports.cancelOrder = async (request, reply) => {
 
 const formatRefundRequestFromTicket = (ticket, orderDisplayId = null) => {
   const message = ticket.message || '';
-  const requestTypeMatch = message.match(/Request Type:\s*(.+)/i);
-  // Stop reason at "Requested Items:" or "---ITEMS_JSON---" delimiter so we don't capture the items blob
+  // Stop reason at item list or JSON block
   const reasonMatch = message.match(/Reason:\s*([\s\S]+?)(?=\nRequested Items:|\n---ITEMS_JSON---|$)/i);
+
+  // Parse per-item details from the structured blob
+  let requestedItems = null;
+  try {
+    const match = message.match(/---ITEMS_JSON---\n([\s\S]+)/);
+    if (match) {
+      const parsed = JSON.parse(match[1].trim());
+      if (Array.isArray(parsed) && parsed.length > 0) requestedItems = parsed;
+    }
+  } catch { /* ignore */ }
 
   return {
     id: ticket.id,
     requestId: ticket.id,
     orderId: ticket.orderId || null,
     orderDisplayId: orderDisplayId ? `#${orderDisplayId}` : null,
-    requestType: ticket.requestType || requestTypeMatch?.[1]?.trim() || null,
+    requestType: ticket.requestType || null,
     reason: reasonMatch?.[1]?.trim() || null,
+    requestedItems,
+    attachments: ticket.attachments || [],
     guestEmail: ticket.guestEmail || null,
-    status: ticket.status,
+    status: ({ OPEN: 'OPEN', IN_PROGRESS: 'APPROVED', RESOLVED: 'COMPLETED', CLOSED: 'REJECTED' }[ticket.status] || ticket.status),
     priority: ticket.priority,
     adminResponse: ticket.response,
     createdAt: ticket.createdAt,
@@ -1248,221 +1259,258 @@ const formatRefundRequestFromTicket = (ticket, orderDisplayId = null) => {
   };
 };
 
-// USER — REQUEST REFUND / PARTIAL REFUND
+// USER — REQUEST REFUND
+// Body: { items?: [{orderItemId, quantity, reason?, attachments?}], reason?, attachments? }
+// - items omitted / empty  → full refund of all items
+// - items is a subset      → partial refund; requestType auto-determined
+// - per-item reason/attachments override the top-level ones for that item
 exports.requestRefund = async (request, reply) => {
   try {
     const displayId = request.params.id;
     const userId = request.user.userId;
-    const { requestType, reason, statusReason, items, images } = request.body || {};
+    const { items: requestedItems, reason, attachments } = request.body || {};
 
-    const normalizedRequestType = normalizeOrderStatus(requestType);
-    if (!['REFUND', 'PARTIAL_REFUND'].includes(normalizedRequestType)) {
-      return reply.status(400).send({
-        success: false,
-        message: "Invalid requestType. Use: refund or partial_refund"
-      });
+    // items must be an array if provided
+    if (requestedItems !== undefined && !Array.isArray(requestedItems)) {
+      return reply.status(400).send({ success: false, message: '"items" must be an array' });
     }
 
-    const finalReason = (statusReason || reason || '').trim();
-    if (!finalReason) {
-      return reply.status(400).send({
-        success: false,
-        message: `Reason is required for ${normalizedRequestType} request`
-      });
-    }
+    const topLevelReason = (reason || '').trim();
 
     const order = await prisma.order.findUnique({
       where: { displayId },
       include: {
         items: {
           include: {
-            product: {
-              select: {
-                id: true,
-                sellerId: true,
-                title: true
+            product: { select: { id: true, sellerId: true, title: true, featuredImage: true } }
+          }
+        },
+        subOrders: {
+          include: {
+            items: {
+              include: {
+                product: { select: { id: true, sellerId: true, title: true, featuredImage: true } }
               }
             }
           }
         },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
+        user: { select: { id: true, name: true, email: true, isDeleted: true } }
       }
     });
 
     if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+    if (order.userId !== userId) return reply.status(403).send({ success: false, message: 'Not authorized' });
 
-    const orderId = order.id; // resolve to internal CUID for all remaining operations
-
-    // For multi-seller orders overallStatus tracks aggregate; for direct orders status tracks lifecycle
     const effectiveStatus = order.overallStatus || order.status;
-
-    if (order.userId !== userId) {
-      return reply.status(403).send({ success: false, message: "Not authorized" });
-    }
 
     if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(effectiveStatus)) {
       return reply.status(400).send({
         success: false,
-        message: `Refund request cannot be initiated for order in ${effectiveStatus} status`
+        message: `Cannot request a refund for an order in ${effectiveStatus} status`
       });
     }
 
-    const transitionValidation = validateStatusTransition({
-      currentStatus: effectiveStatus,
-      nextStatus: normalizedRequestType,
-      reason: finalReason
-    });
-
-    if (!transitionValidation.isValid) {
+    if (!['DELIVERED'].includes(effectiveStatus)) {
       return reply.status(400).send({
         success: false,
-        message: transitionValidation.message
+        message: `Refund requests can only be made for delivered orders. Current status: ${effectiveStatus}`
       });
     }
 
-    const sanitizedItems = (items && Array.isArray(items) && items.length > 0) ? items : [];
+    const orderId = order.id;
 
-    let itemsMessage = '';
-    if (sanitizedItems.length > 0) {
-      itemsMessage = `\nRequested Items:\n` + sanitizedItems.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
+    // ── Prevent duplicate refund requests ────────────────────────────────────
+    const existingRefund = await prisma.supportTicket.findFirst({
+      where: { orderId, category: 'REFUND_REQUEST' },
+      select: { id: true, status: true }
+    });
+    if (existingRefund) {
+      return reply.status(409).send({
+        success: false,
+        message: 'A refund request has already been submitted for this order.',
+        existingRequestId: existingRefund.id,
+        existingStatus: existingRefund.status
+      });
     }
 
-    // Append structured JSON so seller/admin APIs can parse exact requested items
-    const itemsJson = sanitizedItems.length > 0
-      ? `\n---ITEMS_JSON---\n${JSON.stringify(sanitizedItems)}`
-      : '';
+    // Flatten items from both direct order.items (single-seller) and
+    // subOrder.items (multi-seller) into one unified map
+    const subOrderItems = (order.subOrders || []).flatMap(so => so.items || []);
+    const allOrderItems = [...order.items, ...subOrderItems];
+    const orderItemMap = new Map(allOrderItems.map(i => [i.id, i]));
 
-    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Full Refund Request' : 'Partial Refund Request';
-    const requestTypeLabel = normalizedRequestType === 'REFUND' ? 'Full Refund' : 'Partial Refund';
-    const readableOrderId = order.displayId;
+    // ── Resolve requested line items ─────────────────────────────────────────
+    let resolvedItems; // [{ orderItem, requestedQty, reason, attachments }]
+
+    if (!requestedItems || requestedItems.length === 0) {
+      // Full refund — include all order items at their full quantities
+      resolvedItems = allOrderItems.map(oi => ({
+        orderItem:     oi,
+        requestedQty:  oi.quantity,
+        reason:        topLevelReason,
+        attachments:   (attachments && Array.isArray(attachments)) ? attachments : []
+      }));
+    } else {
+      // Validate each requested item
+      const errors = [];
+      resolvedItems = [];
+      for (const ri of requestedItems) {
+        if (!ri.orderItemId) { errors.push('Each item must have an "orderItemId"'); continue; }
+        const oi = orderItemMap.get(ri.orderItemId);
+        if (!oi) { errors.push(`Order item "${ri.orderItemId}" not found in this order`); continue; }
+        const qty = parseInt(ri.quantity, 10);
+        if (!qty || qty < 1 || qty > oi.quantity) {
+          errors.push(`Invalid quantity ${qty} for item "${oi.product?.title || ri.orderItemId}" (max: ${oi.quantity})`);
+          continue;
+        }
+        const itemReason = ((ri.reason || '').trim()) || topLevelReason;
+        if (!itemReason) {
+          errors.push(`A reason is required for item "${oi.product?.title || ri.orderItemId}"`);
+          continue;
+        }
+        resolvedItems.push({
+          orderItem:    oi,
+          requestedQty: qty,
+          reason:       itemReason,
+          attachments:  (ri.attachments && Array.isArray(ri.attachments)) ? ri.attachments
+                        : (attachments && Array.isArray(attachments)) ? attachments : []
+        });
+      }
+      if (errors.length) return reply.status(400).send({ success: false, message: errors[0], errors });
+      if (!resolvedItems.length) return reply.status(400).send({ success: false, message: 'No valid items provided' });
+    }
+
+    // At least a top-level or item-level reason is required
+    const hasReason = resolvedItems.every(r => r.reason);
+    if (!hasReason) {
+      return reply.status(400).send({ success: false, message: 'A reason is required for all requested items' });
+    }
+
+    // ── Auto-determine refund type ────────────────────────────────────────────
+    const totalOrderQty   = allOrderItems.reduce((s, i) => s + i.quantity, 0);
+    const totalRequestQty = resolvedItems.reduce((s, r) => s + r.requestedQty, 0);
+    const requestedItemIds = new Set(resolvedItems.map(r => r.orderItem.id));
+    const allItemsCovered  = allOrderItems.every(i => requestedItemIds.has(i.id));
+    const isFullRefund     = allItemsCovered && totalRequestQty === totalOrderQty;
+    const normalizedRequestType = isFullRefund ? 'REFUND' : 'PARTIAL_REFUND';
+    const ticketTitle      = isFullRefund ? 'Full Refund Request' : 'Partial Refund Request';
+    const readableOrderId  = order.displayId;
+
+    // ── Build structured message for storage ─────────────────────────────────
+    // Use the first item's reason (or top-level) as the headline reason
+    const headlineReason = topLevelReason || resolvedItems[0]?.reason || '';
+    const itemsText = resolvedItems.map(r =>
+      `- ${r.orderItem.product?.title || r.orderItem.id} (Qty: ${r.requestedQty})` +
+      (r.reason !== headlineReason ? ` — ${r.reason}` : '')
+    ).join('\n');
+
+    // Structured JSON blob for seller/admin parsing
+    const itemsBlob = resolvedItems.map(r => ({
+      orderItemId: r.orderItem.id,
+      productId:   r.orderItem.product?.id || r.orderItem.productId,
+      title:       r.orderItem.product?.title || 'Product',
+      image:       r.orderItem.product?.featuredImage || null,
+      quantity:    r.requestedQty,
+      price:       r.orderItem.price,
+      reason:      r.reason,
+      attachments: r.attachments
+    }));
+
+    const allAttachments = [...new Set(resolvedItems.flatMap(r => r.attachments))];
+
+    const ticketMessage = [
+      `Order ID: ${readableOrderId}`,
+      `Reason: ${headlineReason}`,
+      `Requested Items:\n${itemsText}`,
+      `---ITEMS_JSON---`,
+      JSON.stringify(itemsBlob)
+    ].join('\n');
+
     const supportTicket = await prisma.supportTicket.create({
       data: {
         userId,
         orderId,
         requestType: normalizedRequestType,
         subject: `${ticketTitle} for Order #${readableOrderId}`,
-        message: `Order ID: ${displayId}\nRequest Type: ${requestTypeLabel}\nReason: ${finalReason}${itemsMessage}${itemsJson}`,
+        message: ticketMessage,
         category: 'REFUND_REQUEST',
-        // priority: 'MEDIUM',
-        attachments: images && Array.isArray(images) ? images : []
+        attachments: allAttachments
       }
     });
 
-    const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
-    const admins = await prisma.user.findMany({
+    // ── Notifications ─────────────────────────────────────────────────────────
+    const sellerIds = [...new Set(order.items.map(i => i.product?.sellerId).filter(Boolean))];
+    const admins    = await prisma.user.findMany({
       where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
       select: { id: true }
     });
 
-    const notificationTitle = `${ticketTitle} Submitted`;
-    const notificationMessage = `Customer ${order.customerName || order.user?.name || 'Customer'} requested ${normalizedRequestType} for order #${readableOrderId}.`;
-    const metadata = {
+    const notifTitle   = `${ticketTitle} Submitted`;
+    const notifMessage = `${order.customerName || order.user?.name || 'Customer'} requested a ${normalizedRequestType.toLowerCase().replace('_', ' ')} for order #${readableOrderId}.`;
+    const metadata     = {
       orderId,
       requestType: normalizedRequestType,
-      reason: finalReason,
+      reason: headlineReason,
       supportTicketId: supportTicket.id,
       totalAmount: order.totalAmount?.toString()
     };
 
-    // Notify admins
-    for (const admin of admins) {
-      await prisma.notification.create({
-        data: {
-          userId: admin.id,
-          title: notificationTitle,
-          message: notificationMessage,
-          type: 'GENERAL',
-          relatedId: orderId,
-          relatedType: 'order',
-          metadata
-        }
-      });
+    const notifRows = [
+      ...admins.map(a => ({ userId: a.id, title: notifTitle, message: notifMessage, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata })),
+      ...sellerIds.map(sid => ({ userId: sid, title: notifTitle, message: notifMessage, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata })),
+      { userId, title: `${ticketTitle} Received`, message: `Your refund request for order #${readableOrderId} has been submitted and is under review.`, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata }
+    ];
+    await prisma.notification.createMany({ data: notifRows });
+
+    // ── Emails (non-blocking) ─────────────────────────────────────────────────
+    const customerEmail = order.user?.email;
+    const customerName  = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
+
+    if (customerEmail) {
+      sendRefundRequestConfirmationEmail(customerEmail, customerName, {
+        displayId: order.displayId,
+        ticketId: supportTicket.id,
+        requestType: normalizedRequestType,
+        reason: headlineReason,
+        totalAmount: order.totalAmount,
+        isGuest: false,
+        items: itemsBlob
+      }).catch(err => console.error('Refund confirmation email error (non-blocking):', err.message));
     }
 
-    // Notify sellers involved in this order
-    for (const sellerId of sellerIds) {
-      await prisma.notification.create({
-        data: {
-          userId: sellerId,
-          title: notificationTitle,
-          message: notificationMessage,
-          type: 'GENERAL',
-          relatedId: orderId,
-          relatedType: 'order',
-          metadata
-        }
-      });
-    }
-
-    // Acknowledge customer request
-    await prisma.notification.create({
-      data: {
-        userId,
-        title: `${ticketTitle} Received`,
-        message: `Your ${normalizedRequestType.toLowerCase()} request for order #${readableOrderId} has been submitted and is under review.`,
-        type: 'GENERAL',
-        relatedId: orderId,
-        relatedType: 'order',
-        metadata
-      }
-    });
-
-    // Email all super-admins about the new refund request (non-blocking)
     prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
-      .then(adminUsers => {
-        const emailStatus = normalizedRequestType === 'REFUND' ? 'refund' : 'partial_refund';
-        const customerLabel = order.customerName || order.user?.name || 'Customer';
-        for (const admin of adminUsers) {
+      .then(superAdmins => {
+        for (const admin of superAdmins) {
           if (admin.email) {
             sendAdminOrderStatusEmail(admin.email, admin.name, {
               displayId: order.displayId,
-              status: emailStatus,
+              status: isFullRefund ? 'refund' : 'partial_refund',
               updatedBy: `Customer (${ticketTitle})`,
-              customerName: customerLabel,
-              reason: finalReason,
+              customerName,
+              reason: headlineReason,
               totalAmount: order.totalAmount
             }).catch(err => console.error('Admin refund email error (non-blocking):', err.message));
           }
         }
-      }).catch(err => console.error('Admin list error for refund email (non-blocking):', err.message));
+      }).catch(err => console.error('Admin list fetch error (non-blocking):', err.message));
 
-    // Send confirmation email to customer
-    const customerEmail = order.user?.email;
-    const customerNameForEmail = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
-    if (customerEmail) {
-      sendRefundRequestConfirmationEmail(customerEmail, customerNameForEmail, {
-        displayId: order.displayId,
-        ticketId: supportTicket.id,
-        requestType: normalizedRequestType,
-        reason: finalReason,
-        totalAmount: order.totalAmount,
-        isGuest: false,
-        items: items && Array.isArray(items) ? items : []
-      }).catch(err => console.error('Refund confirmation email error (non-blocking):', err.message));
-    }
-
-    return reply.status(200).send({
+    return reply.status(201).send({
       success: true,
       message: `${ticketTitle} submitted successfully`,
       request: {
-        id: supportTicket.id,
+        id:              supportTicket.id,
         orderId,
-        displayId: order.displayId,
-        requestType: normalizedRequestType,
-        reason: finalReason,
-        supportTicketId: supportTicket.id,
-        status: supportTicket.status,
-        createdAt: supportTicket.createdAt
+        orderDisplayId:  `#${order.displayId}`,
+        requestType:     normalizedRequestType,
+        reason:          headlineReason,
+        requestedItems:  itemsBlob,
+        attachments:     allAttachments,
+        status:          supportTicket.status,
+        createdAt:       supportTicket.createdAt
       }
     });
   } catch (error) {
-    console.error("Refund request error:", error);
+    console.error('Refund request error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
@@ -1634,6 +1682,7 @@ exports.findOrderForRefund = async (request, reply) => {
           status: sub.status,
           deliveredAt: sub.updatedAt,
           items: sub.items.map(item => ({
+            orderItemId: item.id,
             productId: item.product?.id,
             title: item.product?.title || 'Product',
             image: item.product?.featuredImage || null,
@@ -1656,6 +1705,7 @@ exports.findOrderForRefund = async (request, reply) => {
           status: status,
           deliveredAt: order.updatedAt,
           items: order.items.map(item => ({
+            orderItemId: item.id,
             productId: item.product?.id,
             title: item.product?.title || 'Product',
             image: item.product?.featuredImage || null,
@@ -1684,29 +1734,27 @@ exports.findOrderForRefund = async (request, reply) => {
   }
 };
 
-// GUEST — REQUEST REFUND / PARTIAL REFUND
+// GUEST — REQUEST REFUND
+// Body (JSON): { orderId, customerEmail, items?, reason?, attachments? }
+// Body (multipart): same fields; files are uploaded server-side and become top-level attachments
+// - items omitted / empty  → full refund of all items
+// - items is a subset      → partial refund; requestType auto-determined
+// - per-item reason/attachments override the top-level ones for that item
 exports.requestGuestRefund = async (request, reply) => {
   try {
-    // Parse multipart/form-data (supports optional image file uploads)
-    let payloadOrderId, customerEmail, requestType, reason, statusReason, items, uploadedImageUrls = [];
+    let payloadOrderId, customerEmail, topLevelReason, requestedItems, topLevelAttachments = [], uploadedImageUrls = [];
 
     if (request.isMultipart()) {
       const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
       const MAX_IMAGES = 5;
       const tempFiles = [];
 
       const parts = request.parts();
       for await (const part of parts) {
         if (part.type === 'file') {
-          if (uploadedImageUrls.length >= MAX_IMAGES) {
-            part.file.resume(); // drain stream and skip
-            continue;
-          }
-          if (!ALLOWED_MIME_TYPES.includes(part.mimetype)) {
-            part.file.resume();
-            continue;
-          }
+          if (uploadedImageUrls.length >= MAX_IMAGES) { part.file.resume(); continue; }
+          if (!ALLOWED_MIME_TYPES.includes(part.mimetype)) { part.file.resume(); continue; }
           const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = path.extname(part.filename) || '.jpg';
           const filepath = path.join(os.tmpdir(), `refund-${uniqueSuffix}${ext}`);
@@ -1722,19 +1770,19 @@ exports.requestGuestRefund = async (request, reply) => {
             if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
           }
         } else {
-          // Text fields
-          if (part.fieldname === 'orderId') payloadOrderId = part.value;
-          else if (part.fieldname === 'customerEmail') customerEmail = part.value;
-          else if (part.fieldname === 'requestType') requestType = part.value;
-          else if (part.fieldname === 'reason') reason = part.value;
-          else if (part.fieldname === 'statusReason') statusReason = part.value;
+          if (part.fieldname === 'orderId')        payloadOrderId    = part.value;
+          else if (part.fieldname === 'customerEmail') customerEmail  = part.value;
+          else if (part.fieldname === 'reason')    topLevelReason    = part.value;
+          else if (part.fieldname === 'attachments') {
+            try { topLevelAttachments = JSON.parse(part.value); } catch { /* ignore */ }
+          }
           else if (part.fieldname === 'items') {
-            try { items = JSON.parse(part.value); } catch { items = []; }
+            try { requestedItems = JSON.parse(part.value); } catch { requestedItems = []; }
           }
         }
       }
 
-      // Upload collected temp files to Cloudinary
+      // Upload files to Cloudinary → go into top-level attachments
       for (const filepath of tempFiles) {
         try {
           const result = await uploadToCloudinary(filepath, 'refund-evidence');
@@ -1745,56 +1793,42 @@ exports.requestGuestRefund = async (request, reply) => {
           if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
         }
       }
+      topLevelAttachments = [...topLevelAttachments, ...uploadedImageUrls];
     } else {
-      // JSON body fallback
       const body = request.body || {};
-      payloadOrderId = body.orderId;
-      customerEmail = body.customerEmail;
-      requestType = body.requestType;
-      reason = body.reason;
-      statusReason = body.statusReason;
-      items = body.items;
-      // If caller already passed pre-uploaded URLs
-      if (Array.isArray(body.images)) uploadedImageUrls = body.images;
+      payloadOrderId     = body.orderId;
+      customerEmail      = body.customerEmail;
+      topLevelReason     = body.reason;
+      requestedItems     = body.items;
+      topLevelAttachments = Array.isArray(body.attachments) ? body.attachments
+        : Array.isArray(body.images) ? body.images : [];
     }
 
     if (!payloadOrderId || !customerEmail) {
-      return reply.status(400).send({
-        success: false,
-        message: 'orderId and customerEmail are required'
-      });
+      return reply.status(400).send({ success: false, message: 'orderId and customerEmail are required' });
+    }
+    if (requestedItems !== undefined && !Array.isArray(requestedItems)) {
+      return reply.status(400).send({ success: false, message: '"items" must be an array' });
     }
 
-    const displayId = payloadOrderId.replace(/^#/, '').trim();
-
-    const normalizedRequestType = normalizeOrderStatus(requestType);
-    if (!['REFUND', 'PARTIAL_REFUND'].includes(normalizedRequestType)) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Invalid requestType. Use: refund or partial_refund'
-      });
-    }
-
-    const finalReason = (statusReason || reason || '').trim();
-    if (!finalReason) {
-      return reply.status(400).send({
-        success: false,
-        message: `Reason is required for ${normalizedRequestType} request`
-      });
-    }
-
+    const displayId      = payloadOrderId.replace(/^#/, '').trim();
     const normalizedEmail = customerEmail.trim().toLowerCase();
+    const finalTopReason  = (topLevelReason || '').trim();
+
     const order = await prisma.order.findUnique({
       where: { displayId },
       include: {
-        user: { select: { email: true } },
+        user: { select: { id: true, email: true, name: true, isDeleted: true } },
         items: {
           include: {
-            product: {
-              select: {
-                id: true,
-                sellerId: true,
-                title: true
+            product: { select: { id: true, sellerId: true, title: true, featuredImage: true } }
+          }
+        },
+        subOrders: {
+          include: {
+            items: {
+              include: {
+                product: { select: { id: true, sellerId: true, title: true, featuredImage: true } }
               }
             }
           }
@@ -1802,150 +1836,203 @@ exports.requestGuestRefund = async (request, reply) => {
       }
     });
 
-    if (!order) {
-      return reply.status(404).send({ success: false, message: 'Order not found' });
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+
+    // Block registered (non-deleted) users from using the guest refund endpoint
+    if (order.user && !order.user.isDeleted) {
+      return reply.status(403).send({
+        success: false,
+        message: 'This order belongs to a registered account. Please log in to request a refund.'
+      });
     }
 
-    const orderEmail = order.user?.email || order.customerEmail || '';
-    if (orderEmail.trim().toLowerCase() !== normalizedEmail) {
+    const orderEmail = (order.user?.email || order.customerEmail || '').trim().toLowerCase();
+    if (orderEmail !== normalizedEmail) {
       return reply.status(403).send({ success: false, message: 'Email does not match order' });
     }
 
-    const orderId = order.id; // resolve to internal CUID for ticket creation and notifications
-
-    if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(order.status)) {
-      return reply.status(400).send({
-        success: false,
-        message: `Refund request cannot be initiated for order in ${order.status} status`
-      });
+    const effectiveStatus = order.overallStatus || order.status;
+    if (['CANCELLED', 'REFUND', 'PARTIAL_REFUND'].includes(effectiveStatus)) {
+      return reply.status(400).send({ success: false, message: `Cannot request a refund for an order in ${effectiveStatus} status` });
+    }
+    if (effectiveStatus !== 'DELIVERED') {
+      return reply.status(400).send({ success: false, message: `Refund requests can only be made for delivered orders. Current status: ${effectiveStatus}` });
     }
 
-    const transitionValidation = validateStatusTransition({
-      currentStatus: order.status,
-      nextStatus: normalizedRequestType,
-      reason: finalReason
+    const orderId = order.id;
+
+    // ── Prevent duplicate refund requests ────────────────────────────────────
+    const existingRefund = await prisma.supportTicket.findFirst({
+      where: { orderId, category: 'REFUND_REQUEST' },
+      select: { id: true, status: true }
     });
-
-    if (!transitionValidation.isValid) {
-      return reply.status(400).send({
+    if (existingRefund) {
+      return reply.status(409).send({
         success: false,
-        message: transitionValidation.message
+        message: 'A refund request has already been submitted for this order.',
+        existingRequestId: existingRefund.id,
+        existingStatus: existingRefund.status
       });
     }
 
-    let itemsMessage = '';
-    if (items && Array.isArray(items) && items.length > 0) {
-      itemsMessage = `\nRequested Items:\n` + items.map(item => `- ${item.title || item.productId} (Qty: ${item.quantity || 1})`).join('\n');
+    // Flatten items across direct + subOrder items (multi-seller support)
+    const subOrderItems = (order.subOrders || []).flatMap(so => so.items || []);
+    const allOrderItems = [...order.items, ...subOrderItems];
+    const orderItemMap  = new Map(allOrderItems.map(i => [i.id, i]));
+
+    // ── Resolve requested line items ─────────────────────────────────────────
+    let resolvedItems;
+
+    if (!requestedItems || requestedItems.length === 0) {
+      resolvedItems = allOrderItems.map(oi => ({
+        orderItem:    oi,
+        requestedQty: oi.quantity,
+        reason:       finalTopReason,
+        attachments:  topLevelAttachments
+      }));
+    } else {
+      const errors = [];
+      resolvedItems = [];
+      for (const ri of requestedItems) {
+        if (!ri.orderItemId) { errors.push('Each item must have an "orderItemId"'); continue; }
+        const oi = orderItemMap.get(ri.orderItemId);
+        if (!oi) { errors.push(`Order item "${ri.orderItemId}" not found in this order`); continue; }
+        const qty = parseInt(ri.quantity, 10);
+        if (!qty || qty < 1 || qty > oi.quantity) {
+          errors.push(`Invalid quantity ${qty} for item "${oi.product?.title || ri.orderItemId}" (max: ${oi.quantity})`);
+          continue;
+        }
+        const itemReason = ((ri.reason || '').trim()) || finalTopReason;
+        if (!itemReason) {
+          errors.push(`A reason is required for item "${oi.product?.title || ri.orderItemId}"`);
+          continue;
+        }
+        resolvedItems.push({
+          orderItem:    oi,
+          requestedQty: qty,
+          reason:       itemReason,
+          attachments:  (ri.attachments && Array.isArray(ri.attachments)) ? ri.attachments : topLevelAttachments
+        });
+      }
+      if (errors.length) return reply.status(400).send({ success: false, message: errors[0], errors });
+      if (!resolvedItems.length) return reply.status(400).send({ success: false, message: 'No valid items provided' });
     }
 
-    const ticketTitle = normalizedRequestType === 'REFUND' ? 'Full Refund Request' : 'Partial Refund Request';
-    const readableOrderId = order.displayId;
-    const requestTypeLabel = normalizedRequestType === 'REFUND' ? 'Full Refund' : 'Partial Refund';
+    if (!resolvedItems.every(r => r.reason)) {
+      return reply.status(400).send({ success: false, message: 'A reason is required for all requested items' });
+    }
+
+    // ── Auto-determine refund type ────────────────────────────────────────────
+    const totalOrderQty    = allOrderItems.reduce((s, i) => s + i.quantity, 0);
+    const totalRequestQty  = resolvedItems.reduce((s, r) => s + r.requestedQty, 0);
+    const requestedItemIds = new Set(resolvedItems.map(r => r.orderItem.id));
+    const allItemsCovered  = allOrderItems.every(i => requestedItemIds.has(i.id));
+    const isFullRefund     = allItemsCovered && totalRequestQty === totalOrderQty;
+    const normalizedRequestType = isFullRefund ? 'REFUND' : 'PARTIAL_REFUND';
+    const ticketTitle      = isFullRefund ? 'Full Refund Request' : 'Partial Refund Request';
+    const readableOrderId  = order.displayId;
+
+    // ── Build structured message ──────────────────────────────────────────────
+    const headlineReason = finalTopReason || resolvedItems[0]?.reason || '';
+    const itemsText = resolvedItems.map(r =>
+      `- ${r.orderItem.product?.title || r.orderItem.id} (Qty: ${r.requestedQty})` +
+      (r.reason !== headlineReason ? ` — ${r.reason}` : '')
+    ).join('\n');
+
+    const itemsBlob = resolvedItems.map(r => ({
+      orderItemId: r.orderItem.id,
+      productId:   r.orderItem.product?.id || r.orderItem.productId,
+      title:       r.orderItem.product?.title || 'Product',
+      image:       r.orderItem.product?.featuredImage || null,
+      quantity:    r.requestedQty,
+      price:       r.orderItem.price,
+      reason:      r.reason,
+      attachments: r.attachments
+    }));
+
+    const allAttachments = [...new Set(resolvedItems.flatMap(r => r.attachments))];
+
+    const ticketMessage = [
+      `Order ID: ${readableOrderId}`,
+      `Reason: ${headlineReason}`,
+      `Requested Items:\n${itemsText}`,
+      `---ITEMS_JSON---`,
+      JSON.stringify(itemsBlob)
+    ].join('\n');
+
     const supportTicket = await prisma.supportTicket.create({
       data: {
-        userId: order.userId || null,
+        userId:      order.userId || null,
         orderId,
-        guestEmail: normalizedEmail,
+        guestEmail:  normalizedEmail,
         requestType: normalizedRequestType,
-        subject: `${ticketTitle} for Order #${readableOrderId}`,
-        message: `Order ID: ${displayId}\nRequest Type: ${requestTypeLabel}\nReason: ${finalReason}${itemsMessage}`,
-        category: 'REFUND_REQUEST',
-        priority: 'MEDIUM',
-        attachments: uploadedImageUrls
+        subject:     `${ticketTitle} for Order #${readableOrderId}`,
+        message:     ticketMessage,
+        category:    'REFUND_REQUEST',
+        attachments: allAttachments
       }
     });
 
-    const sellerIds = [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
-    const admins = await prisma.user.findMany({
+    // ── Notifications ─────────────────────────────────────────────────────────
+    const sellerIds = [...new Set(allOrderItems.map(i => i.product?.sellerId).filter(Boolean))];
+    const admins    = await prisma.user.findMany({
       where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
       select: { id: true }
     });
 
-    const notificationTitle = `${ticketTitle} Submitted`;
-    const notificationMessage = `Guest customer ${order.customerName || 'Customer'} requested ${normalizedRequestType} for order #${readableOrderId}.`;
-    const metadata = {
-      orderId,
+    const notifTitle   = `${ticketTitle} Submitted`;
+    const notifMessage = `Guest ${order.customerName || normalizedEmail} requested a ${normalizedRequestType.toLowerCase().replace('_', ' ')} for order #${readableOrderId}.`;
+    const metadata     = { orderId, requestType: normalizedRequestType, reason: headlineReason, supportTicketId: supportTicket.id, guestEmail: normalizedEmail, totalAmount: order.totalAmount?.toString() };
+
+    const notifRows = [
+      ...admins.map(a  => ({ userId: a.id,   title: notifTitle, message: notifMessage, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata })),
+      ...sellerIds.map(sid => ({ userId: sid, title: notifTitle, message: notifMessage, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata }))
+    ];
+    if (notifRows.length) await prisma.notification.createMany({ data: notifRows });
+
+    // ── Emails (non-blocking) ─────────────────────────────────────────────────
+    const customerName = order.customerName || (order.user?.isDeleted ? 'Guest' : order.user?.name) || 'Guest';
+
+    sendRefundRequestConfirmationEmail(normalizedEmail, customerName, {
+      displayId:   order.displayId,
+      ticketId:    supportTicket.id,
       requestType: normalizedRequestType,
-      reason: finalReason,
-      supportTicketId: supportTicket.id,
-      guestEmail: normalizedEmail,
-      totalAmount: order.totalAmount?.toString()
-    };
-
-    for (const admin of admins) {
-      await prisma.notification.create({
-        data: {
-          userId: admin.id,
-          title: notificationTitle,
-          message: notificationMessage,
-          type: 'GENERAL',
-          relatedId: orderId,
-          relatedType: 'order',
-          metadata
-        }
-      });
-    }
-
-    for (const sellerId of sellerIds) {
-      await prisma.notification.create({
-        data: {
-          userId: sellerId,
-          title: notificationTitle,
-          message: notificationMessage,
-          type: 'GENERAL',
-          relatedId: orderId,
-          relatedType: 'order',
-          metadata
-        }
-      });
-    }
-
-    // Send confirmation email to guest customer
-    sendRefundRequestConfirmationEmail(normalizedEmail, order.customerName || 'Customer', {
-      displayId: order.displayId,
-      ticketId: supportTicket.id,
-      requestType: normalizedRequestType,
-      reason: finalReason,
+      reason:      headlineReason,
       totalAmount: order.totalAmount,
-      isGuest: true,
-      items: items && Array.isArray(items) ? items : []
+      isGuest:     true,
+      items:       itemsBlob
     }).catch(err => console.error('Guest refund confirmation email error (non-blocking):', err.message));
 
-    // Email all super-admins about the new guest refund request (non-blocking)
     prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
-      .then(adminUsers => {
-        const emailStatus = normalizedRequestType === 'REFUND' ? 'refund' : 'partial_refund';
-        for (const admin of adminUsers) {
+      .then(superAdmins => {
+        for (const admin of superAdmins) {
           if (admin.email) {
             sendAdminOrderStatusEmail(admin.email, admin.name, {
-              displayId: order.displayId,
-              status: emailStatus,
-              updatedBy: `Guest Customer (${ticketTitle})`,
-              customerName: order.customerName || normalizedEmail,
-              reason: finalReason,
-              totalAmount: order.totalAmount
+              displayId:    order.displayId,
+              status:       isFullRefund ? 'refund' : 'partial_refund',
+              updatedBy:    `Guest Customer (${ticketTitle})`,
+              customerName: customerName,
+              reason:       headlineReason,
+              totalAmount:  order.totalAmount
             }).catch(err => console.error('Admin guest refund email error (non-blocking):', err.message));
           }
         }
       }).catch(err => console.error('Admin list error for guest refund email (non-blocking):', err.message));
 
-    return reply.status(200).send({
+    return reply.status(201).send({
       success: true,
       message: `${ticketTitle} submitted successfully`,
-      ticketId: supportTicket.id,
-      supportTicketId: supportTicket.id,
       request: {
-        id: supportTicket.id,
-        requestId: supportTicket.id,
-        supportTicketId: supportTicket.id,
+        id:             supportTicket.id,
         orderId,
-        displayId: order.displayId,
-        requestType: normalizedRequestType,
-        reason: finalReason,
-        guestEmail: normalizedEmail,
-        attachments: uploadedImageUrls,
-        status: supportTicket.status,
-        createdAt: supportTicket.createdAt
+        orderDisplayId: `#${order.displayId}`,
+        requestType:    normalizedRequestType,
+        reason:         headlineReason,
+        requestedItems: itemsBlob,
+        attachments:    allAttachments,
+        guestEmail:     normalizedEmail,
+        status:         'OPEN',
+        createdAt:      supportTicket.createdAt
       }
     });
   } catch (error) {

@@ -1,6 +1,6 @@
 const prisma = require("../config/prisma");
 const { generateSalesReportCSV } = require("../utils/csvExport");
-const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail } = require("../utils/emailService");
+const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail } = require("../utils/emailService");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const fs = require('fs');
 const path = require('path');
@@ -4770,6 +4770,9 @@ exports.getAllRefundRequests = async (request, reply) => {
           displayId: true,
           totalAmount: true,
           status: true,
+          customerName: true,
+          customerEmail: true,
+          user: { select: { id: true, name: true, email: true } },
           items: {
             select: {
               id: true,
@@ -4881,6 +4884,8 @@ exports.getAllRefundRequests = async (request, reply) => {
             image: imageByProductId[ri.productId] ?? null
           }))
         : null;
+      const customerName  = ticket.user?.name  || order?.user?.name  || order?.customerName  || null;
+      const customerEmail = ticket.user?.email || ticket.guestEmail  || order?.user?.email || order?.customerEmail || null;
       return {
         ...ticket,
         requestType: requestTypeDisplay,
@@ -4889,6 +4894,8 @@ exports.getAllRefundRequests = async (request, reply) => {
         orderDisplayId: order ? `#${order.displayId}` : null,
         orderTotalAmount: order?.totalAmount || 0,
         isGuest: !ticket.userId,
+        customerName,
+        customerEmail,
         // requestedItems: only what the customer selected (null = full order / no selection)
         requestedItems,
         // orderItems: all items in the order (for admin context)
@@ -4896,9 +4903,26 @@ exports.getAllRefundRequests = async (request, reply) => {
       };
     });
 
+    // Map DB TicketStatus → refund-specific display status used across all endpoints
+    // DB:  OPEN         → Open
+    // DB:  IN_PROGRESS  → Approved
+    // DB:  RESOLVED     → Completed
+    // DB:  CLOSED       → Rejected
+    const toRefundStatus = (dbStatus) => ({
+      OPEN:        'OPEN',
+      IN_PROGRESS: 'APPROVED',
+      RESOLVED:    'COMPLETED',
+      CLOSED:      'REJECTED'
+    }[dbStatus] || dbStatus);
+
+    const formattedWithStatus = formattedTickets.map(t => ({
+      ...t,
+      status: toRefundStatus(t.status)
+    }));
+
     return reply.status(200).send({
       success: true,
-      data: formattedTickets,
+      data: formattedWithStatus,
       pagination: {
         total: totalCount,
         page,
@@ -4908,6 +4932,186 @@ exports.getAllRefundRequests = async (request, reply) => {
     });
   } catch (error) {
     console.error('Error fetching refund requests:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ── Refund status display ← DB enum mapping ──────────────────────────────────
+// DB OPEN → OPEN | DB IN_PROGRESS → APPROVED | DB RESOLVED → COMPLETED | DB CLOSED → REJECTED
+const REFUND_DB_TO_DISPLAY = { OPEN: 'OPEN', IN_PROGRESS: 'APPROVED', RESOLVED: 'COMPLETED', CLOSED: 'REJECTED' };
+const REFUND_DISPLAY_TO_DB = { OPEN: 'OPEN', APPROVED: 'IN_PROGRESS', COMPLETED: 'RESOLVED', REJECTED: 'CLOSED' };
+const REFUND_TRANSITIONS   = { OPEN: ['APPROVED', 'REJECTED'], APPROVED: ['COMPLETED'], REJECTED: [], COMPLETED: [] };
+
+// ADMIN — UPDATE REFUND REQUEST STATUS
+// Body: { status: 'APPROVED' | 'REJECTED' | 'COMPLETED', message?: string }
+// APPROVED  → refund is confirmed, processing; notifies customer + sellers
+// REJECTED  → refund denied;                   notifies customer + sellers
+// COMPLETED → payment was issued; cancels CommissionEarned so sellers/admin revenue reflects the refund
+exports.updateRefundRequestStatus = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const { status, message } = request.body || {};
+
+    if (!status || !REFUND_DISPLAY_TO_DB[status]) {
+      return reply.status(400).send({
+        success: false,
+        message: `Invalid status. Use: APPROVED, REJECTED, or COMPLETED`
+      });
+    }
+
+    const ticket = await prisma.supportTicket.findFirst({
+      where: { id, category: 'REFUND_REQUEST' }
+    });
+    if (!ticket) return reply.status(404).send({ success: false, message: 'Refund request not found' });
+
+    const currentDisplay = REFUND_DB_TO_DISPLAY[ticket.status] || 'OPEN';
+    const allowed = REFUND_TRANSITIONS[currentDisplay] || [];
+    if (!allowed.includes(status)) {
+      return reply.status(400).send({
+        success: false,
+        message: `Cannot move from ${currentDisplay} to ${status}. Allowed: ${allowed.join(', ') || 'none'}`
+      });
+    }
+
+    // Update the ticket
+    const updatedTicket = await prisma.supportTicket.update({
+      where: { id },
+      data: {
+        status:   REFUND_DISPLAY_TO_DB[status],
+        response: message?.trim() || ticket.response || null
+      }
+    });
+
+    // On COMPLETED: cancel CommissionEarned for this order — the refund reverses revenue
+    if (status === 'COMPLETED' && ticket.orderId) {
+      await prisma.commissionEarned.updateMany({
+        where: { orderId: ticket.orderId, status: { not: 'CANCELLED' } },
+        data:  { status: 'CANCELLED' }
+      });
+    }
+
+    // ── Fetch order + involved sellers ────────────────────────────────────────
+    let order = null;
+    let sellerIds = [];
+    if (ticket.orderId) {
+      order = await prisma.order.findUnique({
+        where: { id: ticket.orderId },
+        include: {
+          user:      { select: { id: true, name: true, email: true, isDeleted: true } },
+          items:     { include: { product: { select: { id: true, sellerId: true } } } },
+          subOrders: {
+            include: {
+              items: { include: { product: { select: { id: true, sellerId: true } } } }
+            }
+          }
+        }
+      });
+      if (order) {
+        sellerIds = [...new Set([
+          ...order.subOrders.map(s => s.sellerId),
+          ...(order.subOrders.flatMap(s => s.items || []).map(i => i.product?.sellerId)),
+          ...order.items.map(i => i.product?.sellerId)
+        ].filter(Boolean))];
+      }
+    }
+
+    const displayId     = order ? `#${order.displayId}` : `#${id.slice(-6).toUpperCase()}`;
+    const statusLabel   = { APPROVED: 'Approved', REJECTED: 'Rejected', COMPLETED: 'Completed' }[status];
+    const customerName  = (order?.user?.isDeleted ? 'Deleted User' : order?.user?.name) || order?.customerName || 'Customer';
+    const customerEmail = order?.user?.email || ticket.guestEmail;
+    const customerId    = ticket.userId;
+
+    // ── In-app notifications ──────────────────────────────────────────────────
+    const notifMeta = { ticketId: id, status, orderDisplayId: displayId };
+    const notifRows = [];
+
+    if (customerId) {
+      notifRows.push({
+        userId:      customerId,
+        title:       `Refund Request ${statusLabel}`,
+        message:     message?.trim() || `Your refund request for order ${displayId} has been ${statusLabel.toLowerCase()}.`,
+        type:        'GENERAL',
+        relatedId:   ticket.orderId || id,
+        relatedType: 'order',
+        metadata:    notifMeta
+      });
+    }
+
+    for (const sid of sellerIds) {
+      notifRows.push({
+        userId:      sid,
+        title:       `Refund Request ${statusLabel}`,
+        message:     message?.trim() || `A refund request for order ${displayId} has been ${statusLabel.toLowerCase()} by admin.`,
+        type:        'GENERAL',
+        relatedId:   ticket.orderId || id,
+        relatedType: 'order',
+        metadata:    notifMeta
+      });
+    }
+
+    if (notifRows.length) await prisma.notification.createMany({ data: notifRows });
+
+    // ── Emails (non-blocking) ─────────────────────────────────────────────────
+    // Parse requested items from the ticket for inclusion in the email
+    let ticketRequestedItems = null;
+    try {
+      const itemMatch = (ticket.message || '').match(/---ITEMS_JSON---\n([\s\S]+)/);
+      if (itemMatch) {
+        const parsed = JSON.parse(itemMatch[1].trim());
+        if (Array.isArray(parsed) && parsed.length > 0) ticketRequestedItems = parsed;
+      }
+    } catch { /* ignore */ }
+
+    const refundEmailPayload = {
+      displayId:      order?.displayId,
+      status,
+      adminMessage:   message?.trim() || null,
+      requestType:    ticket.requestType,
+      totalAmount:    order?.totalAmount,
+      requestedItems: ticketRequestedItems,
+      customerName,
+      isGuest:        !ticket.userId
+    };
+
+    if (customerEmail) {
+      sendRefundStatusUpdateEmail(customerEmail, customerName, refundEmailPayload)
+        .catch(err => console.error('Refund status customer email error (non-blocking):', err.message));
+    }
+
+    if (sellerIds.length && order) {
+      prisma.user.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true, email: true } })
+        .then(sellers => {
+          for (const seller of sellers) {
+            if (!seller.email) continue;
+            // Filter to only this seller's products
+            const sellerProductIds = new Set(
+              [...(order.items || []), ...(order.subOrders || []).flatMap(s => s.items || [])]
+                .filter(i => i.product?.sellerId === seller.id)
+                .map(i => i.product?.id)
+                .filter(Boolean)
+            );
+            const sellerItems = ticketRequestedItems
+              ? ticketRequestedItems.filter(ri => sellerProductIds.has(ri.productId))
+              : null;
+            sendSellerRefundStatusEmail(seller.email, seller.name, {
+              ...refundEmailPayload,
+              requestedItems: sellerItems
+            }).catch(err => console.error('Refund status seller email error (non-blocking):', err.message));
+          }
+        }).catch(() => {});
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: `Refund request ${statusLabel.toLowerCase()} successfully`,
+      request: {
+        id:           updatedTicket.id,
+        status,
+        adminMessage: updatedTicket.response
+      }
+    });
+  } catch (error) {
+    console.error('Update refund status error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
