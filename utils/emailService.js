@@ -7921,6 +7921,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
 };
 
 module.exports = { 
+  generateOTP,
   sendOTPEmail, 
   testEmailConfig,
   sendOrderConfirmationEmail,
