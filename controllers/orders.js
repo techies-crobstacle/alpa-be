@@ -324,6 +324,8 @@ exports.createOrder = async (request, reply) => {
               orderSummary: {
                 subtotal: cartCalculations.subtotal,
                 shippingCost: cartCalculations.shippingCost,
+                totalShippingCost: cartCalculations.totalShippingCost,
+                sellerCount: cartCalculations.sellerCount,
                 gstPercentage: cartCalculations.gstPercentage,
                 gstAmount: cartCalculations.gstAmount,
                 grandTotal: cartCalculations.grandTotal,
@@ -353,6 +355,9 @@ exports.createOrder = async (request, reply) => {
           }
         });
 
+        // Per-seller shipping cost (full rate applied to each seller)
+        const perSellerShipping = parseFloat(cartCalculations.shippingCost);
+
         // Create sub-orders for each seller with their specific products
         const createdSubOrders = [];
         let subOrderIndex = 0;
@@ -362,13 +367,16 @@ exports.createOrder = async (request, reply) => {
           const subDisplayId = `${displayId}-${subSuffix}`;
           subOrderIndex++;
 
+          // Each seller's subtotal = their product total + their own shipping cost
+          const subOrderSubtotal = sellerData.totalAmount + perSellerShipping;
+
           // Create sub-order for this seller
           const subOrder = await tx.subOrder.create({
             data: {
               subDisplayId,
               parentOrderId: parentOrder.id,
               sellerId: sellerId,
-              subtotal: sellerData.totalAmount,
+              subtotal: subOrderSubtotal,
               status: "CONFIRMED"
             }
           });
@@ -422,6 +430,8 @@ exports.createOrder = async (request, reply) => {
               orderSummary: {
                 subtotal: cartCalculations.subtotal,
                 shippingCost: cartCalculations.shippingCost,
+                totalShippingCost: cartCalculations.totalShippingCost,
+                sellerCount: cartCalculations.sellerCount,
                 gstPercentage: cartCalculations.gstPercentage,
                 gstAmount: cartCalculations.gstAmount,
                 grandTotal: cartCalculations.grandTotal,
@@ -593,15 +603,18 @@ exports.createOrder = async (request, reply) => {
                 price: Number(item.product.price)
               })),
               shippingAddress,
+              paymentMethod,
               customerPhone: mobileNumber || user.phone || '',
               orderSummary: {
                 subtotal: cartCalculations.subtotal,
                 subtotalExGST: cartCalculations.subtotalExGST,
-                shippingCost: cartCalculations.shippingCost,
+                shippingCost: cartCalculations.totalShippingCost,
                 gstPercentage: cartCalculations.gstPercentage,
                 gstAmount: cartCalculations.gstAmount,
                 grandTotal: cartCalculations.grandTotal,
                 gstInclusive: true,
+                couponCode: appliedCoupon ? appliedCoupon.code : null,
+                discountAmount: discountAmount > 0 ? discountAmount : null,
                 shippingMethod: {
                   name: shippingMethod.name,
                   cost: shippingMethod.cost,
@@ -732,6 +745,8 @@ exports.createOrder = async (request, reply) => {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
+        totalShippingCost: cartCalculations.totalShippingCost,
+        sellerCount: cartCalculations.sellerCount,
         gstPercentage: cartCalculations.gstPercentage,
         gstAmount: cartCalculations.gstAmount,
         originalTotal,
@@ -2594,6 +2609,8 @@ exports.createGuestOrder = async (request, reply) => {
             orderSummary: {
               subtotal: cartCalculations.subtotal,
               shippingCost: cartCalculations.shippingCost,
+              totalShippingCost: cartCalculations.totalShippingCost,
+              sellerCount: cartCalculations.sellerCount,
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
@@ -2710,7 +2727,7 @@ exports.createGuestOrder = async (request, reply) => {
             orderSummary: {
               subtotal: cartCalculations.subtotal,
               subtotalExGST: cartCalculations.subtotalExGST,
-              shippingCost: cartCalculations.shippingCost,
+              shippingCost: cartCalculations.totalShippingCost,
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
@@ -2832,6 +2849,8 @@ exports.createGuestOrder = async (request, reply) => {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
+        totalShippingCost: cartCalculations.totalShippingCost,
+        sellerCount: cartCalculations.sellerCount,
         gstPercentage: cartCalculations.gstPercentage,
         gstAmount: cartCalculations.gstAmount,
         originalTotal: originalTotal.toFixed(2),
@@ -3000,135 +3019,230 @@ exports.trackGuestOrder = async (request, reply) => {
 // ─── Invoice PDF Helper ────────────────────────────────────────────
 // Accepts a unified order shape. Handles MULTI_SELLER (order.subOrders[]),
 // sub-order specific (order.sellerName set, flat order.items), and legacy/direct.
+// For multi-seller orders a separate A4 page is generated per seller in one PDF.
+// Place your logo at:  <project-root>/assets/logo.png
 const generateInvoiceBuffer = (order) => {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: 'A4', autoFirstPage: true });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end',  () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Resolve status — MULTI_SELLER parents store it in overallStatus
-    const resolvedStatus = order.status || order.overallStatus || 'CONFIRMED';
-    const displayRef     = order.displayId != null ? `#${order.displayId}` : order.id;
+    // Brand colours
+    const BRAND       = '#5A1E12';
+    const BRAND_MID   = '#7D2E1E';
+    const BRAND_LIGHT = '#F9EDE9';
+    const L = 50;           // left x
+    const R = 545;          // right x (595 - 50)
+    const PAGE_H = doc.page.height;   // A4 = 841.89 pt
+    // PDFKit autopage triggers at PAGE_H - margin(50) = ~791.89
+    // Footer needs 2 lines of text: keep it well inside that limit
+    const FOOTER_Y     = PAGE_H - 96; // divider line here → 3 footer lines fit safely under 791pt limit
+    const MAX_CONTENT_Y = FOOTER_Y - 30; // items/summary must not pass this
 
-    // ── Page Border ──
-    doc.rect(20, 20, doc.page.width - 40, doc.page.height - 40)
-       .lineWidth(1)
-       .stroke();
+    // Logo (optional) — place file at <project-root>/assets/logo.png
+    const logoPath = path.join(__dirname, '../assets/logo.png');
+    const hasLogo  = fs.existsSync(logoPath);
 
-    // ── Header ──
-    doc.fontSize(20).text('Made in Arnhem Land', 50, 50)
-       .fontSize(10).text('Your Cultural Marketplace', 50, 75).moveDown();
+    const displayRef = order.displayId != null ? `#${order.displayId}` : (order.id || 'N/A');
 
-    // ── Invoice meta ──
-    doc.fontSize(16).text('INVOICE', 50, 120)
-       .fontSize(12)
-       .text(`Invoice : ${displayRef}`, 50, 145)
-       .text(`Date: ${new Date(order.createdAt).toLocaleDateString('en-AU')}`, 50, 160)
-       .text('Payment Method: Credit/Debit Card', 50, 175);
-    if (order.sellerName) {
-      doc.text(`Seller: ${order.sellerName}`, 50, 190);
-    }
+    // Per-seller shipping & GST rate from the orderSummary stored in shippingAddress JSON
+    const storedSummary = (typeof order.shippingAddress === 'object' && order.shippingAddress?.orderSummary)
+      ? order.shippingAddress.orderSummary
+      : null;
+    const perSellerShipping = storedSummary ? parseFloat(storedSummary.shippingCost || 0) : 0;
+    const gstRate = parseFloat(storedSummary?.gstPercentage || 10); // default AU GST 10%
 
-    // ── Bill To ──
-    doc.fontSize(14).text('Bill To:', 50, 210)
-       .fontSize(12)
-       .text(order.customerName  || '', 50, 230)
-       .text(order.customerEmail || '', 50, 245)
-       .text(order.shippingPhone || order.customerPhone || '', 50, 260);
+    // ── Helper: draw a complete invoice page for one seller ───────────────
+    // showOrderDiscount: true only on the last page (or single-seller) — coupon is order-level
+    const drawPage = (sellerName, items, showOrderDiscount = true) => {
+      // Border — stays within the page
+      doc.rect(18, 18, R - L + 64, PAGE_H - 36).lineWidth(1.5).stroke(BRAND);
 
-    // ── Ship To ──
-    doc.fontSize(14).text('Ship To:', 300, 210).fontSize(12);
-    if (order.shippingAddressLine || order.shippingCity) {
-      doc.text(order.shippingAddressLine || '', 300, 230)
-         .text(`${order.shippingCity || ''}, ${order.shippingState || ''}`, 300, 245)
-         .text(order.shippingZipCode  || '', 300, 260)
-         .text(order.shippingCountry  || '', 300, 275);
-    }
+      let y = 42;
+
+      // ── Header: logo (left) + INVOICE title (right) ──
+      if (hasLogo) {
+        try { doc.image(logoPath, L, y, { height: 52 }); } catch (_) { /* skip if image fails */ }
+      }
+      doc.fillColor(BRAND).fontSize(22).font('Helvetica-Bold')
+         .text('INVOICE', L, y, { align: 'right', width: R - L });
+      doc.fillColor(BRAND_MID).fontSize(9.5).font('Helvetica')
+         .text('Alpa Marketplace', L, y + 27, { align: 'right', width: R - L });
+      y += 64;
+
+      // Header divider
+      doc.moveTo(L, y).lineTo(R, y).lineWidth(2).stroke(BRAND);
+      y += 12;
+
+      // ── Invoice meta ──
+      const metaLabel = (txt, val, yy) => {
+        doc.fillColor('#666').font('Helvetica-Bold').fontSize(9.5).text(txt, L, yy, { width: 75 });
+        doc.fillColor('#333').font('Helvetica').fontSize(9.5).text(val, L + 75, yy, { width: 220 });
+      };
+      metaLabel('Invoice No:', displayRef, y);
+      metaLabel('Date:',    new Date(order.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }), y + 15);
+      metaLabel('Payment:', order.paymentMethod || 'Credit/Debit Card', y + 30);
+      if (sellerName) { metaLabel('Seller:', sellerName, y + 45); y += 60; }
+      else { y += 48; }
+
+      // ── Bill To / Ship To boxes ──
+      const boxW  = Math.floor((R - L - 8) / 2);
+      const box2X = L + boxW + 8;
+      const boxH  = 70;
+
+      doc.rect(L,     y, boxW, boxH).lineWidth(0.5).stroke('#cccccc');
+      doc.rect(box2X, y, boxW, boxH).lineWidth(0.5).stroke('#cccccc');
+      doc.rect(L,     y, boxW, 17).fill(BRAND);
+      doc.rect(box2X, y, boxW, 17).fill(BRAND);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8.5)
+         .text('BILL TO', L + 7, y + 5, { width: boxW - 14 })
+         .text('SHIP TO', box2X + 7, y + 5, { width: boxW - 14 });
+
+      doc.fillColor('#333').font('Helvetica').fontSize(9);
+      doc.text(order.customerName  || '', L + 7,     y + 22, { width: boxW - 14, ellipsis: true });
+      doc.text(order.customerEmail || '', L + 7,     y + 34, { width: boxW - 14, ellipsis: true });
+      doc.text(order.shippingPhone || order.customerPhone || '', L + 7, y + 46, { width: boxW - 14 });
+
+      if (order.shippingAddressLine || order.shippingCity) {
+        doc.text(order.shippingAddressLine || '', box2X + 7, y + 22, { width: boxW - 14, ellipsis: true });
+        doc.text([order.shippingCity, order.shippingState].filter(Boolean).join(', '), box2X + 7, y + 34, { width: boxW - 14, ellipsis: true });
+        doc.text([order.shippingZipCode, order.shippingCountry].filter(Boolean).join(' '), box2X + 7, y + 46, { width: boxW - 14 });
+      }
+      y += boxH + 16;
+
+      // ── Items Table ──
+      const C_QTY   = 330;
+      const C_UNIT  = 392;
+      const C_TOTAL = 470;
+      const HDR_H   = 22;
+      const ROW_H   = 20;
+      const tableW  = R - L;
+
+      // Table header row
+      doc.rect(L, y, tableW, HDR_H).fill(BRAND);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5);
+      doc.text('Product',    L + 6,  y + 6, { width: C_QTY - L - 10 });
+      doc.text('Qty',        C_QTY,  y + 6, { width: C_UNIT - C_QTY,   align: 'center' });
+      doc.text('Unit Price', C_UNIT, y + 6, { width: C_TOTAL - C_UNIT, align: 'right'  });
+      doc.text('Total',      C_TOTAL,y + 6, { width: R - C_TOTAL - 6,  align: 'right'  });
+      y += HDR_H;
+
+      const tableStartY = y;
+      let subtotal = 0;
+      doc.font('Helvetica').fontSize(9);
+
+      (items || []).forEach((item, idx) => {
+        // Guard: stop rendering items if we're about to hit the summary+footer area
+        if (y + ROW_H > MAX_CONTENT_Y - 100) return;
+        const lineTotal = Number(item.price) * item.quantity;
+        subtotal += lineTotal;
+        doc.rect(L, y, tableW, ROW_H).fill(idx % 2 === 0 ? '#ffffff' : BRAND_LIGHT);
+        doc.fillColor('#333');
+        doc.text(item.product?.title || 'Product', L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
+        doc.text(String(item.quantity),             C_QTY,  y + 5, { width: C_UNIT - C_QTY,  align: 'center' });
+        doc.text(`$${Number(item.price).toFixed(2)}`, C_UNIT,  y + 5, { width: C_TOTAL - C_UNIT, align: 'right' });
+        doc.text(`$${lineTotal.toFixed(2)}`,           C_TOTAL, y + 5, { width: R - C_TOTAL - 6,  align: 'right' });
+        y += ROW_H;
+      });
+
+      // Recalculate subtotal from all items (guard above may have skipped some rows display-only)
+      subtotal = (items || []).reduce((s, i) => s + Number(i.price) * i.quantity, 0);
+
+      // Table outer border
+      doc.rect(L, tableStartY - HDR_H, tableW, HDR_H + (y - tableStartY))
+         .lineWidth(1).stroke('#dddddd');
+      y += 14;
+
+      // ── Summary block ──────────────────────────────────────────────────
+      // Ensure summary block fits before the footer
+      const summaryLines  = 3 + (perSellerShipping > 0 ? 1 : 0) + (parseFloat(order.discountAmount || 0) > 0 ? 1 : 0);
+      const summaryHeight = summaryLines * 17 + 30; // rows + total line
+      const summaryY      = y + summaryHeight > MAX_CONTENT_Y ? MAX_CONTENT_Y - summaryHeight : y;
+
+      const sumRow = (label, value, yy, opts = {}) => {
+        const { color = '#555', valueColor = '#333', bold = false, size = 10 } = opts;
+        doc.fillColor(color).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size)
+           .text(label, 330, yy, { width: 140 });
+        doc.fillColor(valueColor).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size)
+           .text(value, 330, yy, { width: R - 330, align: 'right' });
+      };
+
+      let sy = summaryY;
+
+      // 1. Products subtotal (inc. GST)
+      sumRow('Products Subtotal (inc. GST):', `$${subtotal.toFixed(2)}`, sy);
+      sy += 17;
+
+      // 2. GST included (extracted from subtotal: GST = subtotal × rate / (100 + rate))
+      const gstAmt  = subtotal * gstRate / (100 + gstRate);
+      const netExGst = subtotal - gstAmt;
+      doc.fillColor('#888').font('Helvetica').fontSize(8.5)
+         .text(`  GST included (${gstRate.toFixed(0)}%):`, 330, sy, { width: 150 });
+      doc.fillColor('#888').fontSize(8.5)
+         .text(`$${gstAmt.toFixed(2)}`, 330, sy, { width: R - 330, align: 'right' });
+      sy += 14;
+      doc.fillColor('#aaa').font('Helvetica').fontSize(8.5)
+         .text('  Net amount (ex. GST):', 330, sy, { width: 150 });
+      doc.fillColor('#aaa').fontSize(8.5)
+         .text(`$${netExGst.toFixed(2)}`, 330, sy, { width: R - 330, align: 'right' });
+      sy += 16;
+
+      // 3. Shipping
+      if (perSellerShipping > 0) {
+        const shippingLabel = storedSummary?.shippingMethod?.name || 'Shipping';
+        sumRow(`${shippingLabel}:`, `$${perSellerShipping.toFixed(2)}`, sy);
+        sy += 17;
+      }
+
+      // 4. Coupon discount — shown on last page only (order-level discount)
+      const discAmt = showOrderDiscount
+        ? parseFloat(order.discountAmount || storedSummary?.discountAmount || 0)
+        : 0;
+      const discCode = order.couponCode || storedSummary?.couponCode || null;
+      if (discAmt > 0) {
+        sumRow(
+          `Coupon Discount${discCode ? ` (${discCode})` : ''}:`,  
+          `-$${discAmt.toFixed(2)}`,
+          sy,
+          { color: '#2e7d32', valueColor: '#2e7d32' }
+        );
+        sy += 17;
+      }
+
+      // 5. Total line
+      doc.moveTo(330, sy).lineTo(R, sy).lineWidth(1.5).stroke(BRAND);
+      sy += 8;
+      const pageTotal = subtotal + perSellerShipping - discAmt;
+      sumRow('Total:', `$${pageTotal.toFixed(2)}`, sy, { bold: true, size: 12, color: BRAND, valueColor: BRAND });
+      sy += 16;
+      doc.fillColor('#999999').font('Helvetica-Oblique').fontSize(7.5)
+         .text('All applicable taxes are included in the total.', 330, sy, { width: R - 330, align: 'right', lineBreak: false });
+
+      // ── Footer — fixed at bottom, well within page bounds ────────────────
+      doc.moveTo(L, FOOTER_Y - 10).lineTo(R, FOOTER_Y - 10).lineWidth(0.5).stroke('#cccccc');
+      doc.fillColor('#aaaaaa').font('Helvetica').fontSize(8.5)
+         .text('Thank you for shopping with Alpa Marketplace!', L, FOOTER_Y, { align: 'center', width: R - L, lineBreak: false });
+      doc.fillColor('#bbbbbb').font('Helvetica').fontSize(8)
+         .text('Support: support@alpa.com', L, FOOTER_Y + 14, { align: 'center', width: R - L, lineBreak: false });
+    };
 
     const hasSubOrders = Array.isArray(order.subOrders) && order.subOrders.length > 0;
-    let yPos = 320;
-    let grandSubtotal = 0;
 
     if (hasSubOrders) {
-      // ── MULTI_SELLER: one section per seller sub-order ──
-      for (const sub of order.subOrders) {
+      // ── MULTI_SELLER: one A4 page per seller, all in one PDF ──
+      // Coupon is order-level — show it only on the last seller page
+      order.subOrders.forEach((sub, idx) => {
+        if (idx > 0) doc.addPage({ size: 'A4', margin: 50 });
         const sellerLabel = sub.seller?.name || sub.sellerName || 'Unknown Seller';
-        doc.fontSize(11)
-           .text(`Seller: ${sellerLabel}`, 50, yPos);
-        yPos += 18;
-
-        doc.fontSize(10)
-           .text('Item',       50, yPos)
-           .text('Qty',       310, yPos)
-           .text('Unit Price', 370, yPos)
-           .text('Total',     470, yPos);
-        doc.moveTo(50, yPos + 12).lineTo(550, yPos + 12).stroke();
-        yPos += 22;
-
-        let sellerSubtotal = 0;
-        (sub.items || []).forEach(item => {
-          const lineTotal = Number(item.price) * item.quantity;
-          sellerSubtotal += lineTotal;
-          doc.fontSize(10)
-             .text(item.product?.title || 'Product', 50, yPos, { width: 250 })
-             .text(String(item.quantity),             310, yPos)
-             .text(`$${Number(item.price).toFixed(2)}`, 370, yPos)
-             .text(`$${lineTotal.toFixed(2)}`,          470, yPos);
-          yPos += 18;
-        });
-        doc.fontSize(10)
-           .text(`Seller Subtotal:`, 370, yPos)
-           .text(`$${Number(sub.subtotal ?? sellerSubtotal).toFixed(2)}`, 470, yPos);
-        yPos += 8;
-        doc.moveTo(50, yPos + 4).lineTo(550, yPos + 4).stroke();
-        yPos += 18;
-        grandSubtotal += sellerSubtotal;
-      }
-    } else {
-      // ── Single-seller / sub-order: flat items table ──
-      doc.fontSize(12)
-         .text('Item',       50, yPos)
-         .text('Quantity',  260, yPos)
-         .text('Unit Price', 360, yPos)
-         .text('Total',     460, yPos);
-      doc.moveTo(50, yPos + 15).lineTo(550, yPos + 15).stroke();
-      yPos += 28;
-
-      (order.items || []).forEach(item => {
-        const lineTotal = Number(item.price) * item.quantity;
-        grandSubtotal += lineTotal;
-        doc.text(item.product?.title || 'Product', 50, yPos, { width: 200 })
-           .text(String(item.quantity),              260, yPos)
-           .text(`$${Number(item.price).toFixed(2)}`, 360, yPos)
-           .text(`$${lineTotal.toFixed(2)}`,           460, yPos);
-        yPos += 20;
+        const isLastPage = idx === order.subOrders.length - 1;
+        drawPage(sellerLabel, sub.items || [], isLastPage);
       });
-      doc.moveTo(50, yPos + 5).lineTo(550, yPos + 5).stroke();
-      yPos += 18;
+    } else {
+      // ── Single-seller / sub-order / legacy direct order ──
+      drawPage(order.sellerName || null, order.items || [], true);
     }
-
-    // ── Coupon / discount ──
-    if (order.discountAmount && parseFloat(order.discountAmount) > 0) {
-      doc.fontSize(12)
-         .text(`Coupon (${order.couponCode || ''}) Discount:`, 300, yPos)
-         .text(`-$${parseFloat(order.discountAmount).toFixed(2)}`, 460, yPos);
-      yPos += 20;
-    }
-
-    // ── Totals ──
-    doc.fontSize(12).text('Subtotal:',     350, yPos).text(`$${grandSubtotal.toFixed(2)}`, 460, yPos);
-    yPos += 20;
-    doc.fontSize(14).text('Total Amount:', 350, yPos).text(`$${Number(order.totalAmount).toFixed(2)}`, 460, yPos);
-    yPos += 40;
-    doc.fontSize(12).text(`Payment Method: ${order.paymentMethod || 'N/A'}`, 50, yPos);
-
-    // ── Footer ──
-    yPos += 60;
-    doc.fontSize(10)
-       .text('Thank you for your business!', 50, yPos)
-       .text('For questions about this invoice, contact support@alpa.com', 50, yPos + 15);
 
     doc.end();
   });
@@ -3151,6 +3265,8 @@ const buildSubOrderShape = (sub) => ({
   shippingState:      sub.parentOrder.shippingState,
   shippingZipCode:    sub.parentOrder.shippingZipCode,
   shippingCountry:    sub.parentOrder.shippingCountry,
+  // Pass parent's shippingAddress JSON so perSellerShipping is resolved correctly
+  shippingAddress:    sub.parentOrder.shippingAddress || null,
   totalAmount:        sub.subtotal,
   paymentMethod:      sub.parentOrder.paymentMethod,
   discountAmount:     null,
@@ -3196,7 +3312,7 @@ exports.downloadInvoice = async (request, reply) => {
     } else {
       // ── Fall back: try as a SubOrder ID ──
       const subOrderInclude = {
-        parentOrder: { include: { user: { select: { name: true, email: true, phone: true } } } },
+        parentOrder: { select: { userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
         items:       { include: { product: { select: { id: true, title: true, price: true } } } },
         seller:      { select: { name: true, email: true } },
       };
@@ -3243,7 +3359,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
       where: { subDisplayId: subOrderId },
       include: {
         parentOrder: {
-          include: { user: { select: { name: true, email: true, phone: true } } }
+          select: { userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } }
         },
         items: { include: { product: { select: { id: true, title: true, price: true } } } },
         seller: { select: { name: true, email: true } },
@@ -3290,6 +3406,14 @@ exports.downloadGuestInvoice = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Order ID and customer email are required" });
     }
 
+    const parentOrderSelect = {
+      select: {
+        userId: true, customerName: true, customerEmail: true, customerPhone: true,
+        shippingPhone: true, shippingAddressLine: true, shippingCity: true,
+        shippingState: true, shippingZipCode: true, shippingCountry: true,
+        shippingAddress: true, paymentMethod: true,
+      }
+    };
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true } } } },
       subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
@@ -3309,7 +3433,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
       const subRecord = await prisma.subOrder.findUnique({
         where: { id: orderId },
         include: {
-          parentOrder: true,
+          parentOrder: parentOrderSelect,
           items: { include: { product: { select: { id: true, title: true, price: true } } } },
           seller: { select: { name: true, email: true } },
         },
@@ -3368,7 +3492,15 @@ exports.downloadPublicInvoice = async (request, reply) => {
       const subRecord = await prisma.subOrder.findUnique({
         where: { id: orderId },
         include: {
-          parentOrder: true,
+          parentOrder: {
+            select: {
+              userId: true, customerName: true, customerEmail: true, customerPhone: true,
+              shippingPhone: true, shippingAddressLine: true, shippingCity: true,
+              shippingState: true, shippingZipCode: true, shippingCountry: true,
+              shippingAddress: true, paymentMethod: true,
+              user: { select: { name: true, email: true, phone: true } },
+            }
+          },
           items:  { include: { product: { select: { id: true, title: true, price: true } } } },
           seller: { select: { name: true, email: true } },
         },

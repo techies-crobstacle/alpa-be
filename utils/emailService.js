@@ -4283,7 +4283,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   // Build guest-aware tracking URL
   const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
   const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
-  const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-back.onrender.com';
+  const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-be.onrender.com';
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(email)}`
     : `${dashboardUrl}/customerdashboard/orders`;

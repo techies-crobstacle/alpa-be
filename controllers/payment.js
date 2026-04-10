@@ -132,6 +132,8 @@ exports.createPaymentIntent = async (request, reply) => {
               subtotal: cartCalculations.subtotal,
               subtotalExGST: cartCalculations.subtotalExGST,
               shippingCost: cartCalculations.shippingCost,
+              totalShippingCost: cartCalculations.totalShippingCost,
+              sellerCount: cartCalculations.sellerCount,
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
@@ -174,12 +176,14 @@ exports.createPaymentIntent = async (request, reply) => {
     // Create PENDING order — single seller sets sellerId directly; multi-seller uses sub-orders
     let order;
     if (isMultiSeller) {
+      const perSellerShipping = parseFloat(cartCalculations.shippingCost);
       order = await prisma.$transaction(async (tx) => {
         const parentOrder = await tx.order.create({ data: orderBaseData });
         for (const [sellerId, items] of sellerItemsMap) {
-          const subtotal = items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const productsSubtotal = items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const subOrderSubtotal = productsSubtotal + perSellerShipping;
           const subOrder = await tx.subOrder.create({
-            data: { parentOrderId: parentOrder.id, sellerId, subtotal, status: "CONFIRMED" }
+            data: { parentOrderId: parentOrder.id, sellerId, subtotal: subOrderSubtotal, status: "CONFIRMED" }
           });
           await tx.orderItem.createMany({
             data: items.map(i => ({ subOrderId: subOrder.id, productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) }))
@@ -212,6 +216,8 @@ exports.createPaymentIntent = async (request, reply) => {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
+        totalShippingCost: cartCalculations.totalShippingCost,
+        sellerCount: cartCalculations.sellerCount,
         gstAmount: cartCalculations.gstAmount,
         gstPercentage: cartCalculations.gstPercentage,
         gstInclusive: true,
@@ -493,7 +499,11 @@ async function handlePaymentSucceeded(paymentIntentId) {
       },
       paymentMethod:   order.paymentMethod || 'STRIPE',
       customerPhone:   order.customerPhone || '',
-      orderSummary:    storedSummary || undefined,
+      orderSummary:    storedSummary ? {
+        ...storedSummary,
+        // Always show total shipping (across all sellers), not per-seller rate
+        shippingCost: storedSummary.totalShippingCost || storedSummary.shippingCost,
+      } : undefined,
       isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
     }).catch((e) => console.error('Email error (non-blocking):', e.message));
   } else {
@@ -677,6 +687,8 @@ exports.createGuestPaymentIntent = async (request, reply) => {
               subtotal: cartCalculations.subtotal,
               subtotalExGST: cartCalculations.subtotalExGST,
               shippingCost: cartCalculations.shippingCost,
+              totalShippingCost: cartCalculations.totalShippingCost,
+              sellerCount: cartCalculations.sellerCount,
               gstPercentage: cartCalculations.gstPercentage,
               gstAmount: cartCalculations.gstAmount,
               grandTotal: cartCalculations.grandTotal,
@@ -735,12 +747,14 @@ exports.createGuestPaymentIntent = async (request, reply) => {
 
     let order;
     if (guestIsMultiSeller) {
+      const perSellerShipping = parseFloat(cartCalculations.shippingCost);
       order = await prisma.$transaction(async (tx) => {
         const parentOrder = await tx.order.create({ data: guestOrderBaseData });
         for (const [sellerId, sellerItems] of guestSellerMap) {
-          const subtotal = sellerItems.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const productsSubtotal = sellerItems.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const subOrderSubtotal = productsSubtotal + perSellerShipping;
           const subOrder = await tx.subOrder.create({
-            data: { parentOrderId: parentOrder.id, sellerId, subtotal, status: "CONFIRMED" }
+            data: { parentOrderId: parentOrder.id, sellerId, subtotal: subOrderSubtotal, status: "CONFIRMED" }
           });
           await tx.orderItem.createMany({
             data: sellerItems.map(i => ({
@@ -779,6 +793,8 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         subtotal: cartCalculations.subtotal,
         subtotalExGST: cartCalculations.subtotalExGST,
         shippingCost: cartCalculations.shippingCost,
+        totalShippingCost: cartCalculations.totalShippingCost,
+        sellerCount: cartCalculations.sellerCount,
         gstAmount: cartCalculations.gstAmount,
         gstPercentage: cartCalculations.gstPercentage,
         gstInclusive: true,

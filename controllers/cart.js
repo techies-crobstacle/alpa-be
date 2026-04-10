@@ -16,6 +16,12 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
       return sum + (price * quantity);
     }, 0);
 
+    // Count unique sellers in the cart
+    const sellerCount = Math.max(
+      new Set(cartItems.map(i => i.product?.sellerId).filter(Boolean)).size,
+      1
+      );
+
     // Get shipping cost
     let shippingCost = 0;
     let selectedShipping = null;
@@ -29,6 +35,9 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
         selectedShipping = shipping;
       }
     }
+
+    // Each seller gets the full shipping cost — total shipping scales with seller count
+    const totalShippingCost = shippingCost * sellerCount;
 
     // Get GST — either specific GST, or default, or first active (fallback chain)
     let gstDetails = null;
@@ -60,15 +69,17 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
 
     const subtotalExGST = subtotal - gstAmount;
 
-    // grandTotal = subtotal (GST already included) + shipping; no extra GST added
-    const grandTotal = subtotal + shippingCost;
+    // grandTotal = subtotal (GST already included) + shipping per seller × seller count
+    const grandTotal = subtotal + totalShippingCost;
 
     return {
-      subtotal: subtotal.toFixed(2),           // GST-inclusive product total
-      subtotalExGST: subtotalExGST.toFixed(2), // Net amount ex-GST
-      shippingCost: shippingCost.toFixed(2),
+      subtotal: subtotal.toFixed(2),                    // GST-inclusive product total
+      subtotalExGST: subtotalExGST.toFixed(2),          // Net amount ex-GST
+      shippingCost: shippingCost.toFixed(2),            // Per-seller shipping cost
+      totalShippingCost: totalShippingCost.toFixed(2),  // Total shipping (shippingCost × sellerCount)
+      sellerCount,
       gstPercentage: gstPercentage.toFixed(2),
-      gstAmount: gstAmount.toFixed(2),          // GST component extracted from subtotal
+      gstAmount: gstAmount.toFixed(2),                  // GST component extracted from subtotal
       grandTotal: grandTotal.toFixed(2),
       gstInclusive: true,
       selectedShipping,
@@ -215,7 +226,8 @@ exports.getMyCart = async (request, reply) => {
                 price: true,
                 featuredImage: true,
                 stock: true,
-                category: true
+                category: true,
+                sellerId: true
               }
             }
           }
@@ -293,8 +305,26 @@ exports.getMyCart = async (request, reply) => {
       }
     });
 
-    // Calculate totals
-    const calculations = await calculateCartTotals(cleanedCart, shippingMethodId, gstId);
+    // Calculate base totals (no shipping)
+    const baseCalculations = await calculateCartTotals(cleanedCart, null, gstId);
+
+    // Pre-calculate totals for every available shipping method so the frontend
+    // never needs to re-fetch — it just reads shippingCalculations[id]
+    const shippingCalculations = {};
+    for (const method of availableShipping) {
+      const calc = await calculateCartTotals(cleanedCart, method.id, gstId);
+      shippingCalculations[method.id] = {
+        shippingCost:      calc.shippingCost,       // per-seller rate
+        totalShippingCost: calc.totalShippingCost,  // shippingCost × sellerCount
+        sellerCount:       calc.sellerCount,
+        grandTotal:        calc.grandTotal
+      };
+    }
+
+    // If a specific shippingMethodId was requested use that, otherwise base (no shipping)
+    const calculations = shippingMethodId
+      ? await calculateCartTotals(cleanedCart, shippingMethodId, gstId)
+      : baseCalculations;
 
     const cartItemCount = cleanedCart.length;
     const totalQuantity = cleanedCart.reduce((sum, item) => sum + item.quantity, 0);
@@ -306,7 +336,8 @@ exports.getMyCart = async (request, reply) => {
       totalQuantity,
       availableShipping,
       gst: defaultGST,
-      calculations
+      calculations,
+      shippingCalculations  // keyed by shippingMethodId — ready-to-use totals per option
     });
   } catch (error) {
     console.error("Get cart error:", error);
@@ -466,7 +497,8 @@ exports.calculateGuestCart = async (request, reply) => {
         price: true,
         featuredImage: true,
         stock: true,
-        category: true
+        category: true,
+        sellerId: true
       }
     });
 
@@ -533,7 +565,19 @@ exports.calculateGuestCart = async (request, reply) => {
       }
     });
 
-    // Calculate totals
+    // Pre-calculate totals for every available shipping method
+    const shippingCalculations = {};
+    for (const method of availableShipping) {
+      const calc = await calculateCartTotals(cartItems, method.id, gstId);
+      shippingCalculations[method.id] = {
+        shippingCost:      calc.shippingCost,       // per-seller rate
+        totalShippingCost: calc.totalShippingCost,  // shippingCost × sellerCount
+        sellerCount:       calc.sellerCount,
+        grandTotal:        calc.grandTotal
+      };
+    }
+
+    // Calculate totals for the selected method (or base if none selected)
     const calculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
 
     return reply.status(200).send({
@@ -542,7 +586,8 @@ exports.calculateGuestCart = async (request, reply) => {
       availableShipping,
       availableGST,
       defaultGST,
-      calculations
+      calculations,
+      shippingCalculations  // keyed by shippingMethodId — ready-to-use totals per option
     });
   } catch (error) {
     console.error("Calculate guest cart error:", error);
