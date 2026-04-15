@@ -27,7 +27,7 @@ Authorization: Bearer <jwt_token>
 ## Table of Contents
 
 1. [Overview & Concept](#1-overview--concept)
-2. [The 30-Day Eligibility Rule](#2-the-30-day-eligibility-rule)
+2. [Immediate Payout Availability](#2-immediate-payout-availability)
 3. [How the Payout Cycle Works](#3-how-the-payout-cycle-works)
 4. [Seller Endpoints](#4-seller-endpoints)
    - 4.1 [Get Redeemable Balance Summary](#41-get-apicommissionspayoutredeemable)
@@ -55,7 +55,7 @@ When a customer places an order, the platform automatically records a **Commissi
 Previously, net payable amounts simply accumulated with a manual admin `PAID` mark. With this feature, sellers can **actively request payouts** against their available ("redeemable") balance through their dashboard.
 
 **Key rules:**
-- Payout eligibility is tied to a **30-day holding period** — only commission records from orders placed 30 or more days ago count towards the redeemable balance.
+- All PENDING commission earnings are **immediately available** for payout — no waiting period required.
 - A seller can only have **one open (PENDING) payout request** at a time.
 - A seller may request a **partial amount** (up to their full redeemable balance) or leave the amount blank to request the full redeemable balance.
 - All amounts are in **AUD**.
@@ -82,21 +82,21 @@ Total Net Payable (PENDING)
 | #3    | Jan 10    | $90.00      | ✅ Yes    |
 | #4    | Feb 25    | $90.00      | ✅ Yes    |
 | #5    | Feb 28    | $90.00      | ✅ Yes    |
-| #6    | Mar 3     | $90.00      | 🔒 Locked |
-| #7    | Mar 5     | $90.00      | 🔒 Locked |
-| #8    | Mar 7     | $90.00      | 🔒 Locked |
-| #9    | Mar 9     | $90.00      | 🔒 Locked |
-| #10   | Mar 10    | $90.00      | 🔒 Locked |
+| #6    | Mar 3     | $90.00      | ✅ Yes    |
+| #7    | Mar 5     | $90.00      | ✅ Yes    |
+| #8    | Mar 7     | $90.00      | ✅ Yes    |
+| #9    | Mar 9     | $90.00      | ✅ Yes    |
+| #10   | Mar 10    | $90.00      | ✅ Yes    |
 
-> As of today (March 10, 2026), orders #1–#5 are 30+ days old.
+> All pending commission earnings are immediately available for withdrawal.
 
 | Field               | Value    |
-|---------------------|----------|
+|---------------------|---------|
 | Total Net Payable   | $900.00  |
-| **Redeemable Now**  | **$450.00** ✅ |
-| Locked (< 30 days)  | $450.00 🔒 |
+| **Redeemable Now**  | **$900.00** ✅ |
+| Locked              | $0.00    |
 
-The seller can request a payout of **up to $450.00** today. The remaining $450.00 will unlock progressively as each order's 30-day hold expires.
+The seller can request a payout of **up to $900.00** immediately.
 
 ---
 
@@ -106,17 +106,19 @@ The seller can request a payout of **up to $450.00** today. The remaining $450.0
 Order placed → commission_earned record created
                status = PENDING, created_at = now()
                            │
-              ┌────────────┴────────────┐
-              │ < 30 days old           │ ≥ 30 days old
-              │ lockedAmount 🔒         │ redeemableAmount ✅
-              └────────────┬────────────┘
+                  ┌────────┴────────┐
+                  │ PENDING earnings │
+                  │ redeemableAmount │
+                  │ (immediately     │
+                  │ available) ✅    │
+                  └────────┬────────┘
                            │
              Seller views redeemable balance
              GET /api/commissions/payout/redeemable
                            │
              Seller submits payout request
              POST /api/commissions/payout/request
-             { requestedAmount: 450.00 }  ← optional (defaults to full redeemable)
+             { requestedAmount: 900.00 }  ← optional (defaults to full redeemable)
                            │
              payout_requests record created
              status = PENDING
@@ -203,8 +205,8 @@ Authorization: Bearer <seller_token>
 | Field | Description |
 |-------|-------------|
 | `totalPending` | Total net payable across all PENDING commission records |
-| `redeemableAmount` | Portion of `totalPending` eligible for payout (orders ≥ 30 days old) |
-| `lockedAmount` | Portion of `totalPending` not yet eligible (orders < 30 days old) |
+| `redeemableAmount` | Equal to `totalPending` - all earnings are immediately available |
+| `lockedAmount` | Always 0 - no payout restrictions |
 | `totalPaid` | Sum of net payable already marked as PAID (historical payouts) |
 | `eligibleOrderCount` | Number of commission records contributing to `redeemableAmount` |
 | `pendingPayoutRequest` | Open payout request if one exists, otherwise `null` |
@@ -263,7 +265,7 @@ Content-Type: application/json
 | Scenario | Status | Message |
 |----------|--------|---------|
 | Already has an open PENDING request | `400` | "You already have a pending payout request..." |
-| No redeemable amount available | `400` | "No redeemable amount available. Orders must be at least 30 days old..." |
+| No redeemable amount available | `400` | "No redeemable amount available. You have no pending commission earnings..." |
 | `requestedAmount` exceeds redeemable balance | `400` | "Requested amount ($X) exceeds your redeemable balance ($Y)" |
 | `requestedAmount` is zero or negative | `400` | "requestedAmount must be a positive number" |
 
@@ -329,7 +331,7 @@ Authorization: Bearer <seller_token>
 
 ### 4.4 `GET /api/commissions/earned/my` (Updated)
 
-The existing endpoint for viewing individual commission records. The `totals` object now includes the 30-day redeemable breakdown.
+The existing endpoint for viewing individual commission records. The `totals` object now shows immediate availability for all pending earnings.
 
 **Example Response `200 OK` (totals section — updated)**
 
@@ -491,7 +493,7 @@ Content-Type: application/json
 }
 ```
 
-> **Auto-PAID side effect on COMPLETED:** When a request is marked `COMPLETED`, the server automatically marks every eligible `commission_earned` record for that seller (status = `PENDING` and created 30+ days ago) as `PAID`. No manual action required.
+> **Auto-PAID side effect on COMPLETED:** When a request is marked `COMPLETED`, the server automatically marks every eligible `commission_earned` record for that seller (status = `PENDING`) as `PAID`. No manual action required.
 
 **Validation**
 
@@ -592,7 +594,7 @@ Call `GET /api/commissions/payout/redeemable` on page load. Build a card like:
 ```
 
 - **Disable** the "Request Payout" button if:
-  - `redeemableAmount === 0` → show tooltip: *"No orders are eligible yet — amounts unlock 30 days after the order date."*
+  - `redeemableAmount === 0` → show tooltip: *"No pending earnings available for withdrawal at this time."*
   - `pendingPayoutRequest !== null` → show tooltip: *"You already have a pending payout request."*
 
 #### Request Payout Modal

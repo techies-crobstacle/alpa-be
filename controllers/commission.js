@@ -610,13 +610,12 @@ exports.getMyCommissionEarned = async (request, reply) => {
         COALESCE(SUM(net_payable), 0)::float             AS "totalNetPayable",
         COALESCE(SUM(CASE WHEN status = 'PAID'    THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
         COALESCE(SUM(CASE WHEN status = 'PENDING' THEN net_payable ELSE 0 END), 0)::float AS "totalPending",
-        -- Redeemable: PENDING commissions from orders placed 30+ days ago
-        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days'
+        -- Redeemable: All PENDING commissions are immediately available
+        COALESCE(SUM(CASE WHEN status = 'PENDING'
                           THEN net_payable ELSE 0 END), 0)::float AS "redeemableAmount",
-        -- Locked: PENDING commissions from orders placed less than 30 days ago
-        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at > NOW() - INTERVAL '30 days'
-                          THEN net_payable ELSE 0 END), 0)::float AS "lockedAmount",
-        COUNT(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days' THEN 1 END)::int AS "eligibleOrderCount"
+        -- Locked: No longer applicable - set to 0
+        0::float AS "lockedAmount",
+        COUNT(CASE WHEN status = 'PENDING' THEN 1 END)::int AS "eligibleOrderCount"
       FROM commission_earned
       WHERE seller_id = '${sellerId.replace(/'/g, "''")}'
     `);
@@ -640,7 +639,7 @@ exports.getMyCommissionEarned = async (request, reply) => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PAYOUT REQUESTS — seller-initiated payouts against their redeemable balance
-// Eligibility rule: commission_earned records must be 30+ days old (PENDING)
+// Eligibility rule: All PENDING commission_earned records are immediately eligible
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── SELLER: get redeemable payout summary ───────────────────────────────────
@@ -653,13 +652,12 @@ exports.getRedeemableSummary = async (request, reply) => {
       SELECT
         COALESCE(SUM(CASE WHEN status = 'PENDING'
                           THEN net_payable ELSE 0 END), 0)::float AS "totalPending",
-        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days'
+        COALESCE(SUM(CASE WHEN status = 'PENDING'
                           THEN net_payable ELSE 0 END), 0)::float AS "redeemableAmount",
-        COALESCE(SUM(CASE WHEN status = 'PENDING' AND created_at > NOW() - INTERVAL '30 days'
-                          THEN net_payable ELSE 0 END), 0)::float AS "lockedAmount",
+        0::float AS "lockedAmount",
         COALESCE(SUM(CASE WHEN status = 'PAID'
                           THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
-        COUNT(CASE WHEN status = 'PENDING' AND created_at <= NOW() - INTERVAL '30 days'
+        COUNT(CASE WHEN status = 'PENDING'
                    THEN 1 END)::int                               AS "eligibleOrderCount"
       FROM commission_earned
       WHERE seller_id = ${sellerId}
@@ -707,20 +705,19 @@ exports.requestPayout = async (request, reply) => {
       });
     }
 
-    // Calculate current redeemable amount (PENDING, 30+ days old)
+    // Calculate current redeemable amount (all PENDING commissions)
     const redeemRows = await prisma.$queryRaw`
       SELECT COALESCE(SUM(net_payable), 0)::float AS "redeemableAmount"
       FROM commission_earned
       WHERE seller_id  = ${sellerId}
-        AND status     = 'PENDING'::"CommissionStatus"
-        AND created_at <= NOW() - INTERVAL '30 days'
+        AND status     = 'PENDING':"CommissionStatus"
     `;
     const redeemableAmount = parseFloat(redeemRows[0]?.redeemableAmount || 0);
 
     if (redeemableAmount <= 0) {
       return reply.status(400).send({
         success: false,
-        message: "No redeemable amount available. Orders must be at least 30 days old to be eligible for payout."
+        message: "No redeemable amount available. You have no pending commission earnings to withdraw."
       });
     }
 
@@ -929,7 +926,7 @@ exports.updatePayoutRequestStatus = async (request, reply) => {
             updated_at = ${now}
         WHERE seller_id = ${sellerId}
           AND status    = 'PENDING'::"CommissionStatus"
-          AND created_at <= NOW() - INTERVAL '30 days'
+
       `;
       console.log(`💳 Payout completed for seller ${sellerId} — ${updated} commission record(s) marked PAID`);
     }
