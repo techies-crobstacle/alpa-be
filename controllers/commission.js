@@ -710,7 +710,7 @@ exports.requestPayout = async (request, reply) => {
       SELECT COALESCE(SUM(net_payable), 0)::float AS "redeemableAmount"
       FROM commission_earned
       WHERE seller_id  = ${sellerId}
-        AND status     = 'PENDING':"CommissionStatus"
+        AND status     = 'PENDING'::"CommissionStatus"
     `;
     const redeemableAmount = parseFloat(redeemRows[0]?.redeemableAmount || 0);
 
