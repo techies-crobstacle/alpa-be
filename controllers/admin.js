@@ -1740,7 +1740,7 @@ exports.getSellerDetails = async (request, reply) => {
 
     // Use raw SQL so featuredImage is included in product responses
     const products = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+      SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
              p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
              p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
              p."createdAt", p."updatedAt"
@@ -1794,9 +1794,9 @@ exports.getSellerDetails = async (request, reply) => {
         storeBanner: seller.storeBanner,
         storeLocation: seller.storeLocation,
         
-        // Artist Info
-        artistName: seller.artistName,
-        artistDescription: seller.artistDescription,
+        // Business Summary
+        businessSummary: seller.artistName,
+        businessDescription: seller.artistDescription,
         
         // KYC Documents
         kycDocuments: seller.kycDocuments || [],
@@ -1917,7 +1917,7 @@ exports.getAllAdminProducts = async (request, reply) => {
     let products;
     if (dbStatus && sellerId) {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -1934,7 +1934,7 @@ exports.getAllAdminProducts = async (request, reply) => {
       `;
     } else if (dbStatus) {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -1950,7 +1950,7 @@ exports.getAllAdminProducts = async (request, reply) => {
       `;
     } else if (sellerId) {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -1966,7 +1966,7 @@ exports.getAllAdminProducts = async (request, reply) => {
       `;
     } else {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -2038,7 +2038,7 @@ exports.getPendingSellers = async (request, reply) => {
   try {
     const rows = await prisma.$queryRaw`
       SELECT sp.id, sp."userId" AS "sellerId", sp."businessName", sp."storeName",
-             sp."businessType", sp."businessAddress", sp."artistName",
+             sp."businessType", sp."businessAddress", sp."artistName" AS "businessSummary",
              sp."storeDescription", sp."storeLogo", sp.abn, sp."kycSubmitted",
              sp."onboardingStep", sp."productCount", sp.status::text AS status,
              sp."submittedForReviewAt", sp."createdAt", sp."updatedAt",
@@ -2067,7 +2067,7 @@ exports.getPendingSellers = async (request, reply) => {
       abn: row.abn,
       businessAddress: row.businessAddress,
       businessType: row.businessType,
-      artistName: row.artistName,
+      businessSummary: row.businessSummary,
       storeDescription: row.storeDescription,
       storeLogo: row.storeLogo,
       kycSubmitted: row.kycSubmitted,
@@ -3062,7 +3062,7 @@ exports.getPendingProducts = async (request, reply) => {
     }
 
     const products = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+      SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
              p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
              p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
              p."rejectionReason", p."createdAt", p."updatedAt",

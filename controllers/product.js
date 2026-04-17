@@ -23,13 +23,14 @@ const LOW_STOCK_THRESHOLD = 2;
 
 // ADD PRODUCT (Seller only)
 exports.addProduct = async (request, reply) => {
-  let { title, description, price, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = request.body;
+  let { title, description, price, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace, weight } = request.body;
   
   // Handle both artistName and "artist name" field formats
   const finalArtistName = artistName || artistNameWithSpace || null;
   
-  // Parse price and stock to correct types
+  // Parse price, weight, and stock to correct types
   if (typeof price === 'string') price = parseFloat(price);
+  if (typeof weight === 'string') weight = parseFloat(weight);
   if (typeof stock === 'string') stock = parseInt(stock);
   
   // Parse featured to boolean (default false if not provided)
@@ -108,6 +109,21 @@ exports.addProduct = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "Seller account not found" });
     }
 
+    // Validate required fields
+    if (!title || !category || price === undefined || price === null || weight === undefined || weight === null) {
+      return reply.status(400).send({
+        success: false,
+        message: "Title, category, price, and weight are required"
+      });
+    }
+
+    if (weight <= 0) {
+      return reply.status(400).send({
+        success: false,
+        message: "Weight must be greater than 0"
+      });
+    }
+
     if (seller.status !== "APPROVED" && seller.status !== "ACTIVE") {
       return reply.status(403).send({ 
         success: false, 
@@ -135,6 +151,7 @@ exports.addProduct = async (request, reply) => {
         title,
         description,
         price,
+        weight,
         stock,
         category,
         sellerId,
@@ -328,7 +345,7 @@ exports.getProductById = async (request, reply) => {
     const id = request.params.id;
 
     const rows = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.description, p.price, p.category, p.stock,
+      SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
              p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
              p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
              p."createdAt", p."updatedAt",
@@ -380,7 +397,7 @@ exports.updateProduct = async (request, reply) => {
 
     // Support both JSON and form/multipart bodies
     const body = request.body || {};
-    let { title, description, price, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = body;
+    let { title, description, price, weight, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = body;
     
     // Handle both artistName and "artist name" field formats
     const finalArtistName = artistName || artistNameWithSpace;
@@ -481,11 +498,21 @@ exports.updateProduct = async (request, reply) => {
       images: galleryImages
     });
 
-    // Parse price and stock to correct types, ignore empty string
+    // Parse price, weight and stock to correct types, ignore empty string
     if (typeof price === 'string' && price.trim() !== '') price = parseFloat(price);
     else if (typeof price === 'string') price = undefined;
+    if (typeof weight === 'string' && weight.trim() !== '') weight = parseFloat(weight);
+    else if (typeof weight === 'string') weight = undefined;
     if (typeof stock === 'string' && stock.trim() !== '') stock = parseInt(stock);
     else if (typeof stock === 'string') stock = undefined;
+
+    // Validate weight if provided
+    if (weight !== undefined && weight <= 0) {
+      return reply.status(400).send({
+        success: false,
+        message: "Weight must be greater than 0"
+      });
+    }
 
     // Parse featured to boolean
     let parsedFeatured = undefined;
@@ -508,6 +535,7 @@ exports.updateProduct = async (request, reply) => {
     if (title          !== undefined && title          !== '' && title          !== product.title)                        changedFields.push('Title');
     if (description    !== undefined && description    !== '' && description    !== product.description)                  changedFields.push('Description');
     if (price          !== undefined                          && parseFloat(price)  !== parseFloat(product.price))        changedFields.push(`Price (${product.price} → ${price})`);
+    if (weight         !== undefined                          && parseFloat(weight) !== parseFloat(product.weight))       changedFields.push(`Weight (${product.weight} → ${weight})`);
     if (stock          !== undefined                          && parseInt(stock)    !== product.stock)                    changedFields.push(`Stock (${product.stock} → ${stock})`);
     if (category       !== undefined && category       !== '' && category       !== product.category)                    changedFields.push('Category');
     if (finalArtistName !== undefined && finalArtistName !== '' && finalArtistName !== product.artistName)               changedFields.push('Artist Name');
@@ -533,6 +561,7 @@ exports.updateProduct = async (request, reply) => {
     if (title !== undefined && title !== '') updateData.title = title;
     if (description !== undefined && description !== '') updateData.description = description;
     if (price !== undefined && price !== '') updateData.price = price;
+    if (weight !== undefined && weight !== '') updateData.weight = weight;
     if (stock !== undefined && stock !== '') updateData.stock = stock;
     if (category !== undefined && category !== '') updateData.category = category;
     if (hasGalleryUpdate) updateData.images = galleryImages;
@@ -961,7 +990,10 @@ exports.getAllProducts = async (request, reply) => {
   try {
     const products = await prisma.$queryRaw`
       SELECT
-        p.*,
+        p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
+        p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+        p.featured, p.tags, p."featuredImage", p.images,
+        p."createdAt", p."updatedAt",
         u.name AS "sellerUserName",
         ROUND(AVG(r.rating)::numeric, 1)  AS "avgRating",
         COUNT(r.id)::int                  AS "ratingCount"

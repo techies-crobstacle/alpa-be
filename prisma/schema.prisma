@@ -166,6 +166,7 @@ model Product {
   title                String
   description          String?
   price                Decimal?           @db.Decimal(10, 2)
+  weight               Decimal            @default(1.00) @db.Decimal(8, 2)
   category             String
   stock                Int?               @default(0)
   images               String[]

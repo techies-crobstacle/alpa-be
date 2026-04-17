@@ -41,9 +41,9 @@ const getOnboardingStepDetails = (sellerProfile) => {
     },
     {
       step: 4,
-      name: "Artist Information",
-      completed: !!(sellerProfile.artistName),
-      description: "Artist name and description"
+      name: "Business Summary",
+      completed: true, // Optional step - always considered completed
+      description: "Tell us about you business/Artists"
     },
     {
       step: 5,
@@ -622,18 +622,13 @@ exports.validateABNGet = async (request, reply) => {
   }
 };
 
-// Step 4: Submit Artist Information
+// Step 4: Submit Business Summary (Optional)
 exports.submitCulturalInfo = async (request, reply) => {
   try {
     const userId = request.user.userId;
     const { artistName, description } = request.body;
 
-    if (!artistName) {
-      return reply.status(400).send({
-        success: false,
-        message: "artistName is required"
-      });
-    }
+    // Both fields are now optional - no validation required
 
     // Update seller profile
     const sellerProfile = await prisma.sellerProfile.update({
@@ -648,11 +643,11 @@ exports.submitCulturalInfo = async (request, reply) => {
 
     reply.status(200).send({
       success: true,
-      message: "Artist information saved successfully",
+      message: "Business summary saved successfully",
       sellerProfile
     });
   } catch (error) {
-    console.error("Submit artist info error:", error);
+    console.error("Submit business summary error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
   }
 };
@@ -1374,8 +1369,6 @@ exports.submitSellerOnboarding = async (request, reply) => {
     if (!abn) missingFields.push("abn");
     if (!businessAddress) missingFields.push("businessAddress");
     if (!businessType) missingFields.push("businessType");
-    if (!artistName) missingFields.push("artistName");
-    if (!description) missingFields.push("description");
     if (!storeName) missingFields.push("storeName");
     if (!storeDescription) missingFields.push("storeDescription");
     if (!storeLogo && storeLogoParts.length === 0) missingFields.push("storeLogo");
