@@ -156,7 +156,32 @@ const generateSalesSummaryCSV = (orders, sellerId) => {
   }
 };
 
+const generateGstReportCSV = (transactions) => {
+  try {
+    const reportData = transactions.map(t => ({
+      'Order ID': t.orderId,
+      'Date': t.date ? new Date(t.date).toISOString().split('T')[0] : 'N/A',
+      'Time': t.date ? new Date(t.date).toISOString().split('T')[1].split('.')[0] : 'N/A',
+      'Customer Name': t.customerName || 'N/A',
+      'Payment Method': t.paymentMethod || 'N/A',
+      'Status': t.status || 'N/A',
+      'Gross Amount (inc. GST)': parseFloat(t.totalAmount || 0).toFixed(2),
+      'GST Rate': `${t.gstRate || 0}%`,
+      'GST Amount': parseFloat(t.gstAmount || 0).toFixed(2),
+      'Net Amount (ex. GST)': parseFloat(t.netAmount || 0).toFixed(2),
+      'Gateway Reference': t.ref || 'N/A'
+    }));
+
+    const parser = new Parser();
+    return parser.parse(reportData);
+  } catch (error) {
+    console.error('Error generating GST CSV report:', error);
+    throw new Error('Failed to generate GST CSV report.');
+  }
+};
+
 module.exports = {
   generateSalesReportCSV,
-  generateSalesSummaryCSV
+  generateSalesSummaryCSV,
+  generateGstReportCSV
 };

@@ -35,6 +35,7 @@ const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
 const { initializeLowStockScheduler } = require("./utils/lowStockScheduler");
 const { initializeUserCleanupScheduler } = require("./utils/userCleanupScheduler");
+const gstScheduler = require("./utils/gstReportScheduler");
 const { backfillOrderNotifications } = require("./controllers/orderNotification");
 const { Server: SocketIOServer } = require("socket.io");
 const { initStockSocket } = require("./utils/stockSocket");
@@ -211,6 +212,7 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   // Initialize user cleanup scheduler (daily anonymization of expired deleted users)
   setTimeout(() => {
     initializeUserCleanupScheduler();
+    gstScheduler();
   }, 10000); // After low-stock scheduler
   
   // Initialize email verification reminder scheduler (can be disabled via env var)

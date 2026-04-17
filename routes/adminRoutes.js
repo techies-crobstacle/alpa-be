@@ -132,6 +132,7 @@ async function adminRoutes(fastify, options) {
   
   fastify.get("/sales/analytics", { preHandler: adminAuth }, adminController.getSalesAnalytics);
   fastify.get("/sales/export", { preHandler: adminAuth }, adminController.exportSalesCSV);
+  fastify.get("/sales/gst-report", { preHandler: adminAuth }, adminController.getGstReport);
 
   // ---------------- REVENUE & ORDERS CHART ----------------
   // GET /admin/analytics/revenue-chart?period=7D|30D|1Y
