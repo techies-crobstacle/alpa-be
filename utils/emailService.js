@@ -789,7 +789,7 @@ const sendFinanceOrderEmail = async (orderDetails) => {
   `;
 
   const msg = {
-    to: 'ritikkumar1@crobstacle.com', // Finance email
+    to: 'ritkashyap13@gmail.com', // Finance email
     from: {
       email: senderEmail,
       name: senderName
