@@ -692,7 +692,9 @@ const sendFinanceOrderEmail = async (orderDetails) => {
   }
   console.log(`[Finance Email] 📤 Attempting SendGrid send to ritkashyap13@gmail.com for order ${orderDetails.displayId}`);
 
-  const productRows = orderDetails.products.map(product => `
+  let msg;
+  try {
+  const productRows = (orderDetails.products || []).map(product => `
     <tr style="border-bottom: 1px solid #ddd;">
       <td style="padding: 12px 8px;">${product.title || 'Product'}</td>
       <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
@@ -791,19 +793,23 @@ const sendFinanceOrderEmail = async (orderDetails) => {
     </tr>
   `;
 
-  const msg = {
-    to: 'ritkashyap13@gmail.com', // Finance email
-    from: {
-      email: senderEmail,
-      name: senderName
-    },
-    subject: `Order Confirmation - Invoice #${orderDetails.displayId} (Finance Copy)`,
-    html: generateResponsiveEmailTemplate({
-      title: 'Finance Copy - Order Confirmed',
-      content,
-      maxWidth: 650
-    })
-  };
+    msg = {
+      to: 'ritkashyap13@gmail.com', // Finance email
+      from: {
+        email: senderEmail,
+        name: senderName
+      },
+      subject: `Order Confirmation - Invoice #${orderDetails.displayId} (Finance Copy)`,
+      html: generateResponsiveEmailTemplate({
+        title: 'Finance Copy - Order Confirmed',
+        content,
+        maxWidth: 650
+      })
+    };
+  } catch (buildErr) {
+    console.error(`❌ [Finance Email] Template build failed for order ${orderDetails.displayId}:`, buildErr.message);
+    return { success: false, error: buildErr.message };
+  }
 
   // Attach invoice PDF if provided
   if (orderDetails.invoicePDFBuffer) {
@@ -817,10 +823,6 @@ const sendFinanceOrderEmail = async (orderDetails) => {
   } else {
     console.log(`[Finance Email] No PDF buffer available — sending without attachment`);
   }
-
-  // Stagger 2 seconds after the customer email to avoid SendGrid treating
-  // two near-simultaneous sends with the same attachment as duplicates.
-  await new Promise(resolve => setTimeout(resolve, 2000));
 
   try {
     await sgMail.send(msg);

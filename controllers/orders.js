@@ -646,7 +646,47 @@ exports.createOrder = async (request, reply) => {
           }
         }
 
-        // 1b. Finance copy — always fires independently of the customer email
+        // 1b. Admin order emails — notify SUPER_ADMIN immediately after customer email
+        console.log(`📧 Sending admin new order email for order ${mainOrder.displayId}`);
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN' },
+            select: { email: true, name: true }
+          });
+          console.log(`[Admin Email] Found ${admins.length} SUPER_ADMIN(s) to notify`);
+          const allItems = cart.items.map(item => ({
+            title: item.product?.title || item.productId,
+            quantity: item.quantity,
+            price: Number(item.product.price)
+          }));
+          for (const admin of admins) {
+            if (admin.email) {
+              try {
+                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
+                  displayId: mainOrder.displayId,
+                  customerName: user.isDeleted ? 'Deleted User' : user.name,
+                  customerEmail: user.email,
+                  customerPhone: mobileNumber || user.phone || '',
+                  sellerNames: sellerNameList.join(', ') || 'Unknown',
+                  totalAmount,
+                  paymentMethod,
+                  items: allItems
+                });
+                if (adminEmailResult?.success) {
+                  console.log(`✅ Admin order email sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Admin order email failed for ${admin.email}:`, adminEmailResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Admin order email error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminEmailListErr) {
+          console.error('Error fetching admins for order email:', adminEmailListErr.message);
+        }
+
+        // 1c. Finance copy — fires after admin email, with PDF attachment
         console.log(`📧 Sending finance order email for order ${mainOrder.displayId}`);
         try {
           const financeResult = await sendFinanceOrderEmail(orderPayload);
@@ -709,43 +749,6 @@ exports.createOrder = async (request, reply) => {
           }
         }));
 
-        // 3. Admin order emails — notify SUPER_ADMIN only
-        try {
-          const admins = await prisma.user.findMany({
-            where: { role: 'SUPER_ADMIN' },
-            select: { email: true, name: true }
-          });
-          const allItems = cart.items.map(item => ({
-            title: item.product?.title || item.productId,
-            quantity: item.quantity,
-            price: Number(item.product.price)
-          }));
-          for (const admin of admins) {
-            if (admin.email) {
-              try {
-                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  displayId: mainOrder.displayId,
-                  customerName: user.isDeleted ? 'Deleted User' : user.name,
-                  customerEmail: user.email,
-                  customerPhone: mobileNumber || user.phone || '',
-                  sellerNames: sellerNameList.join(', ') || 'Unknown',
-                  totalAmount,
-                  paymentMethod,
-                  items: allItems
-                });
-                if (adminEmailResult?.success) {
-                  console.log(`✅ Admin order email sent to ${admin.email}`);
-                } else {
-                  console.error(`❌ Admin order email failed for ${admin.email}:`, adminEmailResult?.error);
-                }
-              } catch (adminEmailErr) {
-                console.error(`❌ Admin order email error for ${admin.email}:`, adminEmailErr.message);
-              }
-            }
-          }
-        } catch (adminEmailListErr) {
-          console.error('Error fetching admins for order email:', adminEmailListErr.message);
-        }
       } catch (bgErr) {
         console.error('Background notification error:', bgErr.message);
       }
@@ -2789,7 +2792,51 @@ exports.createGuestOrder = async (request, reply) => {
           console.error(`❌ Guest order confirmation email error for ${customerEmail}:`, emailErr.message);
         }
 
-        // 1b. Finance copy — always fires independently of the customer email
+        // 1b. Admin order emails — fires immediately after customer email
+        console.log(`📧 Sending admin new order email for guest order ${order.displayId}`);
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN' },
+            select: { email: true, name: true }
+          });
+          console.log(`[Admin Email] Found ${admins.length} SUPER_ADMIN(s) to notify for guest order`);
+          const guestSellerNames = [...sellerNotifications.keys()]
+            .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
+            .filter(Boolean)
+            .join(', ');
+          const allItems = order.items.map(item => ({
+            title: item.product?.title || item.productId,
+            quantity: item.quantity,
+            price: item.price
+          }));
+          for (const admin of admins) {
+            if (admin.email) {
+              try {
+                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
+                  displayId: order.displayId,
+                  customerName,
+                  customerEmail,
+                  customerPhone,
+                  sellerNames: guestSellerNames || 'Unknown',
+                  totalAmount,
+                  paymentMethod,
+                  items: allItems
+                });
+                if (adminEmailResult?.success) {
+                  console.log(`✅ Admin guest order email sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Admin guest order email failed for ${admin.email}:`, adminEmailResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Admin guest order email error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminEmailListErr) {
+          console.error('Error fetching admins for guest order email:', adminEmailListErr.message);
+        }
+
+        // 1c. Finance copy — fires after admin email, with PDF attachment
         console.log(`📧 Sending finance order email for guest order ${order.displayId}`);
         try {
           const financeResult = await sendFinanceOrderEmail(guestOrderPayload);
@@ -2847,47 +2894,6 @@ exports.createGuestOrder = async (request, reply) => {
           }
         }));
 
-        // 3. Admin order emails for guest orders
-        try {
-          const admins = await prisma.user.findMany({
-            where: { role: 'SUPER_ADMIN' },
-            select: { email: true, name: true }
-          });
-          const guestSellerNames = [...sellerNotifications.keys()]
-            .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
-            .filter(Boolean)
-            .join(', ');
-          const allItems = order.items.map(item => ({
-            title: item.product?.title || item.productId,
-            quantity: item.quantity,
-            price: item.price
-          }));
-          for (const admin of admins) {
-            if (admin.email) {
-              try {
-                const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
-                  displayId: order.displayId,
-                  customerName,
-                  customerEmail,
-                  customerPhone,
-                  sellerNames: guestSellerNames || 'Unknown',
-                  totalAmount,
-                  paymentMethod,
-                  items: allItems
-                });
-                if (adminEmailResult?.success) {
-                  console.log(`✅ Admin guest order email sent to ${admin.email}`);
-                } else {
-                  console.error(`❌ Admin guest order email failed for ${admin.email}:`, adminEmailResult?.error);
-                }
-              } catch (adminEmailErr) {
-                console.error(`❌ Admin guest order email error for ${admin.email}:`, adminEmailErr.message);
-              }
-            }
-          }
-        } catch (adminEmailListErr) {
-          console.error('Error fetching admins for guest order email:', adminEmailListErr.message);
-        }
       } catch (bgErr) {
         console.error('Background notification error (guest):', bgErr.message);
       }
