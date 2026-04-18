@@ -589,6 +589,8 @@ exports.createOrder = async (request, reply) => {
     // run in the background so they never delay the API response.
     ;(async () => {
       try {
+        const invoicePDFBuffer = await buildOrderPdfForEmail(mainOrder.displayId);
+        
         // 1. Customer confirmation email (invoice download link is in the email)
         if (user.email) {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
@@ -604,6 +606,7 @@ exports.createOrder = async (request, reply) => {
               })),
               shippingAddress,
               paymentMethod,
+              invoicePDFBuffer,
               customerPhone: mobileNumber || user.phone || '',
               orderSummary: {
                 subtotal: cartCalculations.subtotal,
@@ -2708,6 +2711,8 @@ exports.createGuestOrder = async (request, reply) => {
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
       try {
+        const invoicePDFBuffer = await buildOrderPdfForEmail(order.displayId);
+        
         // 1. Guest customer confirmation email (invoice download button is in the email)
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
         try {
@@ -2722,6 +2727,7 @@ exports.createGuestOrder = async (request, reply) => {
             })),
             shippingAddress,
             paymentMethod,
+            invoicePDFBuffer,
             customerPhone,
             isGuest: true,
             orderSummary: {
@@ -3021,7 +3027,7 @@ exports.trackGuestOrder = async (request, reply) => {
 // sub-order specific (order.sellerName set, flat order.items), and legacy/direct.
 // For multi-seller orders a separate A4 page is generated per seller in one PDF.
 // Place your logo at:  <project-root>/assets/logo.png
-const generateInvoiceBuffer = (order) => {
+function generateInvoiceBuffer(order) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4', autoFirstPage: true });
     const chunks = [];
@@ -3246,7 +3252,31 @@ const generateInvoiceBuffer = (order) => {
 
     doc.end();
   });
-};
+}
+
+// ── Helper to fetch an order exactly like getInvoice does, then generate PDF buffer ──
+async function buildOrderPdfForEmail(displayId) {
+  try {
+    const orderInclude = {
+      items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+      user:      { select: { name: true, email: true, phone: true } },
+    };
+    const orderRecord = await prisma.order.findFirst({ where: { displayId }, include: orderInclude });
+    if (!orderRecord) return null;
+
+    const invoiceShape = {
+      ...orderRecord,
+      customerName:  (orderRecord.user?.isDeleted ? 'Deleted User' : orderRecord.user?.name) || orderRecord.customerName,
+      customerEmail: orderRecord.user?.email || orderRecord.customerEmail,
+      customerPhone: orderRecord.user?.phone || orderRecord.customerPhone,
+    };
+    return await generateInvoiceBuffer(invoiceShape);
+  } catch (error) {
+    console.error("❌ background PDF generation error for email:", error.message);
+    return null;
+  }
+}
 
 // ─── Helper: build a unified invoice shape from a SubOrder record ──────────
 const buildSubOrderShape = (sub) => ({
@@ -3525,5 +3555,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
+
 
 

