@@ -679,21 +679,19 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   try {
     // Attach invoice PDF if provided
     if (orderDetails.invoicePDFBuffer) {
-      const attachments = [{
+      const getAttachment = () => [{
         content: orderDetails.invoicePDFBuffer.toString('base64'),
         filename: `invoice-${orderDetails.displayId}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment'
       }];
-      msg.attachments = attachments;
-      financeMsg.attachments = attachments;
+      msg.attachments = getAttachment();
+      financeMsg.attachments = getAttachment();
     }
     
-    // Send both emails separately
-    await Promise.all([
-      sgMail.send(msg),
-      sgMail.send(financeMsg)
-    ]);
+    // Send emails sequentially to avoid SDK object mutation/SendGrid concurrent recipient block
+    await sgMail.send(msg);
+    await sgMail.send(financeMsg);
     
     console.log(`✅ Order confirmation email sent to ${email} and finance department`);
     return { success: true, message: "Email sent successfully" };
