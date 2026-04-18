@@ -6,6 +6,7 @@ const productController = require("../controllers/product");
 const feedbackController = require("../controllers/feedback");
 const commissionController = require("../controllers/commission");
 const sellerOrderController = require("../controllers/sellerOrders");
+const { sendAdminNewOrderEmail, sendFinanceOrderEmail } = require("../utils/emailService");
 
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
@@ -167,6 +168,37 @@ async function adminRoutes(fastify, options) {
   fastify.get("/bank-change-requests/:id", { preHandler: adminAuth }, adminController.getBankChangeRequest);
   fastify.post("/bank-change-requests/:id/approve", { preHandler: adminAuth }, adminController.approveBankChangeRequest);
   fastify.post("/bank-change-requests/:id/reject", { preHandler: adminAuth }, adminController.rejectBankChangeRequest);
+
+  // ---------------- TEST EMAIL (remove after confirming emails work) ----------------
+  fastify.post("/test-emails", { preHandler: adminAuth }, async (request, reply) => {
+    const fakeOrder = {
+      displayId: 'TEST-001',
+      totalAmount: 99.99,
+      products: [{ title: 'Test Product', quantity: 1, price: 99.99 }],
+      shippingAddress: { addressLine: '123 Test St', city: 'Darwin', state: 'NT', pincode: '0800' },
+      paymentMethod: 'STRIPE',
+      customerPhone: '0400000000',
+      invoicePDFBuffer: null
+    };
+
+    const adminResult = await sendAdminNewOrderEmail('ritikkumar1@crobstacle.com', 'Ritik Super Admin', {
+      displayId: 'TEST-001',
+      customerName: 'Test Customer',
+      customerEmail: 'test@example.com',
+      customerPhone: '0400000000',
+      sellerNames: 'Test Seller',
+      totalAmount: 99.99,
+      paymentMethod: 'STRIPE',
+      items: [{ title: 'Test Product', quantity: 1, price: 99.99 }]
+    });
+
+    const financeResult = await sendFinanceOrderEmail(fakeOrder);
+
+    return reply.send({
+      adminEmail: adminResult,
+      financeEmail: financeResult
+    });
+  });
 
   // ---------------- AUDIT LOGS (immutable, read-only) ----------------
   // GET /admin/audit-logs?entityType=PRODUCT&action=PRODUCT_APPROVED&from=2026-01-01&page=1&limit=50

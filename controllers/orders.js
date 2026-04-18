@@ -653,7 +653,11 @@ exports.createOrder = async (request, reply) => {
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
-          console.log(`[Admin Email] Found ${admins.length} SUPER_ADMIN(s) to notify`);
+          if (admins.length === 0) {
+            console.error('[Admin Email] ❌ NO SUPER_ADMIN users found in DB — admin email skipped entirely');
+          } else {
+            console.log(`[Admin Email] Found ${admins.length} SUPER_ADMIN(s): ${admins.map(a => a.email).join(', ')}`);
+          }
           const allItems = cart.items.map(item => ({
             title: item.product?.title || item.productId,
             quantity: item.quantity,
@@ -687,7 +691,7 @@ exports.createOrder = async (request, reply) => {
         }
 
         // 1c. Finance copy — fires after admin email, with PDF attachment
-        console.log(`📧 Sending finance order email for order ${mainOrder.displayId}`);
+        console.log(`📧 Sending finance order email for order ${mainOrder.displayId} | products=${orderPayload.products?.length} | hasPDF=${!!orderPayload.invoicePDFBuffer}`);
         try {
           const financeResult = await sendFinanceOrderEmail(orderPayload);
           if (financeResult?.success) {

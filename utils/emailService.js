@@ -27,7 +27,12 @@ if (process.env.SENDGRID_API_KEY) {
 }
 
 const isDevelopmentMode = !emailConfigured;
-console.log(`[EmailService] isDevelopmentMode=${isDevelopmentMode} | emailConfigured=${emailConfigured} | SENDGRID_API_KEY present=${!!process.env.SENDGRID_API_KEY}`);
+console.log('='.repeat(60));
+console.log('[EmailService BOOT]');
+console.log(`  SENDGRID_API_KEY : ${process.env.SENDGRID_API_KEY ? '✅ SET (length=' + process.env.SENDGRID_API_KEY.length + ')' : '❌ MISSING'}`);
+console.log(`  SENDER_EMAIL     : ${process.env.SENDER_EMAIL || '❌ NOT SET'}`);
+console.log(`  isDevelopmentMode: ${isDevelopmentMode}`);
+console.log('='.repeat(60));
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
 const senderName = process.env.SENDER_NAME || 'Made in Arnhem Land';
 
