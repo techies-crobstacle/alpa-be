@@ -27,6 +27,7 @@ if (process.env.SENDGRID_API_KEY) {
 }
 
 const isDevelopmentMode = !emailConfigured;
+console.log(`[EmailService] isDevelopmentMode=${isDevelopmentMode} | emailConfigured=${emailConfigured} | SENDGRID_API_KEY present=${!!process.env.SENDGRID_API_KEY}`);
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
 const senderName = process.env.SENDER_NAME || 'Made in Arnhem Land';
 
@@ -684,10 +685,12 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
 
 // Send Finance Copy separately to prevent SendGrid deduplication/attachment mutation crashes
 const sendFinanceOrderEmail = async (orderDetails) => {
+  console.log(`[Finance Email] Called for order ${orderDetails.displayId} | isDevelopmentMode=${isDevelopmentMode} | senderEmail=${senderEmail}`);
   if (isDevelopmentMode) {
-    console.log(`[DEV] Finance Order Email for ${orderDetails.displayId} sent`);
+    console.log(`[Finance Email] ⛔ BLOCKED — isDevelopmentMode=true (SENDGRID_API_KEY is missing or empty)`);
     return { success: true };
   }
+  console.log(`[Finance Email] 📤 Attempting SendGrid send to ritkashyap13@gmail.com for order ${orderDetails.displayId}`);
 
   const productRows = orderDetails.products.map(product => `
     <tr style="border-bottom: 1px solid #ddd;">
@@ -813,10 +816,10 @@ const sendFinanceOrderEmail = async (orderDetails) => {
     }
     
     await sgMail.send(msg);
-    console.log(`✅ Dedicated Finance email sent for ${orderDetails.displayId}`);
+    console.log(`✅ [Finance Email] SendGrid accepted: order ${orderDetails.displayId} → ritkashyap13@gmail.com`);
     return { success: true };
   } catch (error) {
-    console.error("❌ Finance Email sending error:", error.response?.body || error.message);
+    console.error(`❌ [Finance Email] SendGrid rejected for order ${orderDetails.displayId}:`, error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -2690,9 +2693,11 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
 // orderDetails: { orderId, customerName, customerEmail, customerPhone?,
 //                 sellerNames (string), totalAmount, paymentMethod, items[] }
 const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
+  console.log(`[Admin Email] Called for order ${orderDetails.displayId} → ${adminEmail} | isDevelopmentMode=${isDevelopmentMode}`);
   if (isDevelopmentMode) {
+    console.log(`[Admin Email] ⛔ BLOCKED — isDevelopmentMode=true (SENDGRID_API_KEY is missing or empty)`);
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin New Order Email");
+    console.log("📧 DEVELOPMENT MODE - Admin New Order Email");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail}`);
     console.log(`Order: ${orderDetails.displayId}`);
@@ -2702,6 +2707,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
+  console.log(`[Admin Email] 📤 Attempting SendGrid send to ${adminEmail} for order ${orderDetails.displayId}`);
 
   const productRows = (orderDetails.items || []).map(item => `
     <tr style="border-bottom:1px solid #EDD8CC;">
@@ -2841,10 +2847,10 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayId}`);
+    console.log(`✅ [Admin Email] SendGrid accepted: order ${orderDetails.displayId} → ${adminEmail}`);
     return { success: true };
   } catch (error) {
-    console.error("? Admin new order email error:", error.response?.body || error.message);
+    console.error(`❌ [Admin Email] SendGrid rejected for order ${orderDetails.displayId} → ${adminEmail}:`, error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
