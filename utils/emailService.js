@@ -659,22 +659,43 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       title: 'Order Confirmation - Made in Arnhem Land',
       content: content,
       maxWidth: 650
-    }),
-    bcc: 'ritikkumar1@crobstacle.com', // Send Finance team a copy of every invoice
+    })
+  };
+
+  const financeMsg = {
+    to: 'ritikkumar1@crobstacle.com', // Finance team email
+    from: {
+      email: senderEmail,
+      name: senderName
+    },
+    subject: `Order Confirmation - Invoice #${orderDetails.displayId} (Finance Copy)`,
+    html: generateResponsiveEmailTemplate({
+      title: 'Finance Copy - Order Confirmation',
+      content: content.replace(/<!-- CTA -->.*?<!-- Footer -->/ms, '<!-- Footer -->'), // Remove CTA buttons for Finance payload
+      maxWidth: 650
+    })
   };
 
   try {
     // Attach invoice PDF if provided
     if (orderDetails.invoicePDFBuffer) {
-      msg.attachments = [{
+      const attachments = [{
         content: orderDetails.invoicePDFBuffer.toString('base64'),
         filename: `invoice-${orderDetails.displayId}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment'
       }];
+      msg.attachments = attachments;
+      financeMsg.attachments = attachments;
     }
-    await sgMail.send(msg);
-    console.log(`✅ Order confirmation email sent to ${email}`);
+    
+    // Send both emails separately
+    await Promise.all([
+      sgMail.send(msg),
+      sgMail.send(financeMsg)
+    ]);
+    
+    console.log(`✅ Order confirmation email sent to ${email} and finance department`);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
     console.error("❌ Email sending error:", error.response?.body || error.message);
