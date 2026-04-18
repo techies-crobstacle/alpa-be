@@ -589,46 +589,53 @@ exports.createOrder = async (request, reply) => {
     // Reply is sent immediately below; PDF generation + all outbound calls
     // run in the background so they never delay the API response.
     ;(async () => {
+      console.log(`🚀 Background email IIFE started for order ${mainOrder.displayId}`);
       try {
-        const invoicePDFBuffer = await buildOrderPdfForEmail(mainOrder.displayId);
-        
+        // PDF generation is isolated — if it fails, emails still fire without the attachment
+        let invoicePDFBuffer = null;
+        try {
+          invoicePDFBuffer = await buildOrderPdfForEmail(mainOrder.displayId);
+        } catch (pdfErr) {
+          console.error('⚠️  PDF generation failed (emails will still send without attachment):', pdfErr.message);
+        }
+
+        // Build the shared order payload once (used by customer, finance, and admin emails)
+        const orderPayload = {
+          displayId: mainOrder.displayId,
+          totalAmount,
+          itemCount: cart.items.length,
+          products: cart.items.map(item => ({
+            title: item.product.title,
+            quantity: item.quantity,
+            price: Number(item.product.price)
+          })),
+          shippingAddress,
+          paymentMethod,
+          invoicePDFBuffer,
+          customerPhone: mobileNumber || user.phone || '',
+          orderSummary: {
+            subtotal: cartCalculations.subtotal,
+            subtotalExGST: cartCalculations.subtotalExGST,
+            shippingCost: cartCalculations.totalShippingCost,
+            gstPercentage: cartCalculations.gstPercentage,
+            gstAmount: cartCalculations.gstAmount,
+            grandTotal: cartCalculations.grandTotal,
+            gstInclusive: true,
+            couponCode: appliedCoupon ? appliedCoupon.code : null,
+            discountAmount: discountAmount > 0 ? discountAmount : null,
+            shippingMethod: {
+              name: shippingMethod.name,
+              cost: shippingMethod.cost,
+              estimatedDays: shippingMethod.estimatedDays
+            }
+          }
+        };
+
         // 1. Customer confirmation email (invoice download link is in the email)
         if (user.email) {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
-            const orderPayload = {
-              displayId: mainOrder.displayId,
-              totalAmount,
-              itemCount: cart.items.length,
-              products: cart.items.map(item => ({
-                title: item.product.title,
-                quantity: item.quantity,
-                price: Number(item.product.price)
-              })),
-              shippingAddress,
-              paymentMethod,
-              invoicePDFBuffer,
-              customerPhone: mobileNumber || user.phone || '',
-              orderSummary: {
-                subtotal: cartCalculations.subtotal,
-                subtotalExGST: cartCalculations.subtotalExGST,
-                shippingCost: cartCalculations.totalShippingCost,
-                gstPercentage: cartCalculations.gstPercentage,
-                gstAmount: cartCalculations.gstAmount,
-                grandTotal: cartCalculations.grandTotal,
-                gstInclusive: true,
-                couponCode: appliedCoupon ? appliedCoupon.code : null,
-                discountAmount: discountAmount > 0 ? discountAmount : null,
-                shippingMethod: {
-                  name: shippingMethod.name,
-                  cost: shippingMethod.cost,
-                  estimatedDays: shippingMethod.estimatedDays
-                }
-              }
-            };
-
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, orderPayload);
-            await sendFinanceOrderEmail(orderPayload).catch(err => console.error('Finance email failed:', err));
             if (emailResult?.success) {
               console.log(`✅ Order confirmation email sent to ${user.email}`);
             } else {
@@ -637,6 +644,19 @@ exports.createOrder = async (request, reply) => {
           } catch (emailErr) {
             console.error(`❌ Order confirmation email error for ${user.email}:`, emailErr.message);
           }
+        }
+
+        // 1b. Finance copy — always fires independently of the customer email
+        console.log(`📧 Sending finance order email for order ${mainOrder.displayId}`);
+        try {
+          const financeResult = await sendFinanceOrderEmail(orderPayload);
+          if (financeResult?.success) {
+            console.log(`✅ Finance order email sent for ${mainOrder.displayId}`);
+          } else {
+            console.error(`❌ Finance order email failed for ${mainOrder.displayId}:`, financeResult?.error);
+          }
+        } catch (financeErr) {
+          console.error(`❌ Finance order email error for ${mainOrder.displayId}:`, financeErr.message);
         }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
@@ -2714,45 +2734,52 @@ exports.createGuestOrder = async (request, reply) => {
 
     // ── Fire all emails & notifications in background (non-blocking) ────────
     ;(async () => {
+      console.log(`🚀 Background email IIFE started for guest order ${order.displayId}`);
       try {
-        const invoicePDFBuffer = await buildOrderPdfForEmail(order.displayId);
-        
+        // PDF generation is isolated — if it fails, emails still fire without the attachment
+        let invoicePDFBuffer = null;
+        try {
+          invoicePDFBuffer = await buildOrderPdfForEmail(order.displayId);
+        } catch (pdfErr) {
+          console.error('⚠️  PDF generation failed (emails will still send without attachment):', pdfErr.message);
+        }
+
+        // Build the shared guest order payload once
+        const guestOrderPayload = {
+          displayId: order.displayId,
+          totalAmount,
+          itemCount: order.items.length,
+          products: order.items.map(item => ({
+            title: item.product.title,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          shippingAddress,
+          paymentMethod,
+          invoicePDFBuffer,
+          customerPhone,
+          isGuest: true,
+          orderSummary: {
+            subtotal: cartCalculations.subtotal,
+            subtotalExGST: cartCalculations.subtotalExGST,
+            shippingCost: cartCalculations.totalShippingCost,
+            gstPercentage: cartCalculations.gstPercentage,
+            gstAmount: cartCalculations.gstAmount,
+            grandTotal: cartCalculations.grandTotal,
+            couponCode: appliedCoupon ? appliedCoupon.code : null,
+            discountAmount: discountAmount > 0 ? discountAmount : null,
+            shippingMethod: {
+              name: shippingMethod.name,
+              cost: shippingMethod.cost,
+              estimatedDays: shippingMethod.estimatedDays
+            }
+          }
+        };
+
         // 1. Guest customer confirmation email (invoice download button is in the email)
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
         try {
-          const guestOrderPayload = {
-            displayId: order.displayId,
-            totalAmount,
-            itemCount: order.items.length,
-            products: order.items.map(item => ({
-              title: item.product.title,
-              quantity: item.quantity,
-              price: item.price
-            })),
-            shippingAddress,
-            paymentMethod,
-            invoicePDFBuffer,
-            customerPhone,
-            isGuest: true,
-            orderSummary: {
-              subtotal: cartCalculations.subtotal,
-              subtotalExGST: cartCalculations.subtotalExGST,
-              shippingCost: cartCalculations.totalShippingCost,
-              gstPercentage: cartCalculations.gstPercentage,
-              gstAmount: cartCalculations.gstAmount,
-              grandTotal: cartCalculations.grandTotal,
-              couponCode: appliedCoupon ? appliedCoupon.code : null,
-              discountAmount: discountAmount > 0 ? discountAmount : null,
-              shippingMethod: {
-                name: shippingMethod.name,
-                cost: shippingMethod.cost,
-                estimatedDays: shippingMethod.estimatedDays
-              }
-            }
-          };
-
           const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, guestOrderPayload);
-          await sendFinanceOrderEmail(guestOrderPayload).catch(err => console.error('Finance email failed:', err));
           if (guestEmailResult?.success) {
             console.log(`✅ Guest order confirmation email sent to ${customerEmail}`);
           } else {
@@ -2760,6 +2787,19 @@ exports.createGuestOrder = async (request, reply) => {
           }
         } catch (emailErr) {
           console.error(`❌ Guest order confirmation email error for ${customerEmail}:`, emailErr.message);
+        }
+
+        // 1b. Finance copy — always fires independently of the customer email
+        console.log(`📧 Sending finance order email for guest order ${order.displayId}`);
+        try {
+          const financeResult = await sendFinanceOrderEmail(guestOrderPayload);
+          if (financeResult?.success) {
+            console.log(`✅ Finance order email sent for guest order ${order.displayId}`);
+          } else {
+            console.error(`❌ Finance order email failed for guest order ${order.displayId}:`, financeResult?.error);
+          }
+        } catch (financeErr) {
+          console.error(`❌ Finance order email error for guest order ${order.displayId}:`, financeErr.message);
         }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
