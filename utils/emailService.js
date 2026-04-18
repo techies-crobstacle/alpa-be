@@ -805,16 +805,24 @@ const sendFinanceOrderEmail = async (orderDetails) => {
     })
   };
 
+  // Attach invoice PDF if provided
+  if (orderDetails.invoicePDFBuffer) {
+    msg.attachments = [{
+      content: orderDetails.invoicePDFBuffer.toString('base64'),
+      filename: `invoice-${orderDetails.displayId}-finance.pdf`,
+      type: 'application/pdf',
+      disposition: 'attachment'
+    }];
+    console.log(`[Finance Email] PDF attachment added (${orderDetails.invoicePDFBuffer.length} bytes)`);
+  } else {
+    console.log(`[Finance Email] No PDF buffer available — sending without attachment`);
+  }
+
+  // Stagger 2 seconds after the customer email to avoid SendGrid treating
+  // two near-simultaneous sends with the same attachment as duplicates.
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
   try {
-    if (orderDetails.invoicePDFBuffer) {
-      msg.attachments = [{
-        content: orderDetails.invoicePDFBuffer.toString('base64'),
-        filename: `invoice-${orderDetails.displayId}.pdf`,
-        type: 'application/pdf',
-        disposition: 'attachment'
-      }];
-    }
-    
     await sgMail.send(msg);
     console.log(`✅ [Finance Email] SendGrid accepted: order ${orderDetails.displayId} → ritkashyap13@gmail.com`);
     return { success: true };
