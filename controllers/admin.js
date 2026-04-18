@@ -2924,13 +2924,18 @@ exports.getSalesAnalytics = async (request, reply) => {
     }
 
     // Build where clause for orders query
-    const whereClause = Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
+    const whereClause = {
+      ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
+      paymentStatus: 'PAID',
+      overallStatus: { notIn: ['CANCELLED'] }
+    };
 
     // Get filtered orders with items, products, user, and seller info
     const orders = await prisma.order.findMany({
       where: whereClause,
       include: {
-        items: { include: { product: { include: { seller: true } } } },
+        items: { include: { product: { include: { seller: { include: { sellerProfile: { select: { businessName: true, storeName: true } } } } } } } },
+        subOrders: { include: { items: { include: { product: { include: { seller: { include: { sellerProfile: { select: { businessName: true, storeName: true } } } } } } } } } },
         user: { select: { id: true, name: true } }
       }
     });
@@ -2953,8 +2958,13 @@ exports.getSalesAnalytics = async (request, reply) => {
 
     orders.forEach(order => {
       totalRevenue += Number(order.totalAmount || 0);
-      statusBreakdown[order.status] = (statusBreakdown[order.status] || 0) + 1;
-      order.items.forEach(item => {
+      statusBreakdown[order.overallStatus || order.status || 'PENDING'] = (statusBreakdown[order.overallStatus || order.status || 'PENDING'] || 0) + 1;
+      
+      const allItems = order.subOrders && order.subOrders.length > 0 
+        ? order.subOrders.flatMap(sub => sub.items || []) 
+        : order.items || [];
+
+      allItems.forEach(item => {
         totalItemsSold += item.quantity;
         const pid = item.productId;
         if (!productSales[pid]) {
@@ -2962,7 +2972,7 @@ exports.getSalesAnalytics = async (request, reply) => {
             productId: pid,
             title: item.product.title,
             sellerId: item.product.sellerId,
-            sellerName: item.product.seller?.storeName || item.product.seller?.businessName || '',
+            sellerName: item.product.seller?.sellerProfile?.storeName || item.product.seller?.sellerProfile?.businessName || item.product.seller?.name || '',
             quantity: 0,
             revenue: 0
           };
