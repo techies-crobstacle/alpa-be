@@ -932,7 +932,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-        subject: `Order Update: #${orderDetails.displayId} � Made in Arnhem Land`,
+        subject: `Order Update: #${orderDetails.displayId} - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1148,7 +1148,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `New Order Received: #${orderDetails.displayId} � Made in Arnhem Land`,
+    subject: `New Order Received: #${orderDetails.displayId} - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1365,7 +1365,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `Action Required: ${notificationType} � Order #${orderId} � Made in Arnhem Land`,
+      subject: `Action Required: ${notificationType} - Order #${orderId} - Made in Arnhem Land`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -1471,7 +1471,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: "Your Seller Application Has Been Submitted � Made in Arnhem Land",
+        subject: "Your Seller Application Has Been Submitted - Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1668,7 +1668,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Created � Made in Arnhem Land",
+    subject: "Your Seller Account Has Been Created - Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1776,7 +1776,7 @@ const sendSellerApprovedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Approved � Made in Arnhem Land",
+    subject: "Your Seller Account Has Been Approved - Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1900,7 +1900,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: `Low Stock Alert: "${productTitle}" � Made in Arnhem Land`,
+        subject: `Low Stock Alert: "${productTitle}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2026,7 +2026,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Pending Review: "${productTitle}" � Made in Arnhem Land`,
+        subject: `Product Pending Review: "${productTitle}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2128,7 +2128,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Approved: "${productTitle}" is Now Live � Made in Arnhem Land`,
+        subject: `Product Approved: "${productTitle}" is Now Live - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2241,7 +2241,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Review: "${productTitle}" Requires Changes � Made in Arnhem Land`,
+        subject: `Product Review: "${productTitle}" Requires Changes - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2360,7 +2360,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Approved: "${categoryName}" � Made in Arnhem Land`,
+    subject: `Category Approved: "${categoryName}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2452,7 +2452,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Request Update: "${categoryName}" � Made in Arnhem Land`,
+    subject: `Category Request Update: "${categoryName}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2543,7 +2543,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Category Request: "${categoryName}" � Made in Arnhem Land`,
+    subject: `New Category Request: "${categoryName}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2631,7 +2631,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Seller Application: "${businessName || sellerName}" � Made in Arnhem Land`,
+    subject: `New Seller Application: "${businessName || sellerName}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2735,7 +2735,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Order Placed: #${orderDetails.displayId} � Made in Arnhem Land`,
+    subject: `New Order Placed: #${orderDetails.displayId} - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
