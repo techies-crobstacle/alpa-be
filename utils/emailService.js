@@ -4480,7 +4480,7 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
 
   const msg = {
     to: email,
-    from: `"Alpa Finance" <${process.env.SENDGRID_FROM_EMAIL}>`,
+    from: `"Alpa Finance" <${process.env.SENDGRID_FROM_EMAIL || 'shubham@crobstacle.com'}>`,
     subject: `Alpa GST Reconciliation Report - ${monthName} ${period.year}`,
     html: htmlContent,
     attachments: [
@@ -4546,7 +4546,7 @@ module.exports = {
   sendMonthlyGstReportEmail
 };
 
-
+// Email service 
 
 
 
