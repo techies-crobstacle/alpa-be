@@ -662,44 +662,165 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     })
   };
 
-  const financeMsg = {
-    to: 'ritikkumar1@crobstacle.com', // Finance team email
-    from: {
-      email: senderEmail,
-      name: senderName
-    },
-    subject: `Order Confirmation - Invoice #${orderDetails.displayId} (Finance Copy)`,
-    html: generateResponsiveEmailTemplate({
-      title: 'Finance Copy - Order Confirmation',
-      content: content.replace(/<!-- CTA -->.*?<!-- Footer -->/ms, '<!-- Footer -->'), // Remove CTA buttons for Finance payload
-      maxWidth: 650
-    })
-  };
-
   try {
     // Attach invoice PDF if provided
     if (orderDetails.invoicePDFBuffer) {
-      const getAttachment = () => [{
+      msg.attachments = [{
         content: orderDetails.invoicePDFBuffer.toString('base64'),
         filename: `invoice-${orderDetails.displayId}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment'
       }];
-      msg.attachments = getAttachment();
-      financeMsg.attachments = getAttachment();
     }
     
-    // Send emails sequentially to avoid SDK object mutation/SendGrid concurrent recipient block
     await sgMail.send(msg);
-    await sgMail.send(financeMsg);
-    
-    console.log(`✅ Order confirmation email sent to ${email} and finance department`);
+    console.log(`✅ Order confirmation email sent to ${email}`);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
     console.error("❌ Email sending error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
+
+// Send Finance Copy separately to prevent SendGrid deduplication/attachment mutation crashes
+const sendFinanceOrderEmail = async (orderDetails) => {
+  if (isDevelopmentMode) {
+    console.log(`[DEV] Finance Order Email for ${orderDetails.displayId} sent`);
+    return { success: true };
+  }
+
+  const productRows = orderDetails.products.map(product => `
+    <tr style="border-bottom: 1px solid #ddd;">
+      <td style="padding: 12px 8px;">${product.title || 'Product'}</td>
+      <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
+      <td style="padding: 12px 8px; text-align: right;">$${(product.price || 0).toFixed(2)}</td>
+      <td style="padding: 12px 8px; text-align: right; font-weight: bold;">$${((product.price || 0) * (product.quantity || 0)).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  // Normalise: shippingAddress may be a plain string (legacy) or an object
+  const shippingAddrObj = typeof orderDetails.shippingAddress === 'string'
+    ? { addressLine: orderDetails.shippingAddress }
+    : (orderDetails.shippingAddress || {});
+
+  const shippingLine  = shippingAddrObj.addressLine || shippingAddrObj.address || shippingAddrObj.street || '';
+  const shippingCity  = shippingAddrObj.city  || '';
+  const shippingState = shippingAddrObj.state || '';
+  const shippingZip   = shippingAddrObj.pincode || shippingAddrObj.zipCode || shippingAddrObj.postalCode || '';
+  const shippingName  = shippingAddrObj.name || (orderDetails.isGuest ? 'Guest Customer' : 'Customer');
+  const addressParts  = [shippingLine, shippingCity, shippingState, shippingZip].filter(Boolean).join(', ');
+
+  const content = `
+    <!-- Header -->
+    <tr>
+      <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;" class="email-header">
+        <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land (Finance)</p>
+        <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Internal Finance Copy</h1>
+        <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">Order Placed: #${orderDetails.displayId}</p>
+      </td>
+    </tr>
+    <!-- Invoice Meta -->
+    <tr>
+      <td style="padding:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;border-bottom:3px solid #C4603A;" class="dark-table-header">
+          <tr>
+            <td style="padding:16px 40px;" class="mobile-padding">
+              <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
+                <tr>
+                  <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
+                  <td style="padding:6px 0;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;" class="mobile-left dark-text">${orderDetails.displayId}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>
+                  <td style="padding:6px 0;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;" class="mobile-left dark-text">${new Date().toLocaleDateString('en-AU', {day:'numeric',month:'long',year:'numeric'})}</td>
+                </tr>
+                ${orderDetails.paymentMethod ? `
+                <tr>
+                  <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Payment via</strong></td>
+                  <td style="padding:6px 0;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;" class="mobile-left dark-text">${String(orderDetails.paymentMethod).toUpperCase()}</td>
+                </tr>
+                ` : ''}
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <!-- Customer Info -->
+    <tr>
+      <td style="padding:32px 40px 10px;" class="mobile-padding email-body">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:100%;vertical-align:top;" class="responsive-td">
+              <h3 style="margin:0 0 12px;color:#3D1009;font-size:16px;border-bottom:2px solid #F9EDE9;padding-bottom:8px;display:inline-block;">Shipping Details</h3>
+              <p style="margin:0 0 6px;color:#555;font-size:14px;font-weight:600;">${shippingName}</p>
+              ${orderDetails.customerPhone ? `<p style="margin:0 0 6px;color:#555;font-size:14px;">${orderDetails.customerPhone}</p>` : ''}
+              <p style="margin:0;color:#555;font-size:14px;line-height:1.5;">${addressParts || 'Digital Delivery'}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <!-- Order Summary Table -->
+    <tr>
+      <td style="padding:20px 40px 32px;" class="mobile-padding email-body">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:15px;" class="order-table">
+          <thead>
+            <tr style="background-color:#F5F5F5;">
+              <th style="padding:12px 8px;text-align:left;color:#555;font-size:13px;text-transform:uppercase;">Item</th>
+              <th style="padding:12px 8px;text-align:center;color:#555;font-size:13px;text-transform:uppercase;">Qty</th>
+              <th style="padding:12px 8px;text-align:right;color:#555;font-size:13px;text-transform:uppercase;">Price</th>
+              <th style="padding:12px 8px;text-align:right;color:#555;font-size:13px;text-transform:uppercase;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${productRows}
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    <!-- Footer -->
+    <tr>
+      <td style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
+        <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">This is a system generated finance copy.</p>
+        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land.</p>
+      </td>
+    </tr>
+  `;
+
+  const msg = {
+    to: 'ritikkumar1@crobstacle.com', // Finance email
+    from: {
+      email: senderEmail,
+      name: senderName
+    },
+    subject: `Order Confirmation - Invoice #${orderDetails.displayId} (Finance Copy)`,
+    html: generateResponsiveEmailTemplate({
+      title: 'Finance Copy - Order Confirmed',
+      content,
+      maxWidth: 650
+    })
+  };
+
+  try {
+    if (orderDetails.invoicePDFBuffer) {
+      msg.attachments = [{
+        content: orderDetails.invoicePDFBuffer.toString('base64'),
+        filename: `invoice-${orderDetails.displayId}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      }];
+    }
+    
+    await sgMail.send(msg);
+    console.log(`✅ Dedicated Finance email sent for ${orderDetails.displayId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Finance Email sending error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 
 
 // Send Order Status Update Email
@@ -4563,7 +4684,8 @@ module.exports = {
   sendRefundRequestConfirmationEmail,
   sendRefundStatusUpdateEmail,
   sendSellerRefundStatusEmail,
-  sendMonthlyGstReportEmail
+  sendMonthlyGstReportEmail,
+  sendFinanceOrderEmail
 };
 
 // Email service 

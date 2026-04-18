@@ -25,6 +25,7 @@ async function generateDisplayId() {
 // ─────────────────────────────────────────────────────────────────────────────
 const { 
   sendOrderConfirmationEmail, 
+  sendFinanceOrderEmail,
   sendOrderStatusEmail,
   sendSellerOrderNotificationEmail,
   sendAdminNewOrderEmail,
@@ -595,7 +596,7 @@ exports.createOrder = async (request, reply) => {
         if (user.email) {
           console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
-            const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
+            const orderPayload = {
               displayId: mainOrder.displayId,
               totalAmount,
               itemCount: cart.items.length,
@@ -624,7 +625,10 @@ exports.createOrder = async (request, reply) => {
                   estimatedDays: shippingMethod.estimatedDays
                 }
               }
-            });
+            };
+
+            const emailResult = await sendOrderConfirmationEmail(user.email, user.name, orderPayload);
+            await sendFinanceOrderEmail(orderPayload).catch(err => console.error('Finance email failed:', err));
             if (emailResult?.success) {
               console.log(`✅ Order confirmation email sent to ${user.email}`);
             } else {
@@ -2716,7 +2720,7 @@ exports.createGuestOrder = async (request, reply) => {
         // 1. Guest customer confirmation email (invoice download button is in the email)
         console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
         try {
-          const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
+          const guestOrderPayload = {
             displayId: order.displayId,
             totalAmount,
             itemCount: order.items.length,
@@ -2745,7 +2749,10 @@ exports.createGuestOrder = async (request, reply) => {
                 estimatedDays: shippingMethod.estimatedDays
               }
             }
-          });
+          };
+
+          const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, guestOrderPayload);
+          await sendFinanceOrderEmail(guestOrderPayload).catch(err => console.error('Finance email failed:', err));
           if (guestEmailResult?.success) {
             console.log(`✅ Guest order confirmation email sent to ${customerEmail}`);
           } else {
