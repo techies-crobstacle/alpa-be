@@ -585,10 +585,10 @@ exports.createOrder = async (request, reply) => {
       console.error('Customer order placed notification error:', error.message);
     });
 
-    // ── Fire all emails & notifications in background (non-blocking) ────────
-    // Reply is sent immediately below; PDF generation + all outbound calls
-    // run in the background so they never delay the API response.
-    ;(async () => {
+    // ── Fire all emails & notifications — now awaited to prevent serverless container freeze ──
+    // We await this block to ensure that all SendGrid network requests complete successfully
+    // before the HTTP response is closed (fixes silent delivery drops on environments like Vercel/Render).
+    await (async () => {
       console.log(`🚀 Background email IIFE started for order ${mainOrder.displayId}`);
       try {
         // PDF generation is isolated — if it fails, emails still fire without the attachment
@@ -2739,8 +2739,8 @@ exports.createGuestOrder = async (request, reply) => {
     // Guest orders: no in-app customer notification (guest has no user account / userId)
     // Guest receives email confirmation instead.
 
-    // ── Fire all emails & notifications in background (non-blocking) ────────
-    ;(async () => {
+    // ── Fire all emails & notifications — now awaited to prevent serverless container freeze ──
+    await (async () => {
       console.log(`🚀 Background email IIFE started for guest order ${order.displayId}`);
       try {
         // PDF generation is isolated — if it fails, emails still fire without the attachment
