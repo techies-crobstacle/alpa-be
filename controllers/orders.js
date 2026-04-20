@@ -737,18 +737,23 @@ exports.createOrder = async (request, reply) => {
         }));
 
         // 3. Admin order emails — notify SUPER_ADMIN only
+        console.log('🔍 Attempting to send super admin notifications...');
         try {
           const admins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
+          console.log(`📋 Found ${admins.length} super admins:`, admins.map(a => a.email));
+          
           const allItems = cart.items.map(item => ({
             title: item.product?.title || item.productId,
             quantity: item.quantity,
             price: Number(item.product.price)
           }));
+          
           for (const admin of admins) {
             if (admin.email) {
+              console.log(`📧 Sending admin order email to: ${admin.email}`);
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
                   displayId: mainOrder.displayId,
@@ -768,10 +773,12 @@ exports.createOrder = async (request, reply) => {
               } catch (adminEmailErr) {
                 console.error(`❌ Admin order email error for ${admin.email}:`, adminEmailErr.message);
               }
+            } else {
+              console.warn(`⚠️  Admin ${admin.name || 'Unknown'} has no email address`);
             }
           }
         } catch (adminEmailListErr) {
-          console.error('Error fetching admins for order email:', adminEmailListErr.message);
+          console.error('❌ Error fetching admins for order email:', adminEmailListErr.message);
         }
       } catch (bgErr) {
         console.error('Background notification error:', bgErr.message);
@@ -2903,11 +2910,14 @@ exports.createGuestOrder = async (request, reply) => {
         }));
 
         // 3. Admin order emails for guest orders
+        console.log('🔍 Attempting to send super admin notifications for guest order...');
         try {
           const admins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
+          console.log(`📋 Found ${admins.length} super admins for guest order:`, admins.map(a => a.email));
+          
           const guestSellerNames = [...sellerNotifications.keys()]
             .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
             .filter(Boolean)
@@ -2917,8 +2927,10 @@ exports.createGuestOrder = async (request, reply) => {
             quantity: item.quantity,
             price: item.price
           }));
+          
           for (const admin of admins) {
             if (admin.email) {
+              console.log(`📧 Sending guest admin order email to: ${admin.email}`);
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
                   displayId: order.displayId,
