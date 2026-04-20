@@ -477,37 +477,38 @@ async function handlePaymentSucceeded(paymentIntentId) {
   // (webhook, /confirm, /guest/confirm) without any extra lookup.
   const toEmail = order.customerEmail;
   const toName  = order.customerName || 'Customer';
+  const orderDetailsForEmail = {
+    displayId:     order.displayId,
+    customerEmail: toEmail,
+    totalAmount:   Number(order.totalAmount),
+    itemCount:     allItems.length,
+    products:      allItems.map((item) => ({
+      title:    item.product.title,
+      quantity: item.quantity,
+      price:    Number(item.price),
+    })),
+    // Pass structured address so the email template can render city/state/zip
+    shippingAddress: {
+      addressLine: order.shippingAddressLine,
+      city:        order.shippingCity,
+      state:       order.shippingState,
+      zipCode:     order.shippingZipCode,
+      country:     order.shippingCountry,
+    },
+    paymentMethod:   order.paymentMethod || 'STRIPE',
+    customerPhone:   order.customerPhone || '',
+    customerName:    toName,
+    orderSummary:    order.shippingAddress && typeof order.shippingAddress === 'object' && order.shippingAddress.orderSummary ? {
+      ...order.shippingAddress.orderSummary,
+      // Always show total shipping (across all sellers), not per-seller rate
+      shippingCost: order.shippingAddress.orderSummary.totalShippingCost || order.shippingAddress.orderSummary.shippingCost,
+    } : undefined,
+    isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
+  };
 
   if (toEmail) {
-    const storedSummary =
-      typeof order.shippingAddress === 'object' ? order.shippingAddress?.orderSummary : null;
-
-    sendOrderConfirmationEmail(toEmail, toName, {
-      displayId:     order.displayId,
-      totalAmount:   Number(order.totalAmount),
-      itemCount:     allItems.length,
-      products:      allItems.map((item) => ({
-        title:    item.product.title,
-        quantity: item.quantity,
-        price:    Number(item.price),
-      })),
-      // Pass structured address so the email template can render city/state/zip
-      shippingAddress: {
-        addressLine: order.shippingAddressLine,
-        city:        order.shippingCity,
-        state:       order.shippingState,
-        zipCode:     order.shippingZipCode,
-        country:     order.shippingCountry,
-      },
-      paymentMethod:   order.paymentMethod || 'STRIPE',
-      customerPhone:   order.customerPhone || '',
-      orderSummary:    storedSummary ? {
-        ...storedSummary,
-        // Always show total shipping (across all sellers), not per-seller rate
-        shippingCost: storedSummary.totalShippingCost || storedSummary.shippingCost,
-      } : undefined,
-      isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
-    }).catch((e) => console.error('Email error (non-blocking):', e.message));
+    sendOrderConfirmationEmail(toEmail, toName, orderDetailsForEmail)
+      .catch((e) => console.error('Email error (non-blocking):', e.message));
   } else {
     console.warn(`⚠️  No customerEmail on order ${order.id} — confirmation email skipped`);
   }
@@ -555,6 +556,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
     orderId:      order.id,
   }).catch((e) => console.error('Admin notification error (non-blocking):', e.message));
 
+  // Send Super Admin Copy of Order Confirmation
+  prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
+    .then(admins => {
+      for (const admin of admins) {
+        if (admin.email) {
+          sendOrderConfirmationEmail(admin.email, admin.name || 'Super Admin', {
+            ...orderDetailsForEmail,
+            isSuperAdminCopy: true
+          }).catch(e => console.error('Admin order email error (non-blocking):', e.message));
+        }
+      }
+    }).catch(e => console.error('Error fetching admins for order emails:', e.message));
+
   // ── Create SLA + in-app notifications for each seller ──────────────────
   for (const sid of sellerIdSet) {
     const sellerItems = allItems.filter(i => i.product?.sellerId === sid);
@@ -571,6 +585,27 @@ async function handlePaymentSucceeded(paymentIntentId) {
       itemCount,
       productNames
     }).catch((e) => console.error('Seller in-app notification error (non-blocking):', e.message));
+
+    // Send Seller Email Notification
+    prisma.user.findUnique({ where: { id: sid }, select: { email: true, name: true, sellerProfile: { select: { storeName: true, businessName: true } } } })
+      .then(seller => {
+        if (seller && seller.email) {
+          const sellerSubOrder = order.subOrders && order.subOrders.find(sub => sub.sellerId === sid || sub.seller?.id === sid);
+          const sName = seller.name || seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || 'Seller';
+          
+          sendOrderConfirmationEmail(seller.email, sName, {
+            ...orderDetailsForEmail,
+            isSellerCopy: true,
+            subOrderId: sellerSubOrder ? sellerSubOrder.id : undefined,
+            products: sellerItems.map(i => ({
+              title: i.product?.title,
+              quantity: i.quantity,
+              price: Number(i.price)
+            })),
+            totalAmount: itemTotal // Correct totally to just the seller's total
+          }).catch(e => console.error('Seller order email error:', e.message));
+        }
+      }).catch(e => console.error('Error fetching seller for order email:', e.message));
 
     // ── Commission Earned ───────────────────────────────────────────────────
     createCommissionEarned({

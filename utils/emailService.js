@@ -554,18 +554,27 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const shippingName  = shippingAddrObj.name || customerName;
   const addressParts  = [shippingLine, shippingCity, shippingState, shippingZip].filter(Boolean).join(', ');
 
+  // For seller & super admin copies, use the actual customer's email for API validations
+  const targetEmail = orderDetails.customerEmail || email;
+  const targetOrderId = (orderDetails.isSellerCopy && orderDetails.subOrderId) ? orderDetails.subOrderId : orderDetails.displayId;
+
   // Build guest-aware tracking URL
   const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
   const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-be.onrender.com';
-  const trackingUrl = orderDetails.isGuest
-    ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(email)}`
-    : `${dashboardUrl}/customerdashboard/orders`;
+  
+  // Track goes to frontend. For sellers/admins, we just link to dashboard
+  const trackingUrl = (orderDetails.isSellerCopy || orderDetails.isSuperAdminCopy)
+    ? `${dashboardUrl}`
+    : orderDetails.isGuest
+      ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(targetEmail)}`
+      : `${dashboardUrl}/customerdashboard/orders`;
+
   // Authenticated users get the dedicated public email-download endpoint (no bearer token needed in links).
   // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
-    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayId}&customerEmail=${encodeURIComponent(email)}`
-    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayId}`;
+    ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${targetOrderId}&customerEmail=${encodeURIComponent(targetEmail)}`
+    : `${backendBaseUrl}/api/orders/invoice/public/${targetOrderId}`;
 
   const content = `
     <!-- Header -->
@@ -573,7 +582,14 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;" class="email-header">
         <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
         <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Order Confirmed!</h1>
-        <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">${orderDetails.isSuperAdminCopy ? `(Super Admin Copy for Order placed by ${orderDetails.customerName})` : `Thank you for your purchase, ${customerName}!`}</p>
+        <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">
+          ${orderDetails.isSuperAdminCopy 
+            ? `(Super Admin Copy for Order placed by ${customerName})` 
+            : orderDetails.isSellerCopy 
+              ? `(Seller Copy for Order placed by ${customerName})`
+              : `Thank you for your purchase, ${customerName}!`
+          }
+        </p>
       </td>
     </tr>
     <!-- Invoice Meta -->
