@@ -759,6 +759,8 @@ const sendFinanceOrderEmail = async (orderDetails) => {
     <!-- Customer Info -->
     <tr>
       <td style="padding:32px 40px 10px;" class="mobile-padding email-body">
+        <p style="color:#3D1009;font-size:16px;margin:0 0 16px;">Hi <strong>Team Finance</strong>,</p>
+        <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 16px;">A new order has been placed on the marketplace. Please find the finance copy details and the attached invoice PDF below.</p>
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td style="width:100%;vertical-align:top;" class="responsive-td">
@@ -2859,6 +2861,17 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
       </html>
     `,
   };
+
+  // Attach invoice PDF if provided
+  if (orderDetails.invoicePDFBuffer) {
+    msg.attachments = [{
+      content: orderDetails.invoicePDFBuffer.toString('base64'),
+      filename: `invoice-${orderDetails.displayId}.pdf`,
+      type: 'application/pdf',
+      disposition: 'attachment'
+    }];
+    console.log(`[Admin Email] PDF attachment added (${orderDetails.invoicePDFBuffer.length} bytes)`);
+  }
 
   try {
     await sgMail.send(msg);
