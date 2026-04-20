@@ -6,7 +6,6 @@ const productController = require("../controllers/product");
 const feedbackController = require("../controllers/feedback");
 const commissionController = require("../controllers/commission");
 const sellerOrderController = require("../controllers/sellerOrders");
-const { sendAdminNewOrderEmail, sendFinanceOrderEmail } = require("../utils/emailService");
 
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
@@ -181,67 +180,6 @@ async function adminRoutes(fastify, options) {
   fastify.get("/sponsored-sections", { preHandler: adminAuth }, adminController.getAllSponsoredSections);
   fastify.put("/sponsored-sections/:id", { preHandler: adminAuth }, adminController.updateSponsoredSection);
   fastify.delete("/sponsored-sections/:id", { preHandler: adminAuth }, adminController.deleteSponsoredSection);
-
-  // ---------------- EMAIL TESTING ENDPOINT ----------------
-  fastify.post("/test-emails", { preHandler: adminAuth }, async (request, reply) => {
-    const { sendAdminNewOrderEmail, sendFinanceOrderEmail } = require("../utils/emailService");
-    
-    console.log('=== EMAIL TEST DIAGNOSTIC ===');
-    console.log('SENDGRID_API_KEY present:', !!process.env.SENDGRID_API_KEY);
-    console.log('SENDER_EMAIL:', process.env.SENDER_EMAIL);
-    console.log('NODE_ENV:', process.env.NODE_ENV);
-    
-    try {
-      // Test Super Admin Email
-      console.log('Testing Super Admin email...');
-      const adminResult = await sendAdminNewOrderEmail('ritikkumar1@crobstacle.com', 'Ritik Test Admin', {
-        displayId: 'TEST-ADMIN-' + Date.now(),
-        customerName: 'Test Customer',
-        customerEmail: 'test@example.com', 
-        customerPhone: '1234567890',
-        sellerNames: 'Test Seller',
-        totalAmount: 99.99,
-        paymentMethod: 'TEST',
-        items: [{ title: 'Test Product', quantity: 1, price: 99.99 }]
-      });
-      
-      // Test Finance Email  
-      console.log('Testing Finance email...');
-      const financeResult = await sendFinanceOrderEmail({
-        displayId: 'TEST-FINANCE-' + Date.now(),
-        totalAmount: 99.99,
-        products: [{ title: 'Test Product', quantity: 1, price: 99.99 }],
-        shippingAddress: { addressLine: '123 Test St', city: 'Sydney', state: 'NSW', pincode: '2000' },
-        paymentMethod: 'TEST'
-      });
-      
-      return reply.status(200).send({
-        success: true,
-        message: 'Test emails sent',
-        results: {
-          admin: adminResult,
-          finance: financeResult
-        },
-        environment: {
-          hasApiKey: !!process.env.SENDGRID_API_KEY,
-          senderEmail: process.env.SENDER_EMAIL,
-          nodeEnv: process.env.NODE_ENV
-        }
-      });
-      
-    } catch (error) {
-      console.error('Email test failed:', error);
-      return reply.status(500).send({
-        success: false,
-        error: error.message,
-        environment: {
-          hasApiKey: !!process.env.SENDGRID_API_KEY,
-          senderEmail: process.env.SENDER_EMAIL,
-          nodeEnv: process.env.NODE_ENV
-        }
-      });
-    }
-  });
 } 
 
 module.exports = adminRoutes;

@@ -27,12 +27,6 @@ if (process.env.SENDGRID_API_KEY) {
 }
 
 const isDevelopmentMode = !emailConfigured;
-console.log('='.repeat(60));
-console.log('[EmailService BOOT]');
-console.log(`  SENDGRID_API_KEY : ${process.env.SENDGRID_API_KEY ? '✅ SET (length=' + process.env.SENDGRID_API_KEY.length + ')' : '❌ MISSING'}`);
-console.log(`  SENDER_EMAIL     : ${process.env.SENDER_EMAIL || '❌ NOT SET'}`);
-console.log(`  isDevelopmentMode: ${isDevelopmentMode}`);
-console.log('='.repeat(60));
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
 const senderName = process.env.SENDER_NAME || 'Made in Arnhem Land';
 
@@ -665,7 +659,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       title: 'Order Confirmation - Made in Arnhem Land',
       content: content,
       maxWidth: 650
-    })
+    }),
   };
 
   try {
@@ -678,7 +672,6 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
         disposition: 'attachment'
       }];
     }
-    
     await sgMail.send(msg);
     console.log(`✅ Order confirmation email sent to ${email}`);
     return { success: true, message: "Email sent successfully" };
@@ -687,160 +680,6 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     return { success: false, error: error.message };
   }
 };
-
-// Send Finance Copy separately to prevent SendGrid deduplication/attachment mutation crashes
-const sendFinanceOrderEmail = async (orderDetails) => {
-  console.log(`[Finance Email] Called for order ${orderDetails.displayId} | isDevelopmentMode=${isDevelopmentMode} | senderEmail=${senderEmail}`);
-  if (isDevelopmentMode) {
-    console.log(`[Finance Email] ⛔ BLOCKED — isDevelopmentMode=true (SENDGRID_API_KEY is missing or empty)`);
-    return { success: true };
-  }
-  console.log(`[Finance Email] 📤 Attempting SendGrid send to ritkashyap13@gmail.com for order ${orderDetails.displayId}`);
-
-  let msg;
-  try {
-  const productRows = (orderDetails.products || []).map(product => `
-    <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 12px 8px;">${product.title || 'Product'}</td>
-      <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
-      <td style="padding: 12px 8px; text-align: right;">$${(product.price || 0).toFixed(2)}</td>
-      <td style="padding: 12px 8px; text-align: right; font-weight: bold;">$${((product.price || 0) * (product.quantity || 0)).toFixed(2)}</td>
-    </tr>
-  `).join('');
-
-  // Normalise: shippingAddress may be a plain string (legacy) or an object
-  const shippingAddrObj = typeof orderDetails.shippingAddress === 'string'
-    ? { addressLine: orderDetails.shippingAddress }
-    : (orderDetails.shippingAddress || {});
-
-  const shippingLine  = shippingAddrObj.addressLine || shippingAddrObj.address || shippingAddrObj.street || '';
-  const shippingCity  = shippingAddrObj.city  || '';
-  const shippingState = shippingAddrObj.state || '';
-  const shippingZip   = shippingAddrObj.pincode || shippingAddrObj.zipCode || shippingAddrObj.postalCode || '';
-  const shippingName  = shippingAddrObj.name || (orderDetails.isGuest ? 'Guest Customer' : 'Customer');
-  const addressParts  = [shippingLine, shippingCity, shippingState, shippingZip].filter(Boolean).join(', ');
-
-  const content = `
-    <!-- Header -->
-    <tr>
-      <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;" class="email-header">
-        <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land (Finance)</p>
-        <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Internal Finance Copy</h1>
-        <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">Order Placed: #${orderDetails.displayId}</p>
-      </td>
-    </tr>
-    <!-- Invoice Meta -->
-    <tr>
-      <td style="padding:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;border-bottom:3px solid #C4603A;" class="dark-table-header">
-          <tr>
-            <td style="padding:16px 40px;" class="mobile-padding">
-              <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
-                <tr>
-                  <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
-                  <td style="padding:6px 0;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;" class="mobile-left dark-text">${orderDetails.displayId}</td>
-                </tr>
-                <tr>
-                  <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>
-                  <td style="padding:6px 0;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;" class="mobile-left dark-text">${new Date().toLocaleDateString('en-AU', {day:'numeric',month:'long',year:'numeric'})}</td>
-                </tr>
-                ${orderDetails.paymentMethod ? `
-                <tr>
-                  <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Payment via</strong></td>
-                  <td style="padding:6px 0;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;" class="mobile-left dark-text">${String(orderDetails.paymentMethod).toUpperCase()}</td>
-                </tr>
-                ` : ''}
-              </table>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <!-- Customer Info -->
-    <tr>
-      <td style="padding:32px 40px 10px;" class="mobile-padding email-body">
-        <p style="color:#3D1009;font-size:16px;margin:0 0 16px;">Hi <strong>Team Finance</strong>,</p>
-        <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 16px;">A new order has been placed on the marketplace. Please find the finance copy details and the attached invoice PDF below.</p>
-        <table width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="width:100%;vertical-align:top;" class="responsive-td">
-              <h3 style="margin:0 0 12px;color:#3D1009;font-size:16px;border-bottom:2px solid #F9EDE9;padding-bottom:8px;display:inline-block;">Shipping Details</h3>
-              <p style="margin:0 0 6px;color:#555;font-size:14px;font-weight:600;">${shippingName}</p>
-              ${orderDetails.customerPhone ? `<p style="margin:0 0 6px;color:#555;font-size:14px;">${orderDetails.customerPhone}</p>` : ''}
-              <p style="margin:0;color:#555;font-size:14px;line-height:1.5;">${addressParts || 'Digital Delivery'}</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <!-- Order Summary Table -->
-    <tr>
-      <td style="padding:20px 40px 32px;" class="mobile-padding email-body">
-        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:15px;" class="order-table">
-          <thead>
-            <tr style="background-color:#F5F5F5;">
-              <th style="padding:12px 8px;text-align:left;color:#555;font-size:13px;text-transform:uppercase;">Item</th>
-              <th style="padding:12px 8px;text-align:center;color:#555;font-size:13px;text-transform:uppercase;">Qty</th>
-              <th style="padding:12px 8px;text-align:right;color:#555;font-size:13px;text-transform:uppercase;">Price</th>
-              <th style="padding:12px 8px;text-align:right;color:#555;font-size:13px;text-transform:uppercase;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${productRows}
-          </tbody>
-        </table>
-      </td>
-    </tr>
-    <!-- Footer -->
-    <tr>
-      <td style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
-        <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">This is a system generated finance copy.</p>
-        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land.</p>
-      </td>
-    </tr>
-  `;
-
-    msg = {
-      to: 'ritkashyap13@gmail.com', // Finance email
-      from: {
-        email: senderEmail,
-        name: senderName
-      },
-      subject: `Order Confirmation - Invoice #${orderDetails.displayId} (Finance Copy)`,
-      html: generateResponsiveEmailTemplate({
-        title: 'Finance Copy - Order Confirmed',
-        content,
-        maxWidth: 650
-      })
-    };
-  } catch (buildErr) {
-    console.error(`❌ [Finance Email] Template build failed for order ${orderDetails.displayId}:`, buildErr.message);
-    return { success: false, error: buildErr.message };
-  }
-
-  // Attach invoice PDF if provided
-  if (orderDetails.invoicePDFBuffer) {
-    msg.attachments = [{
-      content: orderDetails.invoicePDFBuffer.toString('base64'),
-      filename: `invoice-${orderDetails.displayId}-finance.pdf`,
-      type: 'application/pdf',
-      disposition: 'attachment'
-    }];
-    console.log(`[Finance Email] PDF attachment added (${orderDetails.invoicePDFBuffer.length} bytes)`);
-  } else {
-    console.log(`[Finance Email] No PDF buffer available — sending without attachment`);
-  }
-
-  try {
-    await sgMail.send(msg);
-    console.log(`✅ [Finance Email] SendGrid accepted: order ${orderDetails.displayId} → ritkashyap13@gmail.com`);
-    return { success: true };
-  } catch (error) {
-    console.error(`❌ [Finance Email] SendGrid rejected for order ${orderDetails.displayId}:`, error.response?.body || error.message);
-    return { success: false, error: error.message };
-  }
-};
-
 
 
 // Send Order Status Update Email
@@ -934,7 +773,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-        subject: `Order Update: #${orderDetails.displayId} - Made in Arnhem Land`,
+        subject: `Order Update: #${orderDetails.displayId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1150,7 +989,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `New Order Received: #${orderDetails.displayId} - Made in Arnhem Land`,
+    subject: `New Order Received: #${orderDetails.displayId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1367,7 +1206,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `Action Required: ${notificationType} - Order #${orderId} - Made in Arnhem Land`,
+      subject: `Action Required: ${notificationType} � Order #${orderId} � Made in Arnhem Land`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -1473,7 +1312,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: "Your Seller Application Has Been Submitted - Made in Arnhem Land",
+        subject: "Your Seller Application Has Been Submitted � Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1670,7 +1509,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Created - Made in Arnhem Land",
+    subject: "Your Seller Account Has Been Created � Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1778,7 +1617,7 @@ const sendSellerApprovedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Approved - Made in Arnhem Land",
+    subject: "Your Seller Account Has Been Approved � Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1902,7 +1741,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: `Low Stock Alert: "${productTitle}" - Made in Arnhem Land`,
+        subject: `Low Stock Alert: "${productTitle}" � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2028,7 +1867,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Pending Review: "${productTitle}" - Made in Arnhem Land`,
+        subject: `Product Pending Review: "${productTitle}" � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2130,7 +1969,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Approved: "${productTitle}" is Now Live - Made in Arnhem Land`,
+        subject: `Product Approved: "${productTitle}" is Now Live � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2243,7 +2082,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Review: "${productTitle}" Requires Changes - Made in Arnhem Land`,
+        subject: `Product Review: "${productTitle}" Requires Changes � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2362,7 +2201,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Approved: "${categoryName}" - Made in Arnhem Land`,
+    subject: `Category Approved: "${categoryName}" � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2454,7 +2293,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Request Update: "${categoryName}" - Made in Arnhem Land`,
+    subject: `Category Request Update: "${categoryName}" � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2545,7 +2384,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Category Request: "${categoryName}" - Made in Arnhem Land`,
+    subject: `New Category Request: "${categoryName}" � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2633,7 +2472,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Seller Application: "${businessName || sellerName}" - Made in Arnhem Land`,
+    subject: `New Seller Application: "${businessName || sellerName}" � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2710,11 +2549,9 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
 // orderDetails: { orderId, customerName, customerEmail, customerPhone?,
 //                 sellerNames (string), totalAmount, paymentMethod, items[] }
 const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
-  console.log(`[Admin Email] Called for order ${orderDetails.displayId} → ${adminEmail} | isDevelopmentMode=${isDevelopmentMode}`);
   if (isDevelopmentMode) {
-    console.log(`[Admin Email] ⛔ BLOCKED — isDevelopmentMode=true (SENDGRID_API_KEY is missing or empty)`);
     console.log("\n" + "=".repeat(50));
-    console.log("📧 DEVELOPMENT MODE - Admin New Order Email");
+    console.log("?? DEVELOPMENT MODE - Admin New Order Email");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail}`);
     console.log(`Order: ${orderDetails.displayId}`);
@@ -2724,7 +2561,6 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
     console.log("=".repeat(50) + "\n");
     return { success: true };
   }
-  console.log(`[Admin Email] 📤 Attempting SendGrid send to ${adminEmail} for order ${orderDetails.displayId}`);
 
   const productRows = (orderDetails.items || []).map(item => `
     <tr style="border-bottom:1px solid #EDD8CC;">
@@ -2737,7 +2573,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Order Placed: #${orderDetails.displayId} - Made in Arnhem Land`,
+    subject: `New Order Placed: #${orderDetails.displayId} � Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2862,23 +2698,12 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
     `,
   };
 
-  // Attach invoice PDF if provided
-  if (orderDetails.invoicePDFBuffer) {
-    msg.attachments = [{
-      content: orderDetails.invoicePDFBuffer.toString('base64'),
-      filename: `invoice-${orderDetails.displayId}.pdf`,
-      type: 'application/pdf',
-      disposition: 'attachment'
-    }];
-    console.log(`[Admin Email] PDF attachment added (${orderDetails.invoicePDFBuffer.length} bytes)`);
-  }
-
   try {
     await sgMail.send(msg);
-    console.log(`✅ [Admin Email] SendGrid accepted: order ${orderDetails.displayId} → ${adminEmail}`);
+    console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
-    console.error(`❌ [Admin Email] SendGrid rejected for order ${orderDetails.displayId} → ${adminEmail}:`, error.response?.body || error.message);
+    console.error("? Admin new order email error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -4718,8 +4543,7 @@ module.exports = {
   sendRefundRequestConfirmationEmail,
   sendRefundStatusUpdateEmail,
   sendSellerRefundStatusEmail,
-  sendMonthlyGstReportEmail,
-  sendFinanceOrderEmail
+  sendMonthlyGstReportEmail
 };
 
 // Email service 
