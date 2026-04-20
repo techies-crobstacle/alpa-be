@@ -649,18 +649,15 @@ exports.createOrder = async (request, reply) => {
 
         // 1b. Admin order emails — notify SUPER_ADMIN immediately after customer email
         console.log(`📧 [ADMIN EMAIL] Starting admin notification for order ${mainOrder.displayId}`);
-        Promise.resolve().then(async () => {
-          try {
-            const admins = await prisma.user.findMany({
-              where: { role: 'SUPER_ADMIN' },
-              select: { email: true, name: true }
-            });
-            
-            if (admins.length === 0) {
-              console.error('[Admin Email] ❌ NO SUPER_ADMIN users found in DB');
-              return;
-            }
-            
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN' },
+            select: { email: true, name: true }
+          });
+          
+          if (admins.length === 0) {
+            console.error('[Admin Email] ❌ NO SUPER_ADMIN users found in DB');
+          } else {
             console.log(`[Admin Email] ✅ Found ${admins.length} SUPER_ADMIN(s): ${admins.map(a => a.email).join(', ')}`);
             
             const allItems = cart.items.map(item => ({
@@ -695,12 +692,10 @@ exports.createOrder = async (request, reply) => {
                 }
               }
             }
-          } catch (adminEmailListErr) {
-            console.error('[Admin Email] ❌ Database error:', adminEmailListErr.message);
           }
-        }).catch(err => {
-          console.error('[Admin Email] ❌ Promise error:', err.message);
-        });
+        } catch (adminEmailListErr) {
+          console.error('[Admin Email] ❌ Database error:', adminEmailListErr.message);
+        }
 
         // 1c. Finance copy — fires after admin email, with PDF attachment
         console.log(`📧 [FINANCE EMAIL] Starting finance notification for order ${mainOrder.displayId} | products=${orderPayload.products?.length} | hasPDF=${!!orderPayload.invoicePDFBuffer}`);
@@ -2816,14 +2811,16 @@ exports.createGuestOrder = async (request, reply) => {
 
         // 1b. Admin order emails — fires immediately after customer email
         console.log(`📧 [ADMIN EMAIL GUEST] Starting admin notification for guest order ${order.displayId}`);
-        Promise.resolve().then(async () => {
-          try {
-            const admins = await prisma.user.findMany({
-              where: { role: 'SUPER_ADMIN' },
-              select: { email: true, name: true }
-            });
+        try {
+          const admins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN' },
+            select: { email: true, name: true }
+          });
 
-            console.log(`[Admin Email] ✅ Found ${admins.length} SUPER_ADMIN(s) to notify for guest order`);
+          if (admins.length === 0) {
+            console.error('[Admin Email Guest] ❌ NO SUPER_ADMIN users found in DB');
+          } else {
+            console.log(`[Admin Email Guest] ✅ Found ${admins.length} SUPER_ADMIN(s) to notify for guest order`);
 
             const guestSellerNames = [...sellerNotifications.keys()]
               .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
@@ -2862,12 +2859,10 @@ exports.createGuestOrder = async (request, reply) => {
                 }
               }
             }
-          } catch (adminEmailListErr) {
-            console.error('[Admin Email Guest] ❌ Database error:', adminEmailListErr.message);
           }
-        }).catch(err => {
-          console.error('[Admin Email Guest] ❌ Promise error:', err.message);
-        });
+        } catch (adminEmailListErr) {
+          console.error('[Admin Email Guest] ❌ Database error:', adminEmailListErr.message);
+        }
 
         // 1c. Finance copy — fires after admin email, with PDF attachment
         console.log(`📧 [FINANCE EMAIL GUEST] Starting finance notification for guest order ${order.displayId}`);
