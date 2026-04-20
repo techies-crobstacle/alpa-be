@@ -30,6 +30,7 @@ const {
   sendAdminNewOrderEmail,
   sendSellerLowStockEmail,
   sendSellerOrderStatusEmail,
+  sendFinanceOrderInvoiceEmail,
   sendAdminOrderStatusEmail,
   sendRefundRequestConfirmationEmail
 } = require("../utils/emailService");
@@ -655,6 +656,7 @@ exports.createOrder = async (request, reply) => {
                   customerPhone: mobileNumber || user.phone || '',
                   customerName: user.name,
                   customerEmail: user.email,
+                  isSuperAdminCopy: true,
                   orderSummary: {
                     subtotal: cartCalculations.subtotal,
                     subtotalExGST: cartCalculations.subtotalExGST,
@@ -2833,6 +2835,7 @@ exports.createGuestOrder = async (request, reply) => {
                   customerPhone,
                   customerName,
                   customerEmail,
+                  isSuperAdminCopy: true,
                   isGuest: true,
                   orderSummary: {
                     subtotal: cartCalculations.subtotal,
@@ -3647,3 +3650,5 @@ exports.downloadPublicInvoice = async (request, reply) => {
 };
 
 
+
+module.exports.generateInvoiceBuffer = generateInvoiceBuffer;

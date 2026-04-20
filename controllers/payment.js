@@ -2,6 +2,7 @@ const Stripe = require("stripe");
 const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
+const { generateInvoiceBuffer } = require("./orders");
 
 // ─── Short Display ID Generator ───────────────────────────────────────────────
 const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -18,6 +19,7 @@ async function generateDisplayId() {
 // ─────────────────────────────────────────────────────────────────────────────
 const {
   sendOrderConfirmationEmail,
+  sendFinanceOrderInvoiceEmail,
 } = require("../utils/emailService");
 const {
   notifyAdminNewOrder,
@@ -508,6 +510,31 @@ async function handlePaymentSucceeded(paymentIntentId) {
     }).catch((e) => console.error('Email error (non-blocking):', e.message));
   } else {
     console.warn(`⚠️  No customerEmail on order ${order.id} — confirmation email skipped`);
+  }
+
+  // ── Send Finance Copy with Invoice PDF attached ───────────────────────
+  try {
+    const invoiceOrderRecord = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } } } },
+        subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+        user:      { select: { name: true, email: true, phone: true } },
+      }
+    });
+
+    if (invoiceOrderRecord) {
+      const invoiceShape = {
+        ...invoiceOrderRecord,
+        customerName:  (invoiceOrderRecord.user?.isDeleted ? 'Deleted User' : invoiceOrderRecord.user?.name) || invoiceOrderRecord.customerName,
+        customerEmail: invoiceOrderRecord.user?.email || invoiceOrderRecord.customerEmail,
+        customerPhone: invoiceOrderRecord.user?.phone || invoiceOrderRecord.customerPhone,
+      };
+      const financePdfBuffer = await generateInvoiceBuffer(invoiceShape);
+      await sendFinanceOrderInvoiceEmail(invoiceShape, financePdfBuffer);
+    }
+  } catch (financeErr) {
+    console.error('Error generating finance email/invoice (non-blocking):', financeErr);
   }
 
   // ── Notify admins ───────────────────────────────────────────────────────
