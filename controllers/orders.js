@@ -674,7 +674,8 @@ exports.createOrder = async (request, reply) => {
                   sellerNames: sellerNameList.join(', ') || 'Unknown',
                   totalAmount,
                   paymentMethod,
-                  items: allItems
+                  items: allItems,
+                  invoicePDFBuffer
                 });
                 if (adminEmailResult?.success) {
                   console.log(`✅ Admin order email sent to ${admin.email}`);
@@ -2824,7 +2825,8 @@ exports.createGuestOrder = async (request, reply) => {
                   sellerNames: guestSellerNames || 'Unknown',
                   totalAmount,
                   paymentMethod,
-                  items: allItems
+                  items: allItems,
+                  invoicePDFBuffer
                 });
                 if (adminEmailResult?.success) {
                   console.log(`✅ Admin guest order email sent to ${admin.email}`);
