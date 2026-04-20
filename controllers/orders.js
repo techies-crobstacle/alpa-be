@@ -632,6 +632,60 @@ exports.createOrder = async (request, reply) => {
           }
         }
 
+        // 1.5. Send order confirmation to super admins as well
+        try {
+          const superAdmins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN' },
+            select: { email: true, name: true }
+          });
+          for (const admin of superAdmins) {
+            if (admin.email) {
+              try {
+                const adminConfirmResult = await sendOrderConfirmationEmail(admin.email, admin.name || 'Super Admin', {
+                  displayId: mainOrder.displayId,
+                  totalAmount,
+                  itemCount: cart.items.length,
+                  products: cart.items.map(item => ({
+                    title: item.product.title,
+                    quantity: item.quantity,
+                    price: Number(item.product.price)
+                  })),
+                  shippingAddress,
+                  paymentMethod,
+                  customerPhone: mobileNumber || user.phone || '',
+                  customerName: user.name,
+                  customerEmail: user.email,
+                  orderSummary: {
+                    subtotal: cartCalculations.subtotal,
+                    subtotalExGST: cartCalculations.subtotalExGST,
+                    shippingCost: cartCalculations.totalShippingCost,
+                    gstPercentage: cartCalculations.gstPercentage,
+                    gstAmount: cartCalculations.gstAmount,
+                    grandTotal: cartCalculations.grandTotal,
+                    gstInclusive: true,
+                    couponCode: appliedCoupon ? appliedCoupon.code : null,
+                    discountAmount: discountAmount > 0 ? discountAmount : null,
+                    shippingMethod: {
+                      name: shippingMethod.name,
+                      cost: shippingMethod.cost,
+                      estimatedDays: shippingMethod.estimatedDays
+                    }
+                  }
+                });
+                if (adminConfirmResult?.success) {
+                  console.log(`✅ Super admin order confirmation sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Super admin order confirmation failed for ${admin.email}:`, adminConfirmResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Super admin order confirmation error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminListErr) {
+          console.error('Error fetching super admins for order confirmation:', adminListErr.message);
+        }
+
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
         await Promise.all([...sellerNotifications.entries()].map(async ([sellerId, sellerData]) => {
           try {
@@ -2747,6 +2801,60 @@ exports.createGuestOrder = async (request, reply) => {
           }
         } catch (emailErr) {
           console.error(`❌ Guest order confirmation email error for ${customerEmail}:`, emailErr.message);
+        }
+
+        // 1.5. Send guest order confirmation to super admins as well
+        try {
+          const superAdmins = await prisma.user.findMany({
+            where: { role: 'SUPER_ADMIN' },
+            select: { email: true, name: true }
+          });
+          for (const admin of superAdmins) {
+            if (admin.email) {
+              try {
+                const adminGuestConfirmResult = await sendOrderConfirmationEmail(admin.email, admin.name || 'Super Admin', {
+                  displayId: order.displayId,
+                  totalAmount,
+                  itemCount: order.items.length,
+                  products: order.items.map(item => ({
+                    title: item.product.title,
+                    quantity: item.quantity,
+                    price: item.price
+                  })),
+                  shippingAddress,
+                  paymentMethod,
+                  customerPhone,
+                  customerName,
+                  customerEmail,
+                  isGuest: true,
+                  orderSummary: {
+                    subtotal: cartCalculations.subtotal,
+                    subtotalExGST: cartCalculations.subtotalExGST,
+                    shippingCost: cartCalculations.totalShippingCost,
+                    gstPercentage: cartCalculations.gstPercentage,
+                    gstAmount: cartCalculations.gstAmount,
+                    grandTotal: cartCalculations.grandTotal,
+                    couponCode: appliedCoupon ? appliedCoupon.code : null,
+                    discountAmount: discountAmount > 0 ? discountAmount : null,
+                    shippingMethod: {
+                      name: shippingMethod.name,
+                      cost: shippingMethod.cost,
+                      estimatedDays: shippingMethod.estimatedDays
+                    }
+                  }
+                });
+                if (adminGuestConfirmResult?.success) {
+                  console.log(`✅ Super admin guest order confirmation sent to ${admin.email}`);
+                } else {
+                  console.error(`❌ Super admin guest order confirmation failed for ${admin.email}:`, adminGuestConfirmResult?.error);
+                }
+              } catch (adminEmailErr) {
+                console.error(`❌ Super admin guest order confirmation error for ${admin.email}:`, adminEmailErr.message);
+              }
+            }
+          }
+        } catch (adminListErr) {
+          console.error('Error fetching super admins for guest order confirmation:', adminListErr.message);
         }
 
         // 2. Seller emails + SLA notifications — all DB lookups in parallel
