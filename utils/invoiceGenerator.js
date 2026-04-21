@@ -69,19 +69,32 @@ const generateInvoiceBuffer = (order) => {
     const tableTop = 320;
     doc.fontSize(12)
        .text('Item',       50,  tableTop)
-       .text('Quantity',  250, tableTop)
-       .text('Unit Price',350, tableTop)
+       .text('Quantity',  200, tableTop)
+       .text('Unit Price',280, tableTop)
+       .text('GST',       360, tableTop)
        .text('Total',     450, tableTop);
     doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+
+    // Extract gstPercentage from summary
+    let gstPercentage = 10; // Default 10%
+    const summary = order.shippingAddress?.orderSummary || order.parentOrder?.shippingAddress?.orderSummary;
+    if (summary && summary.gstPercentage !== undefined) {
+      gstPercentage = parseFloat(summary.gstPercentage) || 0;
+    }
 
     let yPos = tableTop + 30;
     let subtotal = 0;
     (order.items || []).forEach(item => {
       const lineTotal = Number(item.price) * item.quantity;
       subtotal += lineTotal;
+      
+      // Calculate GST per line item (assuming price is GST inclusive)
+      const gstAmount = gstPercentage > 0 ? (lineTotal * gstPercentage) / (100 + gstPercentage) : 0;
+      
       doc.text(item.product?.title || 'Product', 50, yPos)
-         .text(String(item.quantity),             250, yPos)
-         .text(`$${Number(item.price).toFixed(2)}`,350, yPos)
+         .text(String(item.quantity),             200, yPos)
+         .text(`$${Number(item.price).toFixed(2)}`,280, yPos)
+         .text(`$${gstAmount.toFixed(2)}`,         360, yPos)
          .text(`$${lineTotal.toFixed(2)}`,          450, yPos);
       yPos += 20;
     });
