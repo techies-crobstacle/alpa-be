@@ -23,7 +23,7 @@ if (process.env.SENDGRID_API_KEY) {
   console.log("SendGrid senderEmail:", process.env.SENDER_EMAIL);
   console.log("SendGrid API Key present:", !!process.env.SENDGRID_API_KEY);
 } else {
-  console.log("??  SendGrid API key not configured. Emails will be logged to console.");
+  console.log(" SendGrid API key not configured. Emails will be logged to console.");
 }
 
 const isDevelopmentMode = !emailConfigured;
@@ -323,7 +323,7 @@ const generateOTP = () => {
 const sendOTPEmail = async (email, otp, name) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - OTP Email");
+    console.log("DEVELOPMENT MODE - OTP Email");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
@@ -423,8 +423,8 @@ const sendOTPEmail = async (email, otp, name) => {
     
     // Fallback for development
     if (process.env.NODE_ENV === 'development') {
-      console.log("?? Development mode: Returning success despite email error");
-      console.log("?? OTP for testing:", otp);
+      console.log("Development mode: Returning success despite email error");
+      console.log("OTP for testing:", otp);
       return { success: true };
     }
     
@@ -438,7 +438,7 @@ const sendOTPEmail = async (email, otp, name) => {
 const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
   if (isDevelopmentMode) {
     console.log('\n' + '='.repeat(50));
-    console.log('?? DEVELOPMENT MODE - Finance Order Invoice Email');
+    console.log('DEVELOPMENT MODE - Finance Order Invoice Email');
     console.log(`To: ${process.env.FINANCE_EMAIL_RECEIVER || 'ritikkashyap013@gmail.com'}`);
     console.log('=' .repeat(50) + '\n');
     return { success: true };
@@ -523,7 +523,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
 const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Order Confirmation Email");
+    console.log("DEVELOPMENT MODE - Order Confirmation Email");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Customer: ${customerName}`);
@@ -727,7 +727,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     <tr>
       <td style="padding:0 40px 28px;">
         <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
-          <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">?? What happens next?</p>
+          <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">What happens next?</p>
           <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? Your order is being processed by our seller</p>
           <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? You'll receive a shipping confirmation when dispatched</p>
           <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? Track your order anytime from your account</p>
@@ -740,10 +740,10 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       <td style="padding:0 40px 36px;text-align:center;" class="email-body">
         <table width="100%" cellpadding="0" cellspacing="0" class="btn-table"><tr>
           <td style="padding-right:8px;text-align:right;" class="btn-cell">
-            <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">?? Track Order</a>
+            <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">Track Order</a>
           </td>
           <td style="padding-left:8px;text-align:left;" class="btn-cell">
-            <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">?? Download Invoice</a>
+            <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">Download Invoice</a>
           </td>
         </tr></table>
       </td>
@@ -754,7 +754,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!</p>
         <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
         <p style="margin:0;color:#B8998F;font-size:10px;">
-          ??? <strong>Print Tip:</strong> To see colors when printing, enable "Background graphics" in your browser's print settings.
+          <strong>Print Tip:</strong> To see colors when printing, enable "Background graphics" in your browser's print settings.
         </p>
       </td>
     </tr>
@@ -798,7 +798,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
 const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Order Status Update");
+    console.log("DEVELOPMENT MODE - Order Status Update");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Status: ${orderDetails.status}`);
@@ -824,15 +824,15 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       statusColor = "#B05E2A";
       break;
     case "shipped":
-      statusMessage = "Great news! Your order has been shipped! ??";
+      statusMessage = "Great news! Your order has been shipped!";
       statusColor = "#6B4C9A";
       break;
     case "delivered":
-      statusMessage = "Your order has been delivered! ??";
+      statusMessage = "Your order has been delivered!";
       statusColor = "#C4963A";      // warm amber/cream-gold � replaces green
       break;
     case "cancelled":
-      statusMessage = "Your order has been cancelled. If you paid online, a refund will be processed within 3�5 business days.";
+      statusMessage = "Your order has been cancelled. If you paid online, a refund will be processed within 3-5 business days.";
       statusColor = "#A03020";
       break;
     case "refund":
@@ -1027,22 +1027,22 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     <!-- Delivered: Download Invoice + Issue with order (guests only) -->
                     <table width="100%" cellpadding="0" cellspacing="0"><tr>
                       <td style="text-align:center;padding-bottom:12px;" colspan="2">
-                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? Download Invoice</a>
+                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                       </td>
                     </tr>${orderDetails.isGuest ? `
                     <tr>
                       <td style="text-align:center;padding-top:4px;" colspan="2">
-                        <a href="https://apla-fe.vercel.app/guest/refund" style="display:inline-block;background-color:#ffffff;color:#7D2E1E;padding:11px 24px;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;border:2px solid #C4603A;">?? Issue with your order? Request a refund</a>
+                        <a href="https://apla-fe.vercel.app/guest/refund" style="display:inline-block;background-color:#ffffff;color:#7D2E1E;padding:11px 24px;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;border:2px solid #C4603A;">Issue with your order? Request a refund</a>
                       </td>
                     </tr>` : ''}</table>
                   ` : `
                     <!-- Other statuses: Show both buttons -->
                     <table width="100%" cellpadding="0" cellspacing="0"><tr>
                       <td style="padding-right:8px;text-align:right;">
-                        <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? Track Order</a>
+                        <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Track Order</a>
                       </td>
                       <td style="padding-left:8px;text-align:left;">
-                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? Download Invoice</a>
+                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                       </td>
                     </tr></table>
                   `}
@@ -1087,7 +1087,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Notification");
+    console.log("DEVELOPMENT MODE - Seller Notification");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Seller: ${sellerName}`);
@@ -1123,14 +1123,14 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">?? New Order Received!</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Order Received!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">You have a new order to process</p>
                 </td>
               </tr>
               <!-- Alert banner -->
               <tr>
                 <td style="background-color:#C4603A;padding:12px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">?? Action Required &mdash; please process this order promptly</p>
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">Action Required &mdash; please process this order promptly</p>
                 </td>
               </tr>
               <!-- Seller greeting -->
@@ -1190,10 +1190,10 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
                     <td style="padding-right:8px;text-align:right;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? View in Dashboard</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Dashboard</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? Download Invoice</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -1201,7 +1201,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller! ??</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -1226,7 +1226,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
 const sendContactFormEmail = async (email, name, subject, message) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Contact Form");
+    console.log("DEVELOPMENT MODE - Contact Form");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Subject: ${subject}`);
@@ -1253,7 +1253,7 @@ const sendContactFormEmail = async (email, name, subject, message) => {
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">?? Message Received</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Message Received</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We'll be in touch soon!</p>
                 </td>
               </tr>
@@ -1315,7 +1315,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
     }
 
     if (isDevelopmentMode) {
-      console.log("\n??  SLA WARNING:", seller.email, orderId, notificationType);
+      console.log("\n SLA WARNING:", seller.email, orderId, notificationType);
       return { success: true };
     }
 
@@ -1345,7 +1345,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 <!-- Urgency Banner -->
                 <tr>
                   <td style="background-color:${urgencyColor};padding:28px 40px;text-align:center;">
-                    <h1 style="margin:0 0 6px;color:#ffffff;font-size:26px;font-weight:800;">?? SLA ${slaStatus.status === 'BREACHED' ? 'BREACHED' : 'WARNING'}</h1>
+                    <h1 style="margin:0 0 6px;color:#ffffff;font-size:26px;font-weight:800;">SLA ${slaStatus.status === 'BREACHED' ? 'BREACHED' : 'WARNING'}</h1>
                     <p style="margin:0;color:rgba(255,255,255,0.9);font-size:14px;">Immediate action required</p>
                   </td>
                 </tr>
@@ -1421,7 +1421,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
 const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Application Submitted");
+    console.log("DEVELOPMENT MODE - Seller Application Submitted");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
@@ -1539,7 +1539,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">?? Application Submitted!</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Application Submitted!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We've received your seller application</p>
                 </td>
               </tr>
@@ -1584,7 +1584,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
 
                   <!-- Review time note -->
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
-                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">?? Review Timeline</p>
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">Review Timeline</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2�3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
                   </div>
                 </td>
@@ -1618,7 +1618,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
 const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Registration Confirmation");
+    console.log("DEVELOPMENT MODE - Seller Registration Confirmation");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
@@ -1726,7 +1726,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
 const sendSellerApprovedEmail = async (email, name) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Approved");
+    console.log("DEVELOPMENT MODE - Seller Approved");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Name: ${name}`);
@@ -1838,16 +1838,16 @@ const sendSellerApprovedEmail = async (email, name) => {
 
 // Send Seller Low Stock Alert Email
 const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentStock, productId) => {
-  console.log(`\n?? [Low Stock Email] Preparing to send to: ${email} | Product: "${productTitle}" | Stock: ${currentStock} | isDevelopmentMode: ${isDevelopmentMode}`);
+  console.log(`\n[Low Stock Email] Preparing to send to: ${email} | Product: "${productTitle}" | Stock: ${currentStock} | isDevelopmentMode: ${isDevelopmentMode}`);
 
   if (!email) {
-    console.warn('??  [Low Stock Email] No email address provided ? skipping send.');
+    console.warn(' [Low Stock Email] No email address provided ? skipping send.');
     return { success: false, error: 'No email address' };
   }
 
   if (isDevelopmentMode) {
     console.log("=".repeat(50));
-    console.log("?? [Low Stock Email] DEVELOPMENT MODE ? Email not sent (SENDGRID_API_KEY missing).");
+    console.log("[Low Stock Email] DEVELOPMENT MODE ? Email not sent (SENDGRID_API_KEY missing).");
     console.log(`   To: ${email} | Seller: ${sellerName} | Product: ${productTitle} | Stock: ${currentStock}`);
     console.log("=".repeat(50) + "\n");
     return { success: false, error: 'Development mode ? SendGrid not configured' };
@@ -1875,7 +1875,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">?? Stock Alert</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Stock Alert</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action Required �for one of your products</p>
                 </td>
               </tr>
@@ -1936,7 +1936,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
                   </div>
 
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
-                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">?? Tip</p>
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">Tip</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">We recommend keeping a stock level of <strong>10 or more units</strong> to avoid interruptions to your sales.</p>
                   </div>
                 </td>
@@ -1976,7 +1976,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
 const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitle, sellerName, productId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin Product Pending");
+    console.log("DEVELOPMENT MODE - Admin Product Pending");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Admin: ${adminName} | Product: ${productTitle} | Seller: ${sellerName}`);
     console.log("=".repeat(50) + "\n");
@@ -2078,7 +2078,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
 const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { productTitle, productId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Product Approved");
+    console.log("DEVELOPMENT MODE - Seller Product Approved");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle}`);
     console.log("=".repeat(50) + "\n");
@@ -2191,7 +2191,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
 const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { productTitle, reason, productId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Product Rejected");
+    console.log("DEVELOPMENT MODE - Seller Product Rejected");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Reason: ${reason}`);
     console.log("=".repeat(50) + "\n");
@@ -2310,7 +2310,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
 const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { categoryName, approvalMessage, categoryId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Category Approved");
+    console.log("DEVELOPMENT MODE - Seller Category Approved");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
     console.log("=".repeat(50) + "\n");
@@ -2402,7 +2402,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
 const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { categoryName, rejectionMessage, categoryId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Category Rejected");
+    console.log("DEVELOPMENT MODE - Seller Category Rejected");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
     console.log("=".repeat(50) + "\n");
@@ -2493,7 +2493,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
 const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categoryName, description, sellerName, categoryId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Super Admin Category Request");
+    console.log("DEVELOPMENT MODE - Super Admin Category Request");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
     console.log("=".repeat(50) + "\n");
@@ -2518,14 +2518,14 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">?? New Category Request</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Category Request</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review category request</p>
                 </td>
               </tr>
               <!-- Alert banner -->
               <tr>
                 <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">?? Category Approval Required</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Category Approval Required</p>
                 </td>
               </tr>
               <!-- Body -->
@@ -2581,7 +2581,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
 const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName, email, businessName, applicationId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Super Admin New Seller");
+    console.log("DEVELOPMENT MODE - Super Admin New Seller");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Seller: ${sellerName} | Business: ${businessName}`);
     console.log("=".repeat(50) + "\n");
@@ -2606,14 +2606,14 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">?? New Seller Application</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Seller Application</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review seller application</p>
                 </td>
               </tr>
               <!-- Alert banner -->
               <tr>
                 <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">?? Seller Application Approval Required</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Seller Application Approval Required</p>
                 </td>
               </tr>
               <!-- Body -->
@@ -2672,7 +2672,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
 const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin New Order Email");
+    console.log("DEVELOPMENT MODE - Admin New Order Email");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail}`);
     console.log(`Order: ${orderDetails.displayId}`);
@@ -2799,7 +2799,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                       <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? Download Invoice</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -2835,7 +2835,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
 const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Order Status Update");
+    console.log("DEVELOPMENT MODE - Seller Order Status Update");
     console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
@@ -2927,7 +2927,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
 const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin Order Status Update");
+    console.log("DEVELOPMENT MODE - Admin Order Status Update");
     console.log(`To: ${adminEmail} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
@@ -3016,7 +3016,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
 const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { productTitle, productId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Product Activated");
+    console.log("DEVELOPMENT MODE - Seller Product Activated");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle}`);
     console.log("=".repeat(50) + "\n");
@@ -3104,7 +3104,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
 const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { productTitle, reason, productId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Product Deactivated");
+    console.log("DEVELOPMENT MODE - Seller Product Deactivated");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Reason: ${reason}`);
     console.log("=".repeat(50) + "\n");
@@ -3199,7 +3199,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
 const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { productTitle, sellerName, stock, productId } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin Low Stock Deactivation");
+    console.log("DEVELOPMENT MODE - Admin Low Stock Deactivation");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Admin: ${adminName} | Product: ${productTitle} | Seller: ${sellerName} | Stock: ${stock}`);
     console.log("=".repeat(50) + "\n");
@@ -3304,7 +3304,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
 const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { productTitle, productId, sellerName, inactiveReason } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin: Seller Deactivated Product");
+    console.log("DEVELOPMENT MODE - Admin: Seller Deactivated Product");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Product: ${productTitle} | Seller: ${sellerName} | Reason: ${inactiveReason}`);
     console.log("=".repeat(50) + "\n");
@@ -3391,7 +3391,7 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
 const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { productTitle, productId, sellerName, reviewNote } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Admin: Product Submit for Review");
+    console.log("DEVELOPMENT MODE - Admin: Product Submit for Review");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Product: ${productTitle} | Seller: ${sellerName} | Note: ${reviewNote}`);
     console.log("=".repeat(50) + "\n");
@@ -3478,7 +3478,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
 const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { productTitle, productId, inactiveReason } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Self-Deactivated Product");
+    console.log("DEVELOPMENT MODE - Seller Self-Deactivated Product");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Product: ${productTitle} | Reason: ${inactiveReason}`);
     console.log("=".repeat(50) + "\n");
@@ -3560,7 +3560,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
 const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName, { productTitle, productId, reviewNote } = {}) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Product Submit Review Confirmation");
+    console.log("DEVELOPMENT MODE - Seller Product Submit Review Confirmation");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Product: ${productTitle}`);
     console.log("=".repeat(50) + "\n");
@@ -3644,7 +3644,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
-    console.log("??  Email not configured");
+    console.log(" Email not configured");
     return false;
   }
   
@@ -3661,7 +3661,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
 
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Super Admin Bank Change Request");
+    console.log("DEVELOPMENT MODE - Super Admin Bank Change Request");
     console.log("=".repeat(50));
     console.log(`To: ${adminEmail} | Seller: ${sellerName} | Request: ${requestId}`);
     console.log("=".repeat(50) + "\n");
@@ -3748,7 +3748,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
 
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Bank Change Approved");
+    console.log("DEVELOPMENT MODE - Seller Bank Change Approved");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Request: ${requestId}`);
     console.log("=".repeat(50) + "\n");
@@ -3832,7 +3832,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
 
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Seller Bank Change Rejected");
+    console.log("DEVELOPMENT MODE - Seller Bank Change Rejected");
     console.log("=".repeat(50));
     console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Request: ${requestId}`);
     console.log(`Reason: ${reviewNote || 'No reason provided'}`);
@@ -3912,7 +3912,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
 const sendRefundRequestConfirmationEmail = async (email, customerName, refundDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Refund Request Confirmation");
+    console.log("DEVELOPMENT MODE - Refund Request Confirmation");
     console.log("=".repeat(50));
     console.log(`To: ${email}`);
     console.log(`Order: ${refundDetails.displayId}`);
@@ -3968,7 +3968,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                   <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
-                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">?? ${requestLabel} Request Received</h1>
+                  <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${requestLabel} Request Received</h1>
                 </td>
               </tr>
 
@@ -4091,10 +4091,10 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
                     <td style="padding-right:8px;text-align:right;">
-                      <a href="${trackUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? View Order</a>
+                      <a href="${trackUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View Order</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${refundTrackUrl}" style="display:inline-block;background-color:${accentColor};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">?? Track Request</a>
+                      <a href="${refundTrackUrl}" style="display:inline-block;background-color:${accentColor};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Track Request</a>
                     </td>
                   </tr></table>
                 </td>
@@ -4131,7 +4131,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
 const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Refund Status Update (Customer)");
+    console.log("DEVELOPMENT MODE - Refund Status Update (Customer)");
     console.log(`To: ${email} | Order: ${refundDetails.displayId} | Status: ${refundDetails.status}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
@@ -4162,7 +4162,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
       note: 'If you have questions, please reach out to our customer support team.'
     },
     COMPLETED: {
-      icon: '??', color: '#1565C0', label: 'Completed',
+      icon: '', color: '#1565C0', label: 'Completed',
       headline: 'Refund Payment Completed',
       banner: 'Your refund has been processed and payment issued.',
       body: `Your refund for order <strong>#${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
@@ -4170,7 +4170,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
       note: null
     }
   }[st] || {
-    icon: '??', color: '#C4603A', label: st,
+    icon: '', color: '#C4603A', label: st,
     headline: 'Refund Request Updated',
     banner: `Your refund request status has been updated to ${st}.`,
     body: `Your refund request for order <strong>#${refundDetails.displayId}</strong> has been updated.`,
@@ -4295,7 +4295,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
               <tr>
                 <td style="padding:0 40px 24px;">
                   <div style="background:#FFF8F6;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:14px 16px;">
-                    <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">?? ${config.note}</p>
+                    <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">${config.note}</p>
                   </div>
                 </td>
               </tr>` : ''}
@@ -4336,7 +4336,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
 const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
-    console.log("?? DEVELOPMENT MODE - Refund Status Update (Seller)");
+    console.log("DEVELOPMENT MODE - Refund Status Update (Seller)");
     console.log(`To: ${email} | Seller: ${sellerName} | Order: ${refundDetails.displayId} | Status: ${refundDetails.status}`);
     console.log("=".repeat(50) + "\n");
     return { success: true };
@@ -4358,13 +4358,13 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
       body: `The refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>#${refundDetails.displayId}</strong> has been <strong>rejected</strong> by admin. No changes will be made to the order or your revenue.`
     },
     COMPLETED: {
-      icon: '??', color: '#1565C0', label: 'Completed',
+      icon: '', color: '#1565C0', label: 'Completed',
       banner: 'A refund payment has been completed for one of your orders.',
       body: `The refund for order <strong>#${refundDetails.displayId}</strong> (customer: <strong>${refundDetails.customerName || 'Customer'}</strong>) has been <strong>fully processed</strong> and payment has been issued.<br><br>
              Your commission and revenue records for this order have been updated accordingly.`
     }
   }[st] || {
-    icon: '??', color: '#C4603A', label: st,
+    icon: '', color: '#C4603A', label: st,
     banner: `A refund request status has been updated to ${st}.`,
     body: `Refund request status for order <strong>#${refundDetails.displayId}</strong> has been updated to ${st}.`
   };
