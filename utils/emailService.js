@@ -559,7 +559,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const shippingCity  = shippingAddrObj.city  || '';
   const shippingState = shippingAddrObj.state || '';
   const shippingZip   = shippingAddrObj.pincode || shippingAddrObj.zipCode || shippingAddrObj.postalCode || '';
-  const shippingName  = shippingAddrObj.name || customerName;
+  const shippingName  = shippingAddrObj.name || orderDetails.customerName || customerName;
   const addressParts  = [shippingLine, shippingCity, shippingState, shippingZip].filter(Boolean).join(', ');
 
   // For seller & super admin copies, use the actual customer's email for API validations
@@ -592,9 +592,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
         <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Order Confirmed!</h1>
         <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">
           ${orderDetails.isSuperAdminCopy 
-            ? `(Super Admin Copy for Order placed by ${customerName})` 
+            ? `(Super Admin Copy for Order placed by ${orderDetails.customerName || customerName})` 
             : orderDetails.isSellerCopy 
-              ? `(Seller Copy for Order placed by ${customerName})`
+              ? `(Seller Copy for Order placed by ${orderDetails.customerName || customerName})`
               : `Thank you for your purchase, ${customerName}!`
           }
         </p>
@@ -632,9 +632,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
           <tr>
             <td width="48%" valign="top" style="padding-right:10px;" class="two-col mobile-padding">
               <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #5A1E12;" class="dark-table-bg">
-                <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;" class="dark-text">Your Details</p>
-                <p style="margin:4px 0;color:#333;font-size:14px;" class="dark-text"><strong>${customerName}</strong></p>
-                <p style="margin:4px 0;color:#555;font-size:13px;" class="dark-text-secondary">${email}</p>
+                <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;" class="dark-text">${orderDetails.isSuperAdminCopy || orderDetails.isSellerCopy ? 'Customer Details' : 'Your Details'}</p>
+                <p style="margin:4px 0;color:#333;font-size:14px;" class="dark-text"><strong>${orderDetails.customerName || customerName}</strong></p>
+                <p style="margin:4px 0;color:#555;font-size:13px;" class="dark-text-secondary">${orderDetails.customerEmail || email}</p>
                 ${orderDetails.customerPhone ? `<p style="margin:4px 0;color:#555;font-size:13px;" class="dark-text-secondary">${orderDetails.customerPhone}</p>` : ''}
               </div>
             </td>
