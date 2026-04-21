@@ -90,11 +90,11 @@ const generateInvoiceBuffer = (order) => {
       
       // Calculate GST per line item (assuming price is GST inclusive)
       const gstAmount = gstPercentage > 0 ? (lineTotal * gstPercentage) / (100 + gstPercentage) : 0;
-      
+      const unitPriceExGST = Number(item.price) / (1 + gstPercentage / 100);
       doc.text(item.product?.title || 'Product', 50, yPos)
          .text(String(item.quantity),             200, yPos)
-         .text(`$${Number(item.price).toFixed(2)}`,280, yPos)
-         .text(`$${gstAmount.toFixed(2)}`,         360, yPos)
+         .text(`$${unitPriceExGST.toFixed(2)}`, 280, yPos)
+         .text(`$${gstAmount.toFixed(2)} (${gstPercentage}%)`, 360, yPos)
          .text(`$${lineTotal.toFixed(2)}`,          450, yPos);
       yPos += 20;
     });
