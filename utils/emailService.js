@@ -533,14 +533,21 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     return { success: true, message: "Email logged to console (dev mode)" };
   }
 
-  const productRows = orderDetails.products.map(product => `
+  const gstPerc = parseFloat(orderDetails.orderSummary?.gstPercentage) || 10;
+  const productRows = orderDetails.products.map(product => {
+    const pPrice = parseFloat(product.price || 0);
+    const pQty = parseInt(product.quantity || 0, 10);
+    const lineTotal = pPrice * pQty;
+    const gstAmt = lineTotal - (lineTotal / (1 + gstPerc / 100));
+    return `
     <tr style="border-bottom: 1px solid #ddd;">
       <td style="padding: 12px 8px;">${product.title || 'Product'}</td>
       <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
-      <td style="padding: 12px 8px; text-align: right;">$${(product.price || 0).toFixed(2)}</td>
-      <td style="padding: 12px 8px; text-align: right; font-weight: bold;">$${((product.price || 0) * (product.quantity || 0)).toFixed(2)}</td>
+      <td style="padding: 12px 8px; text-align: right;">$${pPrice.toFixed(2)}</td>
+      <td style="padding: 12px 8px; text-align: right; color: #888;">$${gstAmt.toFixed(2)}</td>
+      <td style="padding: 12px 8px; text-align: right; font-weight: bold;">$${lineTotal.toFixed(2)}</td>
     </tr>
-  `).join('');
+  `}).join('');
 
   // Normalise: shippingAddress may be a plain string (legacy) or an object
   const shippingAddrObj = typeof orderDetails.shippingAddress === 'string'
@@ -652,6 +659,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
               <th style="padding:13px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
               <th style="padding:13px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
               <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">Unit Price</th>
+              <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">GST</th>
               <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">Total</th>
             </tr>
           </thead>
@@ -661,7 +669,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
           <tfoot>
             <!-- Subtotal row -->
             <tr style="background-color:#fdf5f3;">
-              <td colspan="3" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">Subtotal (inc. GST)</td>
+              <td colspan="4" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">Subtotal (inc. GST)</td>
               <td style="padding:10px 12px;text-align:right;color:#333;font-size:14px;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.subtotal || 0).toFixed(2)
@@ -670,7 +678,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
             </tr>
             <!-- Shipping row -->
             <tr style="background-color:#fdf5f3;">
-              <td colspan="3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
+              <td colspan="4" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
                 Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` � ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
               </td>
               <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
@@ -682,12 +690,12 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
             <!-- Coupon Discount row (only shown when a coupon was applied) -->
             ${orderDetails.orderSummary?.discountAmount && parseFloat(orderDetails.orderSummary.discountAmount) > 0 ? `
             <tr style="background-color:#fdf5f3;">
-              <td colspan="3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
+              <td colspan="4" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
               <td style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
             </tr>` : ''}
             <!-- GST extracted row -->
             <tr style="background-color:#fdf5f3;border-top:1px dashed #ddd;">
-              <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">
+              <td colspan="4" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">
                 GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
               </td>
               <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
@@ -698,7 +706,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
             </tr>
             <!-- Net ex-GST row -->
             <tr style="background-color:#fdf5f3;">
-              <td colspan="3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">Net amount (ex. GST)</td>
+              <td colspan="4" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">Net amount (ex. GST)</td>
               <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
@@ -707,7 +715,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
             </tr>
             <!-- Grand Total row -->
             <tr style="background-color:#F9EDE9;border-top:2px solid #C4603A;">
-              <td colspan="3" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
+              <td colspan="4" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
               <td style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${orderDetails.totalAmount.toFixed(2)}</td>
             </tr>
           </tfoot>
@@ -839,14 +847,21 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   }
 
   // Build products rows if available
-  const productRows = (orderDetails.products || []).map(p => `
+  const gstPerc = parseFloat(orderDetails.orderSummary?.gstPercentage) || 10;
+  const productRows = (orderDetails.products || []).map(p => {
+    const pPrice = parseFloat(p.price || 0);
+    const pQty = parseInt(p.quantity || 0, 10);
+    const lineTotal = pPrice * pQty;
+    const gstAmt = lineTotal - (lineTotal / (1 + gstPerc / 100));
+    return `
     <tr style="border-bottom:1px solid #EDD8CC;">
       <td style="padding:10px 12px;color:#333;font-size:14px;">${p.title || 'Product'}</td>
       <td style="padding:10px 12px;text-align:center;color:#555;font-size:14px;">${p.quantity}</td>
-      <td style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">$${(parseFloat(p.price) || 0).toFixed(2)}</td>
-      <td style="padding:10px 12px;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;">$${((parseFloat(p.price) || 0) * (p.quantity || 0)).toFixed(2)}</td>
+      <td style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">$${pPrice.toFixed(2)}</td>
+      <td style="padding:10px 12px;text-align:right;color:#888;font-size:14px;">$${gstAmt.toFixed(2)}</td>
+      <td style="padding:10px 12px;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;">$${lineTotal.toFixed(2)}</td>
     </tr>
-  `).join('');
+  `}).join('');
 
   // Build shipping address
   const shippingParts = [
@@ -987,14 +1002,15 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                         <th style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
                         <th style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
                         <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Unit Price</th>
-                        <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Total</th>
+                        <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">GST</th>
+                      <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Total</th>
                       </tr>
                     </thead>
                     <tbody>${productRows}</tbody>
                     <tfoot>
                       <!-- Grand Total row -->
                       <tr style="background-color:#F9EDE9;border-top:2px solid #C4603A;">
-                        <td colspan="3" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
+                        <td colspan="4" style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
                         <td style="padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${parseFloat(orderDetails.totalAmount || 0).toFixed(2)}</td>
                       </tr>
                     </tfoot>
