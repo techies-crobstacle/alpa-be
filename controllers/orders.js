@@ -3236,9 +3236,10 @@ const generateInvoiceBuffer = (order) => {
       y += boxH + 16;
 
       // ── Items Table ──
-      const C_QTY   = 330;
-      const C_UNIT  = 392;
-      const C_TOTAL = 470;
+      const C_QTY   = 260;
+      const C_UNIT  = 310;
+      const C_GST   = 380;
+      const C_TOTAL = 460;
       const HDR_H   = 22;
       const ROW_H   = 20;
       const tableW  = R - L;
@@ -3248,7 +3249,8 @@ const generateInvoiceBuffer = (order) => {
       doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9.5);
       doc.text('Product',    L + 6,  y + 6, { width: C_QTY - L - 10 });
       doc.text('Qty',        C_QTY,  y + 6, { width: C_UNIT - C_QTY,   align: 'center' });
-      doc.text('Unit Price', C_UNIT, y + 6, { width: C_TOTAL - C_UNIT, align: 'right'  });
+      doc.text('Unit Price', C_UNIT, y + 6, { width: C_GST - C_UNIT,   align: 'right'  });
+      doc.text('GST',        C_GST,  y + 6, { width: C_TOTAL - C_GST,  align: 'right'  });
       doc.text('Total',      C_TOTAL,y + 6, { width: R - C_TOTAL - 6,  align: 'right'  });
       y += HDR_H;
 
@@ -3263,9 +3265,16 @@ const generateInvoiceBuffer = (order) => {
         subtotal += lineTotal;
         doc.rect(L, y, tableW, ROW_H).fill(idx % 2 === 0 ? '#ffffff' : BRAND_LIGHT);
         doc.fillColor('#333');
+        
+        let gstPercentage = gstRate || 0;
+        let pPrice = Number(item.price) || 0;
+        let pPriceExGST = pPrice / (1 + (gstPercentage / 100));
+        let gstAmt = (pPrice - pPriceExGST) * item.quantity;
+
         doc.text(item.product?.title || 'Product', L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
         doc.text(String(item.quantity),             C_QTY,  y + 5, { width: C_UNIT - C_QTY,  align: 'center' });
-        doc.text(`$${Number(item.price).toFixed(2)}`, C_UNIT,  y + 5, { width: C_TOTAL - C_UNIT, align: 'right' });
+        doc.text(`$${pPriceExGST.toFixed(2)}`, C_UNIT,  y + 5, { width: C_GST - C_UNIT, align: 'right' });
+        doc.text(`$${gstAmt.toFixed(2)} (${gstPercentage}%)`, C_GST,  y + 5, { width: C_TOTAL - C_GST, align: 'right' });
         doc.text(`$${lineTotal.toFixed(2)}`,           C_TOTAL, y + 5, { width: R - C_TOTAL - 6,  align: 'right' });
         y += ROW_H;
       });
