@@ -55,21 +55,35 @@ const LOW_STOCK_THRESHOLD = 2;
 
 const handleLowStockAlerts = async (productIds) => {
   try {
-    // Raw SQL — avoids Prisma client isActive field awareness issues
-    // and safely handles the id list via a loop (no ANY() serialisation bug)
     for (const productId of productIds) {
+      // Fetch product with type info
       const rows = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.stock, p."sellerId",
+        SELECT p.id, p.title, p.stock, p.type, p."sellerId",
                u.email AS "sellerEmail", u.name AS "sellerName"
         FROM "products" p
         JOIN "users" u ON u.id = p."sellerId"
         WHERE p.id = ${productId}
           AND p."isActive" = true
-          AND p.stock <= ${LOW_STOCK_THRESHOLD}
       `;
 
       if (!rows || rows.length === 0) continue;
       const product = rows[0];
+
+      let effectiveStock;
+
+      if (product.type === 'VARIABLE') {
+        // For VARIABLE products, check total stock across all active variants
+        const variantStockRows = await prisma.$queryRaw`
+          SELECT COALESCE(SUM(stock), 0)::int AS total_stock
+          FROM "product_variants"
+          WHERE "productId" = ${productId} AND "isActive" = true
+        `;
+        effectiveStock = variantStockRows[0]?.total_stock ?? 0;
+      } else {
+        effectiveStock = Number(product.stock ?? 0);
+      }
+
+      if (effectiveStock > LOW_STOCK_THRESHOLD) continue; // Enough stock — skip
 
       // Deactivate
       await prisma.$executeRaw`
@@ -77,14 +91,14 @@ const handleLowStockAlerts = async (productIds) => {
         SET "isActive" = false, status = 'INACTIVE'
         WHERE id = ${product.id}
       `;
-      console.log(`⚠️  Product "${product.title}" deactivated — stock: ${product.stock}`);
+      console.log(`⚠️  Product "${product.title}" deactivated — effective stock: ${effectiveStock}`);
 
       // In-app notification (non-blocking)
       notifySellerLowStock(
         product.sellerId,
         product.id,
         product.title,
-        Number(product.stock)
+        effectiveStock
       ).catch(err => console.error("Low stock notification error:", err.message));
 
       // Email alert (non-blocking)
@@ -93,7 +107,7 @@ const handleLowStockAlerts = async (productIds) => {
           product.sellerEmail,
           product.sellerName || "Seller",
           product.title,
-          Number(product.stock),
+          effectiveStock,
           product.id
         ).then(result => {
           if (!result.success) console.warn(`⚠️  [Low Stock] Email not sent to ${product.sellerEmail}: ${result.error}`);
@@ -151,13 +165,20 @@ exports.createOrder = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "User not found" });
     }
 
-    // Get user's cart with items and products
+    // Get user's cart with items, products, and variant details
     const cart = await prisma.cart.findUnique({
       where: { userId },
       include: {
         items: {
           include: {
-            product: true
+            product: true,
+            productVariant: {
+              include: {
+                variantAttributeValues: {
+                  include: { attributeValue: { include: { attribute: true } } }
+                }
+              }
+            }
           }
         }
       }
@@ -233,20 +254,32 @@ exports.createOrder = async (request, reply) => {
     // Stock validation + prepare order items
     for (const item of cart.items) {
       const product = item.product;
+      const variant = item.productVariant;
 
-      // Check stock
-      if (product.stock < item.quantity) {
-        return reply.status(400).send({
-          success: false,
-          message: `Insufficient stock for product: ${product.title}`
-        });
+      // Check stock — from variant for VARIABLE products, from product for SIMPLE
+      if (variant) {
+        if (variant.stock < item.quantity) {
+          return reply.status(400).send({
+            success: false,
+            message: `Insufficient stock for product: ${product.title} (variant: ${item.variantId})`
+          });
+        }
+      } else {
+        if (product.stock < item.quantity) {
+          return reply.status(400).send({
+            success: false,
+            message: `Insufficient stock for product: ${product.title}`
+          });
+        }
       }
 
-      const itemPrice = Number(product.price);
+      // Use variant price for VARIABLE, product price for SIMPLE
+      const itemPrice = variant ? Number(variant.price) : Number(product.price);
       const itemTotal = itemPrice * item.quantity;
 
       orderItems.push({
         productId: product.id,
+        variantId: item.variantId || null,
         quantity: item.quantity,
         price: itemPrice
       });
@@ -280,21 +313,38 @@ exports.createOrder = async (request, reply) => {
     const order = await prisma.$transaction(async (tx) => {
       // Deduct stock — re-validate inside the transaction to prevent race conditions
       for (const item of cart.items) {
-        // Atomic decrement only if sufficient stock exists
-        const result = await tx.$executeRaw`
-          UPDATE "products"
-          SET stock = stock - ${item.quantity}
-          WHERE id = ${item.productId} AND stock >= ${item.quantity}
-        `;
-        if (result === 0) {
-          // Another concurrent request already consumed the stock
-          const current = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { title: true, stock: true }
-          });
-          throw new Error(
-            `Insufficient stock for "${current?.title ?? item.productId}". Available: ${current?.stock ?? 0}, Requested: ${item.quantity}`
-          );
+        if (item.variantId) {
+          // VARIABLE product: deduct from variant stock
+          const result = await tx.$executeRaw`
+            UPDATE "product_variants"
+            SET stock = stock - ${item.quantity}
+            WHERE id = ${item.variantId} AND stock >= ${item.quantity}
+          `;
+          if (result === 0) {
+            const variant = await tx.productVariant.findUnique({
+              where: { id: item.variantId },
+              select: { stock: true }
+            });
+            throw new Error(
+              `Insufficient stock for variant "${item.variantId}". Available: ${variant?.stock ?? 0}, Requested: ${item.quantity}`
+            );
+          }
+        } else {
+          // SIMPLE product: deduct from product stock
+          const result = await tx.$executeRaw`
+            UPDATE "products"
+            SET stock = stock - ${item.quantity}
+            WHERE id = ${item.productId} AND stock >= ${item.quantity}
+          `;
+          if (result === 0) {
+            const current = await tx.product.findUnique({
+              where: { id: item.productId },
+              select: { title: true, stock: true }
+            });
+            throw new Error(
+              `Insufficient stock for "${current?.title ?? item.productId}". Available: ${current?.stock ?? 0}, Requested: ${item.quantity}`
+            );
+          }
         }
       }
 
@@ -388,8 +438,9 @@ exports.createOrder = async (request, reply) => {
             .map(item => ({
               subOrderId: subOrder.id,
               productId: item.productId,
+              variantId: item.variantId || null,
               quantity: item.quantity,
-              price: Number(item.product.price)
+              price: item.productVariant ? Number(item.productVariant.price) : Number(item.product.price)
             }));
 
           await tx.orderItem.createMany({
@@ -466,8 +517,9 @@ exports.createOrder = async (request, reply) => {
         // Create order items directly on the main order
         await tx.orderItem.createMany({
           data: orderItems.map(item => ({
-            orderId: singleOrder.id, // Link to main order, not sub-order
+            orderId: singleOrder.id,
             productId: item.productId,
+            variantId: item.variantId || null,
             quantity: item.quantity,
             price: item.price
           }))

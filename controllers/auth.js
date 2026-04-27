@@ -980,8 +980,8 @@ exports.samlCallback = async (request, reply) => {
     
     if (!user) {
       console.error("❌ No user returned from SAML strategy");
-      const frontendUrl = process.env.FRONTEND_URL || "https://alpa-dashboard.vercel.app";
-      return reply.redirect(`${frontendUrl}/login?error=auth_failed`);
+      const dashboardUrl = process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app";
+      return reply.redirect(`${dashboardUrl}/login?error=auth_failed`);
     }
     
     console.log(`✅ SAML Login Success for ${user.email}`);
@@ -1005,22 +1005,17 @@ exports.samlCallback = async (request, reply) => {
       path: '/'
     });
     
-    // Handle RelayState or Default Redirect
-    const relayState = request.body.RelayState;
-    const targetUrl = (relayState && relayState.startsWith("http")) 
-      ? relayState 
-      : (process.env.FRONTEND_URL || "https://alpa-dashboard.vercel.app/");
+    // Always redirect to the Admin Dashboard login-callback page
+    const dashboardUrl = (process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app").replace(/\/$/, '');
       
-    console.log(`➡️ Redirecting to: ${targetUrl}`);
+    console.log(`➡️ Redirecting to: ${dashboardUrl}/login-callback`);
     
-    // Return redirect to frontend with token in query param for client-side persistence if needed
-    // or rely on the cookie if the domains are aligned.
-    return reply.redirect(`${targetUrl}?token=${token}&type=saml`);
+    return reply.redirect(`${dashboardUrl}/login-callback?token=${token}&type=saml`);
     
   } catch (error) {
     console.error("❌ SAML Callback Error:", error);
-    const frontendUrl = process.env.FRONTEND_URL || "https://alpa-dashboard.vercel.app";
-    return reply.redirect(`${frontendUrl}/login?error=server_error`);
+    const dashboardUrl = process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app";
+    return reply.redirect(`${dashboardUrl}/login?error=server_error`);
   }
 };
 

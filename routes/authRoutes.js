@@ -35,10 +35,12 @@ async function authRoutes(fastify, options) {
   }));
 
   // Receives the SAML assertion posted back to /saml/login (AuthPoint ACS URL)
+  const samlFailureRedirect = `${(process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app').replace(/\/$/, '')}/login?error=saml_fail`;
+
   fastify.post("/saml/login",
       {
         preValidation: fastifyPassport.authenticate("saml", {
-            failureRedirect: "/login?error=saml_fail",
+            failureRedirect: samlFailureRedirect,
             session: false
         })
       },
@@ -49,7 +51,7 @@ async function authRoutes(fastify, options) {
   fastify.post("/saml/callback", 
       {
         preValidation: fastifyPassport.authenticate("saml", { 
-            failureRedirect: "/login?error=saml_fail", 
+            failureRedirect: samlFailureRedirect, 
             session: false
         })
       }, 

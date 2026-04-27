@@ -4,6 +4,12 @@ const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' 
     ? ['query', 'error', 'warn'] 
     : ['error'],
+  // Set transaction timeout to 30 seconds to prevent timeout issues
+  transactionOptions: {
+    timeout: 20000, // 20 seconds to avoid NeonDB serverless timeouts
+    maxWait: 3000,  // 3 seconds max wait to acquire connection
+    isolationLevel: 'ReadCommitted'
+  }
 });
 
 // ── NeonDB cold-start retry middleware ───────────────────────────────────────

@@ -165,6 +165,7 @@ model Product {
   id                   String             @id @default(cuid())
   title                String
   description          String?
+  type                 ProductType        @default(SIMPLE)
   price                Decimal?           @db.Decimal(10, 2)
   weight               Decimal            @default(1.00) @db.Decimal(8, 2)
   category             String
@@ -188,7 +189,7 @@ model Product {
   sellerInactiveReason String?
   cartItems            CartItem[]
   orderItems           OrderItem[]
-  product_variants     product_variants[]
+  productVariants      ProductVariant[]
   seller               User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   ratings              Rating[]
   wishlist             Wishlist[]
@@ -199,6 +200,7 @@ model Product {
   @@index([isActive])
   @@index([featured])
   @@index([deletedAt])
+  @@index([type])
   @@map("products")
 }
 
@@ -220,13 +222,13 @@ model CartItem {
   quantity         Int               @default(1)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
-  variant_id       String?
+  variantId        String?
   cart             Cart              @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product          Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  product_variants product_variants? @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+  productVariant   ProductVariant?   @relation("VariantCartItems", fields: [variantId], references: [id], onDelete: Cascade)
 
-  @@index([cartId, productId, variant_id])
-  @@index([variant_id])
+  @@index([cartId, productId, variantId])
+  @@index([variantId])
   @@map("cart_items")
 }
 
@@ -307,13 +309,13 @@ model OrderItem {
   price            Decimal           @db.Decimal(10, 2)
   createdAt        DateTime          @default(now())
   subOrderId       String?
-  variant_id       String?
+  variantId        String?
   order            Order?            @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product          Product           @relation(fields: [productId], references: [id])
   subOrder         SubOrder?         @relation(fields: [subOrderId], references: [id], onDelete: Cascade)
-  product_variants product_variants? @relation(fields: [variant_id], references: [id])
+  productVariant   ProductVariant?   @relation("VariantOrderItems", fields: [variantId], references: [id])
 
-  @@index([variant_id])
+  @@index([variantId])
   @@map("order_items")
 }
 
@@ -643,22 +645,71 @@ model BankChangeRequest {
   @@map("bank_change_requests")
 }
 
-model product_variants {
-  id          String      @id
-  product_id  String
-  attributes  Json
-  price       Decimal     @db.Decimal(10, 2)
-  stock       Int         @default(0)
-  sku         String?     @unique
-  is_active   Boolean     @default(true)
-  created_at  DateTime    @default(now())
-  updated_at  DateTime
-  images      String[]    @default([])
-  cart_items  CartItem[]
-  order_items OrderItem[]
-  products    Product     @relation(fields: [product_id], references: [id], onDelete: Cascade)
+model ProductVariant {
+  id                     String                   @id @default(cuid())
+  productId              String
+  price                  Decimal                  @db.Decimal(10, 2)
+  stock                  Int                      @default(0)
+  sku                    String?                  @unique
+  isActive               Boolean                  @default(true)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  images                 String[]                 @default([])
+  product                Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems              CartItem[]               @relation("VariantCartItems")
+  orderItems             OrderItem[]              @relation("VariantOrderItems")
+  variantAttributeValues VariantAttributeValue[]
 
-  @@index([product_id])
+  @@index([productId])
+  @@index([sku])
+  @@map("product_variants")
+}
+
+model Attribute {
+  id              String           @id @default(cuid())
+  name            String           @unique // e.g., "Color", "Size"
+  displayName     String           // e.g., "Color", "Size" 
+  isRequired      Boolean          @default(false)
+  sortOrder       Int              @default(0)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  attributeValues AttributeValue[]
+
+  @@index([name])
+  @@map("attributes")
+}
+
+model AttributeValue {
+  id                     String                   @id @default(cuid())
+  attributeId            String
+  value                  String                   // e.g., "Red", "Blue", "Medium", "Large"
+  displayValue           String                   // e.g., "Red", "Blue", "M", "L"
+  hexColor               String?                  // For color attributes
+  sortOrder              Int                      @default(0)
+  isActive               Boolean                  @default(true)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  attribute              Attribute                @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  variantAttributeValues VariantAttributeValue[]
+
+  @@unique([attributeId, value])
+  @@index([attributeId])
+  @@map("attribute_values")
+}
+
+model VariantAttributeValue {
+  id               String         @id @default(cuid())
+  variantId        String
+  attributeValueId String
+  createdAt        DateTime       @default(now())
+  variant          ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attributeValue   AttributeValue @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, attributeValueId])
+  @@index([variantId])
+  @@index([attributeValueId])
+  @@map("variant_attribute_values")
 }
 
 model SponsoredSection {
@@ -796,6 +847,11 @@ enum NotificationStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+enum ProductType {
+  SIMPLE
+  VARIABLE
 }
 
 enum BlogStatus {

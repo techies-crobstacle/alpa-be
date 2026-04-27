@@ -91,15 +91,14 @@ const LOW_STOCK_THRESHOLD = 2;
 // deactivates them and sends the seller a notification + email for each one.
 exports.scanLowStockProducts = async (request, reply) => {
   try {
-    // Use raw SQL — isActive was added via migration and may not be in the
-    // regenerated Prisma client, so prisma.product.findMany({ where: { isActive } })
-    // can silently skip the filter.
+    // Only scan SIMPLE products — VARIABLE products track stock at the variant level.
     const products = await prisma.$queryRaw`
       SELECT p.id, p.title, p.stock, p."sellerId",
              u.email AS "sellerEmail", u.name AS "sellerName"
       FROM "products" p
       JOIN "users" u ON u.id = p."sellerId"
       WHERE p."isActive" = true
+        AND p.type = 'SIMPLE'
         AND p.stock <= ${LOW_STOCK_THRESHOLD}
         AND p."deletedAt" IS NULL
     `;
@@ -3343,6 +3342,19 @@ exports.approveProduct = async (request, reply) => {
     // Update isActive using raw SQL since client doesn't recognize it yet
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
 
+    // For VARIABLE products: verify at least one variant has stock; warn if none do
+    if (product.type === 'VARIABLE') {
+      const variantStock = await prisma.$queryRaw`
+        SELECT COALESCE(SUM(stock), 0)::int AS total_stock
+        FROM "product_variants"
+        WHERE "productId" = ${productId} AND "isActive" = true
+      `;
+      const totalVariantStock = variantStock[0]?.total_stock ?? 0;
+      if (totalVariantStock === 0) {
+        console.warn(`⚠️  [approveProduct] VARIABLE product "${product.title}" approved but all variants have 0 stock`);
+      }
+    }
+
     // ── Audit log: product approved ───────────────────────────────────────
     auditLog({
       entityType:   ENTITY_TYPES.PRODUCT,
@@ -3530,6 +3542,19 @@ exports.activateProduct = async (request, reply) => {
     });
 
     await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
+
+    // For VARIABLE products, confirm they have variant stock before activating
+    if (product.type === 'VARIABLE') {
+      const variantStock = await prisma.$queryRaw`
+        SELECT COALESCE(SUM(stock), 0)::int AS total_stock
+        FROM "product_variants"
+        WHERE "productId" = ${productId} AND "isActive" = true
+      `;
+      const totalVariantStock = variantStock[0]?.total_stock ?? 0;
+      if (totalVariantStock === 0) {
+        console.warn(`⚠️  [activateProduct] VARIABLE product "${product.title}" activated but all variants have 0 stock`);
+      }
+    }
 
     // ── Audit log: product activated ──────────────────────────────────────
     auditLog({

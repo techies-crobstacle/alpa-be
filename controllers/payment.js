@@ -65,7 +65,7 @@ exports.createPaymentIntent = async (request, reply) => {
     // Get cart
     const cart = await prisma.cart.findUnique({
       where: { userId },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, productVariant: true } } },
     });
 
     if (!cart || cart.items.length === 0) {
@@ -83,9 +83,12 @@ exports.createPaymentIntent = async (request, reply) => {
       });
     }
 
-    // Stock check
+    // Stock check — use variant stock for VARIABLE products
     for (const item of cart.items) {
-      if (item.product.stock < item.quantity) {
+      const availableStock = item.productVariant
+        ? item.productVariant.stock
+        : (item.product.stock ?? 0);
+      if (availableStock < item.quantity) {
         return reply.status(400).send({
           success: false,
           message: `Insufficient stock for: ${item.product.title}`,
@@ -188,7 +191,13 @@ exports.createPaymentIntent = async (request, reply) => {
             data: { parentOrderId: parentOrder.id, sellerId, subtotal: subOrderSubtotal, status: "CONFIRMED" }
           });
           await tx.orderItem.createMany({
-            data: items.map(i => ({ subOrderId: subOrder.id, productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) }))
+            data: items.map(i => ({
+              subOrderId: subOrder.id,
+              productId: i.product.id,
+              variantId: i.variantId || null,
+              quantity: i.quantity,
+              price: Number(i.productVariant?.price ?? i.product.price),
+            }))
           });
         }
         return parentOrder;
@@ -199,7 +208,12 @@ exports.createPaymentIntent = async (request, reply) => {
         data: {
           ...orderBaseData,
           sellerId,
-          items: { create: cart.items.map(i => ({ productId: i.product.id, quantity: i.quantity, price: Number(i.product.price) })) }
+          items: { create: cart.items.map(i => ({
+            productId: i.product.id,
+            variantId: i.variantId || null,
+            quantity: i.quantity,
+            price: Number(i.productVariant?.price ?? i.product.price),
+          })) }
         },
         include: { items: { include: { product: true } } },
       });
@@ -443,10 +457,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
 
   await prisma.$transaction(async (tx) => {
     for (const item of allItems) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { decrement: item.quantity } },
-      });
+      if (item.variantId) {
+        // VARIABLE product — deduct from the variant
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stock: { decrement: item.quantity } },
+        });
+      } else {
+        // SIMPLE product — deduct from the product itself
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { decrement: item.quantity } },
+        });
+      }
     }
 
     if (cart) {

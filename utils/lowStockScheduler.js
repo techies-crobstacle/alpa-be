@@ -11,12 +11,15 @@ const LOW_STOCK_THRESHOLD = 2;
  */
 const runLowStockScan = async () => {
   try {
+    // Only scan SIMPLE products — VARIABLE products track stock at the variant level.
+    // Their product.stock is 0/NULL by default and must NOT trigger deactivation.
     const products = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.stock, p."sellerId",
+      SELECT p.id, p.title, p.stock, p.type, p."sellerId",
              u.email AS "sellerEmail", u.name AS "sellerName"
       FROM "products" p
       JOIN "users" u ON u.id = p."sellerId"
       WHERE p."isActive" = true
+        AND p.type = 'SIMPLE'
         AND p.stock <= ${LOW_STOCK_THRESHOLD}
     `;
 

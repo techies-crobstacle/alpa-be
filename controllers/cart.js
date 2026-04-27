@@ -9,9 +9,9 @@ const prisma = require("../config/prisma");
  */
 const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = null) => {
   try {
-    // Calculate subtotal — seller prices are GST-inclusive
+    // Calculate subtotal — use variant price for VARIABLE items, product price for SIMPLE
     const subtotal = cartItems.reduce((sum, item) => {
-      const price = parseFloat(item.product.price || 0);
+      const price = parseFloat(item.productVariant?.price ?? item.product?.price ?? 0);
       const quantity = item.quantity || 0;
       return sum + (price * quantity);
     }, 0);
@@ -98,21 +98,41 @@ exports.addToCart = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Request body is required" });
     }
 
-    const { productId, quantity } = request.body;
+    const { productId, variantId, quantity } = request.body;
     const userId = request.user.userId; // from auth middleware
 
     if (!productId) {
       return reply.status(400).send({ success: false, message: "productId is required" });
     }
 
-
-    // Get product stock
+    // Get product with type
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { stock: true }
+      select: { stock: true, type: true }
     });
     if (!product) {
       return reply.status(404).send({ success: false, message: "Product not found" });
+    }
+
+    // VARIABLE products MUST specify a variantId
+    if (product.type === 'VARIABLE' && !variantId) {
+      return reply.status(400).send({ success: false, message: "variantId is required for VARIABLE products" });
+    }
+
+    // Resolve available stock — from variant for VARIABLE, from product for SIMPLE
+    let availableStock = product.stock;
+    if (variantId) {
+      const variant = await prisma.productVariant.findUnique({
+        where: { id: variantId },
+        select: { stock: true, productId: true, isActive: true }
+      });
+      if (!variant || variant.productId !== productId) {
+        return reply.status(404).send({ success: false, message: "Variant not found for this product" });
+      }
+      if (!variant.isActive) {
+        return reply.status(400).send({ success: false, message: "This variant is currently unavailable" });
+      }
+      availableStock = variant.stock;
     }
 
     // Find or create cart
@@ -122,56 +142,45 @@ exports.addToCart = async (request, reply) => {
     });
 
     let newQuantity = quantity || 1;
+
     if (!cart) {
-      // If creating new cart, just check requested quantity
-      if (newQuantity > product.stock) {
-        return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
+      if (newQuantity > availableStock) {
+        return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${availableStock})` });
       }
       cart = await prisma.cart.create({
         data: {
           userId,
           items: {
-            create: {
-              productId,
-              quantity: newQuantity
-            }
+            create: { productId, variantId: variantId || null, quantity: newQuantity }
           }
         },
         include: { items: true }
       });
     } else {
-      // Check if product already in cart
+      // Check if same product+variant already in cart
       const existingItem = await prisma.cartItem.findFirst({
         where: {
           cartId: cart.id,
-          productId
+          productId,
+          variantId: variantId || null
         }
       });
 
       if (existingItem) {
         const totalQuantity = existingItem.quantity + newQuantity;
-        if (totalQuantity > product.stock) {
-          return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
+        if (totalQuantity > availableStock) {
+          return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${availableStock})` });
         }
         await prisma.cartItem.update({
           where: { id: existingItem.id },
           data: { quantity: totalQuantity }
         });
-        // Fire-and-forget: silently clean up any duplicate rows in the background
-        // without blocking the response (caused by the attributes feature rollback)
-        prisma.cartItem.deleteMany({
-          where: { cartId: cart.id, productId, id: { not: existingItem.id } }
-        }).catch(e => console.error('Cart dedup cleanup error:', e));
       } else {
-        if (newQuantity > product.stock) {
-          return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${product.stock})` });
+        if (newQuantity > availableStock) {
+          return reply.status(400).send({ success: false, message: `Cannot add more than available stock (${availableStock})` });
         }
         await prisma.cartItem.create({
-          data: {
-            cartId: cart.id,
-            productId,
-            quantity: newQuantity
-          }
+          data: { cartId: cart.id, productId, variantId: variantId || null, quantity: newQuantity }
         });
       }
     }
@@ -224,10 +233,22 @@ exports.getMyCart = async (request, reply) => {
                 id: true,
                 title: true,
                 price: true,
+                type: true,
                 featuredImage: true,
                 stock: true,
                 category: true,
                 sellerId: true
+              }
+            },
+            productVariant: {
+              include: {
+                variantAttributeValues: {
+                  include: {
+                    attributeValue: {
+                      include: { attribute: true }
+                    }
+                  }
+                }
               }
             }
           }
@@ -264,18 +285,39 @@ exports.getMyCart = async (request, reply) => {
       });
     }
 
-    // Deduplicate items by productId + variant_id — guards against duplicate rows
-    // that may have been created during the attributes feature rollback
+    // Deduplicate items by productId + variantId — guards against duplicate rows
     const deduplicatedMap = new Map();
     cart.items.forEach(item => {
-      const key = `${item.productId}_${item.variant_id || ''}`;
+      const key = `${item.productId}_${item.variantId || ''}`;
       if (deduplicatedMap.has(key)) {
         deduplicatedMap.get(key).quantity += item.quantity;
       } else {
         deduplicatedMap.set(key, {
           productId: item.productId,
+          variantId: item.variantId || null,
           quantity: item.quantity,
-          product: item.product
+          product: item.product,
+          // Variant info: price + full attribute array (matches /all products format)
+          variant: item.productVariant ? {
+            id: item.productVariant.id,
+            price: parseFloat(item.productVariant.price),
+            stock: item.productVariant.stock,
+            sku: item.productVariant.sku,
+            images: item.productVariant.images,
+            attributes: (item.productVariant.variantAttributeValues || []).map((vav) => ({
+              attributeId: vav.attributeValue?.attribute?.id ?? null,
+              attributeName: vav.attributeValue?.attribute?.name ?? null,
+              attributeDisplayName: vav.attributeValue?.attribute?.displayName ?? null,
+              valueId: vav.attributeValue?.id ?? null,
+              value: vav.attributeValue?.value ?? null,
+              displayValue: vav.attributeValue?.displayValue ?? null,
+              hexColor: vav.attributeValue?.hexColor ?? null
+            }))
+          } : null,
+          // Effective price for display (variant overrides product)
+          effectivePrice: item.productVariant
+            ? parseFloat(item.productVariant.price)
+            : parseFloat(item.product?.price || 0)
         });
       }
     });
@@ -357,7 +399,7 @@ exports.updateCartQuantity = async (request, reply) => {
       });
     }
 
-    const { productId, quantity } = request.body;
+    const { productId, variantId, quantity } = request.body;
 
     if (!productId || quantity === undefined) {
       return reply.status(400).send({
@@ -380,7 +422,8 @@ exports.updateCartQuantity = async (request, reply) => {
     const cartItem = await prisma.cartItem.findFirst({
       where: {
         cartId: cart.id,
-        productId
+        productId,
+        variantId: variantId || null
       }
     });
 
@@ -389,6 +432,25 @@ exports.updateCartQuantity = async (request, reply) => {
         success: false,
         message: "Product not found in cart"
       });
+    }
+
+    // Validate against correct stock source
+    if (variantId) {
+      const variant = await prisma.productVariant.findUnique({
+        where: { id: variantId },
+        select: { stock: true }
+      });
+      if (variant && quantity > variant.stock) {
+        return reply.status(400).send({ success: false, message: `Cannot set more than available stock (${variant.stock})` });
+      }
+    } else {
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
+        select: { stock: true }
+      });
+      if (product && quantity > product.stock) {
+        return reply.status(400).send({ success: false, message: `Cannot set more than available stock (${product.stock})` });
+      }
     }
 
     // Update the quantity
@@ -402,6 +464,7 @@ exports.updateCartQuantity = async (request, reply) => {
       message: "Cart quantity updated successfully",
       item: {
         productId: updatedItem.productId,
+        variantId: updatedItem.variantId || null,
         quantity: updatedItem.quantity
       }
     });
@@ -419,6 +482,7 @@ exports.removeFromCart = async (request, reply) => {
   try {
     const userId = request.user.userId;
     const productId = request.params.productId;
+    const variantId = request.query.variantId || null; // ?variantId=xxx for VARIABLE products
 
     const cart = await prisma.cart.findUnique({
       where: { userId }
@@ -428,11 +492,12 @@ exports.removeFromCart = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "Cart not found" });
     }
 
-    // Delete the cart item
+    // Delete the specific cart item (by productId + optional variantId)
     await prisma.cartItem.deleteMany({
       where: {
         cartId: cart.id,
-        productId
+        productId,
+        variantId: variantId || null
       }
     });
 

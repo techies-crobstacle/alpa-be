@@ -6,6 +6,8 @@ const {
   getMyProducts,
   getAllProducts,
   getProductById,
+  getProductVariants,
+  updateVariant,
   deleteProduct,
   updateProduct,
   getProductStock,
@@ -34,6 +36,12 @@ async function productRoutes(fastify, options) {
 
   // GET PRODUCT BY ID (Public)
   fastify.get("/:id", getProductById);
+
+  // GET PRODUCT VARIANTS (Public - for VARIABLE products)
+  fastify.get("/:id/variants", getProductVariants);
+
+  // UPDATE VARIANT (Seller or Admin — also auto-reactivates product if stock is restored)
+  fastify.put("/:productId/variants/:variantId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, updateVariant);
 
   // ── Seller: Self-Deactivate & Submit for Review ────────────────────────────
   // PUT  /products/:id/deactivate    — seller deactivates their ACTIVE product with a reason
