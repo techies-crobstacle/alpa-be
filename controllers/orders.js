@@ -298,9 +298,15 @@ exports.createOrder = async (request, reply) => {
       if (product.sellerName && !sellerData.sellerName) sellerData.sellerName = product.sellerName;
       sellerData.productCount += item.quantity;
       sellerData.totalAmount += itemTotal;
+      // Build variant-aware title for seller notifications
+      const variantAttrs = item.productVariant?.variantAttributeValues
+        ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+        .filter(Boolean)
+        .join(', ');
+      const displayTitle = variantAttrs ? `${product.title} (${variantAttrs})` : product.title;
       sellerData.products.push({
         productId: product.id,
-        title: product.title,
+        title: displayTitle,
         quantity: item.quantity,
         price: itemPrice
       });
@@ -637,6 +643,19 @@ exports.createOrder = async (request, reply) => {
       console.error('Customer order placed notification error:', error.message);
     });
 
+    // ── Helper: build a display title including variant attributes ───────────
+    const getItemDisplayTitle = (item) => {
+      const base = item.product.title;
+      if (!item.productVariant) return base;
+      const attrs = item.productVariant.variantAttributeValues
+        ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+        .filter(Boolean)
+        .join(', ');
+      return attrs ? `${base} (${attrs})` : base;
+    };
+    const getItemPrice = (item) => item.productVariant ? Number(item.productVariant.price) : Number(item.product.price);
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Fire all emails & notifications in background (non-blocking) ────────
     // Reply is sent immediately below; PDF generation + all outbound calls
     // run in the background so they never delay the API response.
@@ -651,9 +670,9 @@ exports.createOrder = async (request, reply) => {
               totalAmount,
               itemCount: cart.items.length,
               products: cart.items.map(item => ({
-                title: item.product.title,
+                title: getItemDisplayTitle(item),
                 quantity: item.quantity,
-                price: Number(item.product.price)
+                price: getItemPrice(item)
               })),
               shippingAddress,
               paymentMethod,
@@ -699,9 +718,9 @@ exports.createOrder = async (request, reply) => {
                   totalAmount,
                   itemCount: cart.items.length,
                   products: cart.items.map(item => ({
-                    title: item.product.title,
+                    title: getItemDisplayTitle(item),
                     quantity: item.quantity,
-                    price: Number(item.product.price)
+                    price: getItemPrice(item)
                   })),
                   shippingAddress,
                   paymentMethod,
@@ -800,9 +819,9 @@ exports.createOrder = async (request, reply) => {
           console.log(`📋 Found ${admins.length} super admins:`, admins.map(a => a.email));
           
           const allItems = cart.items.map(item => ({
-            title: item.product?.title || item.productId,
+            title: getItemDisplayTitle(item),
             quantity: item.quantity,
-            price: Number(item.product.price)
+            price: getItemPrice(item)
           }));
           
           for (const admin of admins) {
@@ -913,6 +932,13 @@ exports.getMyOrders = async (request, reply) => {
                   select: { id: true, name: true }
                 }
               }
+            },
+            productVariant: {
+              include: {
+                variantAttributeValues: {
+                  include: { attributeValue: { include: { attribute: true } } }
+                }
+              }
             }
           }
         },
@@ -947,6 +973,13 @@ exports.getMyOrders = async (request, reply) => {
                     sellerId: true,
                     seller: {
                       select: { id: true, name: true }
+                    }
+                  }
+                },
+                productVariant: {
+                  include: {
+                    variantAttributeValues: {
+                      include: { attributeValue: { include: { attribute: true } } }
                     }
                   }
                 }
@@ -1028,7 +1061,10 @@ exports.getMyOrders = async (request, reply) => {
           items: sub.items.map(item => ({
             id: item.id,
             productId: item.productId,
-            productTitle: item.product?.title || 'Product',
+            variantId: item.variantId || null,
+            productTitle: item.productVariant
+              ? (() => { const a = item.productVariant.variantAttributeValues?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`).filter(Boolean).join(', '); return a ? `${item.product?.title} (${a})` : item.product?.title || 'Product'; })()
+              : item.product?.title || 'Product',
             productImages: item.product?.featuredImage ? [item.product.featuredImage] : [],
             quantity: item.quantity,
             price: item.price
@@ -1091,7 +1127,10 @@ exports.getMyOrders = async (request, reply) => {
             items: items.map(item => ({
               id: item.id,
               productId: item.productId,
-              productTitle: item.product?.title || 'Product',
+              variantId: item.variantId || null,
+              productTitle: item.productVariant
+                ? (() => { const a = item.productVariant.variantAttributeValues?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`).filter(Boolean).join(', '); return a ? `${item.product?.title} (${a})` : item.product?.title || 'Product'; })()
+                : item.product?.title || 'Product',
               productImages: item.product?.featuredImage ? [item.product.featuredImage] : [],
               quantity: item.quantity,
               price: item.price
@@ -3323,7 +3362,14 @@ const generateInvoiceBuffer = (order) => {
         let pPriceExGST = pPrice / (1 + (gstPercentage / 100));
         let gstAmt = (pPrice - pPriceExGST) * item.quantity;
 
-        doc.text(item.product?.title || 'Product', L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
+        doc.text(item.product?.title
+          ? (() => {
+              const attrs = item.productVariant?.variantAttributeValues
+                ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+                .filter(Boolean).join(', ');
+              return attrs ? `${item.product.title} (${attrs})` : item.product.title;
+            })()
+          : 'Product',              L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
         doc.text(String(item.quantity),             C_QTY,  y + 5, { width: C_UNIT - C_QTY,  align: 'center' });
         doc.text(`$${pPriceExGST.toFixed(2)}`, C_UNIT,  y + 5, { width: C_GST - C_UNIT, align: 'right' });
         doc.text(`$${gstAmt.toFixed(2)} (${gstPercentage}%)`, C_GST,  y + 5, { width: C_TOTAL - C_GST, align: 'right' });
@@ -3467,8 +3513,8 @@ exports.downloadInvoice = async (request, reply) => {
     const { orderId } = request.params;
 
     const orderInclude = {
-      items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } } } },
-      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+      items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
 
@@ -3497,7 +3543,7 @@ exports.downloadInvoice = async (request, reply) => {
       // ── Fall back: try as a SubOrder ID ──
       const subOrderInclude = {
         parentOrder: { select: { userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
-        items:       { include: { product: { select: { id: true, title: true, price: true } } } },
+        items:       { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         seller:      { select: { name: true, email: true } },
       };
       const subRecord = await prisma.subOrder.findUnique({ where: { id: orderId }, include: subOrderInclude });
@@ -3545,7 +3591,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
         parentOrder: {
           select: { userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } }
         },
-        items: { include: { product: { select: { id: true, title: true, price: true } } } },
+        items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         seller: { select: { name: true, email: true } },
       },
     });
@@ -3599,8 +3645,8 @@ exports.downloadGuestInvoice = async (request, reply) => {
       }
     };
     const orderInclude = {
-      items:     { include: { product: { select: { id: true, title: true, price: true } } } },
-      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+      items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
     };
 
     // Try as parent order (email verified)
@@ -3618,7 +3664,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
         where: { id: orderId },
         include: {
           parentOrder: parentOrderSelect,
-          items: { include: { product: { select: { id: true, title: true, price: true } } } },
+          items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
           seller: { select: { name: true, email: true } },
         },
       });
@@ -3655,8 +3701,8 @@ exports.downloadPublicInvoice = async (request, reply) => {
     const { orderId } = request.params;
 
     const orderInclude = {
-      items:     { include: { product: { select: { id: true, title: true, price: true } } } },
-      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+      items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
 
@@ -3685,7 +3731,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
               user: { select: { name: true, email: true, phone: true } },
             }
           },
-          items:  { include: { product: { select: { id: true, title: true, price: true } } } },
+          items:  { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
           seller: { select: { name: true, email: true } },
         },
       });
