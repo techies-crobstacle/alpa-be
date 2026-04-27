@@ -10,32 +10,31 @@ module.exports = function (app) {
   let idpCert = null;
   let entryPoint = process.env.SAML_ENTRY_POINT; // e.g. https://authpoint.watchguard.com/...
 
-  try {
-    const certPath = path.join(__dirname, "certs", "authpoint.cer");
-    console.log("🔍 Looking for SAML Cert at:", certPath);
-    
-    if (fs.existsSync(certPath)) {
-      idpCert = fs.readFileSync(certPath, "utf-8");
-      console.log("✅ SAML Cert loaded successfully. Length:", idpCert.length);
-    } else {
-      console.error("❌ SAML Cert not found at path:", certPath);
-      // Attempt to list directory to debug
-      const certDir = path.dirname(certPath);
-      if (fs.existsSync(certDir)) {
-          console.log("📁 Directory contents:", fs.readdirSync(certDir));
+  // 1. Try env var first (production/Render — no filesystem dependency)
+  if (process.env.SAML_IDP_CERT) {
+    // Env vars can't store real newlines easily — allow \n literal to be used
+    idpCert = process.env.SAML_IDP_CERT.replace(/\\n/g, '\n');
+    console.log("✅ SAML Cert loaded from SAML_IDP_CERT env var. Length:", idpCert.length);
+  }
+
+  // 2. Fall back to file (local dev)
+  if (!idpCert) {
+    try {
+      const certPath = path.join(__dirname, "certs", "authpoint.cer");
+      console.log("🔍 Looking for SAML Cert at:", certPath);
+      if (fs.existsSync(certPath)) {
+        idpCert = fs.readFileSync(certPath, "utf-8");
+        console.log("✅ SAML Cert loaded from file. Length:", idpCert.length);
       } else {
-          console.log("❌ Directory does not exist:", certDir);
+        console.error("❌ SAML Cert not found at path:", certPath);
       }
+    } catch (e) {
+      console.warn("⚠️ SAML Cert file not readable:", e.message);
     }
-  } catch (e) {
-    console.warn("⚠️ SAML Certs not found or readable:", e.message);
   }
 
   if (!idpCert) {
-      console.error("🛑 CRITICAL: IDP Certificate is missing. SAML Strategy cannot be initialized.");
-      // We cannot continue without the cert for SAML
-      // But maybe we don't want to crash the whole server if SAML is optional? 
-      // The library throws if we proceed. fail gracefully?
+      console.error("🛑 CRITICAL: IDP Certificate is missing (no SAML_IDP_CERT env var and no cert file). SAML Strategy cannot be initialized.");
       return; 
   }
 
