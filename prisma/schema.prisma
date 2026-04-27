@@ -669,6 +669,7 @@ model Attribute {
   id              String           @id @default(cuid())
   name            String           @unique // e.g., "Color", "Size"
   displayName     String           // e.g., "Color", "Size" 
+  valueType       String           @default("text") // "text" | "number" — controls size display (S/M/L vs 6/7/8)
   isRequired      Boolean          @default(false)
   sortOrder       Int              @default(0)
   isActive        Boolean          @default(true)

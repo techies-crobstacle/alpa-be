@@ -1,7 +1,7 @@
 const prisma = require("../config/prisma");
 
 // Create attribute if it doesn't exist
-const findOrCreateAttribute = async (name, displayName = null) => {
+const findOrCreateAttribute = async (name, displayName = null, valueType = 'text') => {
   const normalizedName = name.toLowerCase();
   
   let attribute = await prisma.attribute.findUnique({
@@ -9,10 +9,12 @@ const findOrCreateAttribute = async (name, displayName = null) => {
   });
 
   if (!attribute) {
+    const resolvedValueType = ['text', 'number'].includes(valueType) ? valueType : 'text';
     attribute = await prisma.attribute.create({
       data: {
         name: normalizedName,
         displayName: displayName || name,
+        valueType: resolvedValueType,
         isActive: true
       }
     });
@@ -55,6 +57,7 @@ const getProductVariantsWithAttributes = async (productId) => {
     SELECT pv.id, pv."productId", pv.price, pv.stock, pv.sku, pv."isActive",
            pv.images, pv."createdAt", pv."updatedAt",
            a.id as "attr_id", a.name as "attr_name", a."displayName" as "attr_display_name",
+           a."valueType" as "attr_value_type",
            av.id as "attr_value_id", av.value as "attr_value", av."displayValue" as "attr_display_value",
            av."hexColor" as "attr_hex_color"
     FROM "product_variants" pv
@@ -89,7 +92,8 @@ const getProductVariantsWithAttributes = async (productId) => {
       variant.attributes[row.attr_name] = {
         value: row.attr_value,
         displayValue: row.attr_display_value,
-        hexColor: row.attr_hex_color
+        hexColor: row.attr_hex_color,
+        valueType: row.attr_value_type || 'text'
       };
     }
   });

@@ -639,6 +639,7 @@ exports.getMyProducts = async (request, reply) => {
             SELECT pv.id, pv."productId", pv.price, pv.stock, pv.sku, pv."isActive",
                    pv.images, pv."createdAt", pv."updatedAt",
                    a.id as "attr_id", a.name as "attr_name", a."displayName" as "attr_display_name",
+                   a."valueType" as "attr_value_type",
                    av.id as "attr_value_id", av.value as "attr_value", av."displayValue" as "attr_display_value",
                    av."hexColor" as "attr_hex_color"
             FROM "product_variants" pv
@@ -671,6 +672,7 @@ exports.getMyProducts = async (request, reply) => {
             const variant = variantMap.get(row.id);
             if (row.attr_name && row.attr_value) {
               variant.attributes[row.attr_name] = {
+                valueType: row.attr_value_type || 'text',
                 value: row.attr_value,
                 displayValue: row.attr_display_value,
                 hexColor: row.attr_hex_color
@@ -740,6 +742,7 @@ exports.getProductVariants = async (request, reply) => {
       SELECT pv.id, pv."productId", pv.price, pv.stock, pv.sku, pv."isActive",
              pv.images, pv."createdAt", pv."updatedAt",
              a.id as "attr_id", a.name as "attr_name", a."displayName" as "attr_display_name",
+             a."valueType" as "attr_value_type",
              av.id as "attr_value_id", av.value as "attr_value", av."displayValue" as "attr_display_value",
              av."hexColor" as "attr_hex_color"
       FROM "product_variants" pv
@@ -772,6 +775,7 @@ exports.getProductVariants = async (request, reply) => {
       const variant = variantMap.get(row.id);
       if (row.attr_name && row.attr_value) {
         variant.attributes[row.attr_name] = {
+          valueType: row.attr_value_type || 'text',
           value: row.attr_value,
           displayValue: row.attr_display_value,
           hexColor: row.attr_hex_color
@@ -841,6 +845,7 @@ exports.getProductById = async (request, reply) => {
         SELECT pv.id, pv."productId", pv.price, pv.stock, pv.sku, pv."isActive",
                pv.images, pv."createdAt", pv."updatedAt",
                a.id as "attr_id", a.name as "attr_name", a."displayName" as "attr_display_name",
+               a."valueType" as "attr_value_type",
                av.id as "attr_value_id", av.value as "attr_value", av."displayValue" as "attr_display_value",
                av."hexColor" as "attr_hex_color"
         FROM "product_variants" pv
@@ -873,6 +878,7 @@ exports.getProductById = async (request, reply) => {
         const variant = variantMap.get(row.id);
         if (row.attr_name && row.attr_value) {
           variant.attributes[row.attr_name] = {
+            valueType: row.attr_value_type || 'text',
             value: row.attr_value,
             displayValue: row.attr_display_value,
             hexColor: row.attr_hex_color
@@ -1571,6 +1577,7 @@ exports.getAllProducts = async (request, reply) => {
             attributeId: vav.attributeValue.attribute.id,
             attributeName: vav.attributeValue.attribute.name,
             attributeDisplayName: vav.attributeValue.attribute.displayName,
+            valueType: vav.attributeValue.attribute.valueType || 'text',
             valueId: vav.attributeValue.id,
             value: vav.attributeValue.value,
             displayValue: vav.attributeValue.displayValue,

@@ -21,6 +21,7 @@ exports.getAllAttributes = async (request, reply) => {
         id: attr.id,
         name: attr.name,
         displayName: attr.displayName,
+        valueType: attr.valueType || 'text',
         isRequired: attr.isRequired,
         values: attr.attributeValues.map(val => ({
           id: val.id,
@@ -39,7 +40,7 @@ exports.getAllAttributes = async (request, reply) => {
 // CREATE ATTRIBUTE (Admin only)
 exports.createAttribute = async (request, reply) => {
   try {
-    const { name, displayName, isRequired, sortOrder, values } = request.body;
+    const { name, displayName, isRequired, sortOrder, valueType, values } = request.body;
 
     if (!name || !displayName) {
       return reply.status(400).send({
@@ -47,6 +48,9 @@ exports.createAttribute = async (request, reply) => {
         message: "Name and displayName are required"
       });
     }
+
+    // Validate valueType
+    const resolvedValueType = ['text', 'number'].includes(valueType) ? valueType : 'text';
 
     // Check if attribute already exists
     const existing = await prisma.attribute.findUnique({
@@ -66,6 +70,7 @@ exports.createAttribute = async (request, reply) => {
         data: {
           name: name.toLowerCase(),
           displayName,
+          valueType: resolvedValueType,
           isRequired: isRequired || false,
           sortOrder: sortOrder || 0,
           isActive: true
@@ -113,7 +118,7 @@ exports.createAttribute = async (request, reply) => {
 exports.updateAttribute = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { displayName, isRequired, sortOrder, isActive } = request.body;
+    const { displayName, isRequired, sortOrder, isActive, valueType } = request.body;
 
     const attribute = await prisma.attribute.findUnique({
       where: { id }
@@ -130,6 +135,7 @@ exports.updateAttribute = async (request, reply) => {
       where: { id },
       data: {
         displayName: displayName || attribute.displayName,
+        valueType: ['text', 'number'].includes(valueType) ? valueType : attribute.valueType,
         isRequired: isRequired !== undefined ? isRequired : attribute.isRequired,
         sortOrder: sortOrder !== undefined ? sortOrder : attribute.sortOrder,
         isActive: isActive !== undefined ? isActive : attribute.isActive
