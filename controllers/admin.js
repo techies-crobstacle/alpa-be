@@ -11,6 +11,30 @@ const { pipeline } = require('stream/promises');
 // Use this everywhere instead of hardcoding role === 'ADMIN'.
 const isAdminRole = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
 
+// ── Variant price enrichment ──────────────────────────────────────────────────
+// For VARIABLE products, replaces price (null) with the variant price range string.
+// Used by admin product list endpoints.
+const enrichProductPrice = async (products) => {
+  return Promise.all(products.map(async (product) => {
+    if (product.type !== 'VARIABLE') {
+      return { ...product, price: product.price ? parseFloat(product.price) : null };
+    }
+    const rows = await prisma.$queryRaw`
+      SELECT MIN(price::numeric) as min_price, MAX(price::numeric) as max_price,
+             SUM(stock)::int as total_stock
+      FROM "product_variants"
+      WHERE "productId" = ${product.id}
+    `;
+    const min = rows[0]?.min_price ? parseFloat(rows[0].min_price) : null;
+    const max = rows[0]?.max_price ? parseFloat(rows[0].max_price) : null;
+    const priceRange = min !== null && max !== null
+      ? (min === max ? `${min}` : `${min} - ${max}`)
+      : null;
+    const totalStock = rows[0]?.total_stock ?? 0;
+    return { ...product, price: priceRange, stock: totalStock };
+  }));
+};
+
 // ── Order display-ID helpers (used by all admin order endpoints) ──────────────
 // Accepts the stored displayId Int (e.g. 1001) OR falls back to last-6-chars of CUID.
 const toDisplayId = (idOrN) => {
@@ -1879,7 +1903,7 @@ exports.getProductsBySeller = async (request, reply) => {
 
     return reply.status(200).send({ 
       success: true, 
-      products,
+      products: await enrichProductPrice(products),
       count: products.length,
       seller: {
         id: seller.id,
@@ -2014,10 +2038,13 @@ exports.getAllAdminProducts = async (request, reply) => {
       }
     }));
 
+    // Enrich VARIABLE products with variant price range
+    const enriched = await enrichProductPrice(mapped);
+
     return reply.send({
       success: true,
-      products: mapped,
-      count: mapped.length,
+      products: enriched,
+      count: enriched.length,
       counts: {
         all:      Object.values(countMap).reduce((a, b) => a + b, 0),
         pending:  countMap.PENDING,
@@ -3288,11 +3315,13 @@ exports.getPendingProducts = async (request, reply) => {
       seller: { id: seller_id, name: seller_name, email: seller_email }
     }));
 
+    const enriched = await enrichProductPrice(mapped);
+
     reply.send({ 
       success: true, 
-      products: mapped, 
-      count: mapped.length,
-      message: `${mapped.length} products pending approval`
+      products: enriched, 
+      count: enriched.length,
+      message: `${enriched.length} products pending approval`
     });
   } catch (error) {
     console.error("Get pending products error:", error);

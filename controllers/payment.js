@@ -433,10 +433,10 @@ async function handlePaymentSucceeded(paymentIntentId) {
   const order = await prisma.order.findFirst({
     where: { stripePaymentIntentId: paymentIntentId },
     include: {
-      items: { include: { product: true } },
+      items: { include: { product: true, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       subOrders: {
         include: {
-          items: { include: { product: true } },
+          items: { include: { product: true, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
           seller: { select: { id: true, name: true } }
         }
       }
@@ -505,11 +505,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
     customerEmail: toEmail,
     totalAmount:   Number(order.totalAmount),
     itemCount:     allItems.length,
-    products:      allItems.map((item) => ({
-      title:    item.product.title,
-      quantity: item.quantity,
-      price:    Number(item.price),
-    })),
+    products:      allItems.map((item) => {
+      const base = item.product?.title || 'Product';
+      const variant = item.productVariant;
+      let title = base;
+      if (variant?.variantAttributeValues?.length) {
+        const attrs = variant.variantAttributeValues
+          .map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+          .filter(Boolean).join(', ');
+        if (attrs) title = `${base} (${attrs})`;
+      }
+      const price = variant ? Number(variant.price) : Number(item.price);
+      return { title, quantity: item.quantity, price };
+    }),
     // Pass structured address so the email template can render city/state/zip
     shippingAddress: {
       addressLine: order.shippingAddressLine,
@@ -541,8 +549,8 @@ async function handlePaymentSucceeded(paymentIntentId) {
     const invoiceOrderRecord = await prisma.order.findUnique({
       where: { id: order.id },
       include: {
-        items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } } } },
-        subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } } } } } },
+        items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+        subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
         user:      { select: { name: true, email: true, phone: true } },
       }
     });

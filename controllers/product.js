@@ -688,6 +688,7 @@ exports.getMyProducts = async (request, reply) => {
         ...product,
         // For VARIABLE products, override price with the range (no $ sign); keep numeric for SIMPLE
         price: product.type === 'VARIABLE' ? (variantInfo?.priceRange ? variantInfo.priceRange.replace(/\$/g, '').trim() : null) : (product.price ? parseFloat(product.price) : null),
+        stock: totalStock,
         // Enhanced seller dashboard fields
         displayPrice: priceInfo,
         totalStock: totalStock,
@@ -1607,6 +1608,7 @@ exports.getAllProducts = async (request, reply) => {
         // For VARIABLE products, override price with the range (no $ sign); keep numeric for SIMPLE
         price: hasVariants ? (priceRange ? priceRange.replace(/\$/g, '').trim() : null) : (product.price ? parseFloat(product.price) : null),
         displayPrice: hasVariants ? priceRange : (product.price ? `$${parseFloat(product.price)}` : null),
+        stock: totalStock,
         totalStock: totalStock,
         variantCount: variantCount,
         productType: product.type || 'SIMPLE',
@@ -1993,7 +1995,7 @@ exports.bulkSaveVariants = async (request, reply) => {
           });
         }
 
-        // Find or create attribute value
+        // Find or create attribute value; update hexColor if provided and missing
         let attributeValue = await prisma.attributeValue.findUnique({
           where: { attributeId_value: { attributeId: attribute.id, value: attrValue.toString() } }
         });
@@ -2006,6 +2008,12 @@ exports.bulkSaveVariants = async (request, reply) => {
               hexColor,
               isActive: true
             }
+          });
+        } else if (hexColor && !attributeValue.hexColor) {
+          // Backfill missing hexColor if caller provides one
+          attributeValue = await prisma.attributeValue.update({
+            where: { id: attributeValue.id },
+            data: { hexColor }
           });
         }
 

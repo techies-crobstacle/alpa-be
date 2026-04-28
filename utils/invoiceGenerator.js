@@ -88,10 +88,20 @@ const generateInvoiceBuffer = (order) => {
       const lineTotal = Number(item.price) * item.quantity;
       subtotal += lineTotal;
       
+      // Build variant-aware title
+      const baseTitle = item.product?.title || 'Product';
+      let itemTitle = baseTitle;
+      if (item.productVariant?.variantAttributeValues?.length) {
+        const attrs = item.productVariant.variantAttributeValues
+          .map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+          .filter(Boolean).join(', ');
+        if (attrs) itemTitle = `${baseTitle} (${attrs})`;
+      }
+
       // Calculate GST per line item (assuming price is GST inclusive)
       const gstAmount = gstPercentage > 0 ? (lineTotal * gstPercentage) / (100 + gstPercentage) : 0;
       const unitPriceExGST = Number(item.price) / (1 + gstPercentage / 100);
-      doc.text(item.product?.title || 'Product', 50, yPos)
+      doc.text(itemTitle,                         50, yPos)
          .text(String(item.quantity),             200, yPos)
          .text(`$${unitPriceExGST.toFixed(2)}`, 280, yPos)
          .text(`$${gstAmount.toFixed(2)} (${gstPercentage}%)`, 360, yPos)
