@@ -686,6 +686,8 @@ exports.getMyProducts = async (request, reply) => {
 
       const result = {
         ...product,
+        // For VARIABLE products, override price with the range (no $ sign); keep numeric for SIMPLE
+        price: product.type === 'VARIABLE' ? (variantInfo?.priceRange ? variantInfo.priceRange.replace(/\$/g, '').trim() : null) : (product.price ? parseFloat(product.price) : null),
         // Enhanced seller dashboard fields
         displayPrice: priceInfo,
         totalStock: totalStock,
@@ -1602,7 +1604,8 @@ exports.getAllProducts = async (request, reply) => {
         galleryImages: product.images,
         avgRating: product.avgRating ? parseFloat(product.avgRating) : null,
         ratingCount: product.ratingCount ?? 0,
-        // Enhanced fields for SIMPLE vs VARIABLE products
+        // For VARIABLE products, override price with the range (no $ sign); keep numeric for SIMPLE
+        price: hasVariants ? (priceRange ? priceRange.replace(/\$/g, '').trim() : null) : (product.price ? parseFloat(product.price) : null),
         displayPrice: hasVariants ? priceRange : (product.price ? `$${parseFloat(product.price)}` : null),
         totalStock: totalStock,
         variantCount: variantCount,
@@ -1916,6 +1919,193 @@ exports.updateVariant = async (request, reply) => {
       return reply.status(409).send({ success: false, message: `SKU already exists` });
     }
     console.error('updateVariant error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// BULK SAVE VARIANTS (Seller/Admin)
+// PUT /api/products/:productId/variants/bulk
+// Replaces the full variant set for a VARIABLE product.
+// Body: { variants: [{ id?, sku, price, stock, isActive?, images?, attributes: { color: "Blue", size: "8" } }] }
+exports.bulkSaveVariants = async (request, reply) => {
+  try {
+    const { productId } = request.params;
+    const userId = request.user.userId;
+    const userRole = request.user.role;
+
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product || product.deletedAt) {
+      return reply.status(404).send({ success: false, message: 'Product not found' });
+    }
+    if (product.type !== 'VARIABLE') {
+      return reply.status(400).send({ success: false, message: 'Only VARIABLE products have variants' });
+    }
+    if (userRole === 'SELLER' && product.sellerId !== userId) {
+      return reply.status(403).send({ success: false, message: 'You do not have permission to update this product' });
+    }
+
+    let { variants } = request.body || {};
+    if (typeof variants === 'string') {
+      try { variants = JSON.parse(variants); } catch {
+        return reply.status(400).send({ success: false, message: 'Invalid variants JSON' });
+      }
+    }
+    if (!Array.isArray(variants) || variants.length === 0) {
+      return reply.status(400).send({ success: false, message: 'variants array is required and must not be empty' });
+    }
+
+    // Validate each variant
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i];
+      if (v.price === undefined || v.price === null || v.stock === undefined || v.stock === null) {
+        return reply.status(400).send({ success: false, message: `Variant ${i + 1} must have price and stock` });
+      }
+      if (!v.sku) {
+        return reply.status(400).send({ success: false, message: `Variant ${i + 1} must have a SKU` });
+      }
+      if (!v.attributes || Object.keys(v.attributes).length === 0) {
+        return reply.status(400).send({ success: false, message: `Variant ${i + 1} must have at least one attribute` });
+      }
+      if (typeof v.price === 'string') v.price = parseFloat(v.price);
+      if (typeof v.stock === 'string') v.stock = parseInt(v.stock);
+    }
+
+    // ── Pre-resolve all attribute + attribute value IDs outside any transaction ──
+    const resolvedAttributeValueIds = {}; // "attrName:attrValue" → attributeValueId
+
+    for (const variant of variants) {
+      for (const [attrName, attrData] of Object.entries(variant.attributes)) {
+        // attrData can be a plain value string/number OR an object { value, hexColor, valueType }
+        const isObject = attrData !== null && typeof attrData === 'object';
+        const attrValue = isObject ? attrData.value : attrData;
+        const hexColor  = isObject ? (attrData.hexColor || null) : null;
+        const valueType = isObject ? (attrData.valueType || 'text') : 'text';
+
+        const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
+        if (resolvedAttributeValueIds[key]) continue;
+
+        // Find or create attribute
+        let attribute = await prisma.attribute.findUnique({ where: { name: attrName.toLowerCase() } });
+        if (!attribute) {
+          const resolvedValueType = ['text', 'number'].includes(valueType) ? valueType : 'text';
+          attribute = await prisma.attribute.create({
+            data: { name: attrName.toLowerCase(), displayName: attrName, valueType: resolvedValueType, isActive: true }
+          });
+        }
+
+        // Find or create attribute value
+        let attributeValue = await prisma.attributeValue.findUnique({
+          where: { attributeId_value: { attributeId: attribute.id, value: attrValue.toString() } }
+        });
+        if (!attributeValue) {
+          attributeValue = await prisma.attributeValue.create({
+            data: {
+              attributeId: attribute.id,
+              value: attrValue.toString(),
+              displayValue: attrValue.toString(),
+              hexColor,
+              isActive: true
+            }
+          });
+        }
+
+        resolvedAttributeValueIds[key] = attributeValue.id;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const incomingIds = new Set(variants.filter(v => v.id).map(v => v.id));
+
+    // Get existing variants for this product
+    const existingVariants = await prisma.productVariant.findMany({ where: { productId } });
+    const existingIds = new Set(existingVariants.map(v => v.id));
+
+    // Delete variants that are NOT in the incoming set
+    const toDelete = existingVariants.filter(v => !incomingIds.has(v.id));
+    for (const v of toDelete) {
+      await prisma.variantAttributeValue.deleteMany({ where: { variantId: v.id } });
+      await prisma.productVariant.delete({ where: { id: v.id } });
+    }
+
+    const savedVariants = [];
+
+    for (const variant of variants) {
+      if (variant.id && existingIds.has(variant.id)) {
+        // ── UPDATE existing variant ──────────────────────────────────────────
+        await prisma.productVariant.update({
+          where: { id: variant.id },
+          data: {
+            price: variant.price,
+            stock: variant.stock,
+            sku: variant.sku,
+            isActive: variant.isActive !== undefined ? (variant.isActive === true || variant.isActive === 'true') : true,
+            ...(Array.isArray(variant.images) ? { images: variant.images } : {})
+          }
+        });
+
+        // Replace attribute links
+        await prisma.variantAttributeValue.deleteMany({ where: { variantId: variant.id } });
+        for (const [attrName, attrData] of Object.entries(variant.attributes)) {
+          const attrValue = (attrData !== null && typeof attrData === 'object') ? attrData.value : attrData;
+          const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
+          const attributeValueId = resolvedAttributeValueIds[key];
+          if (attributeValueId) {
+            await prisma.variantAttributeValue.create({ data: { variantId: variant.id, attributeValueId } });
+          }
+        }
+
+        savedVariants.push(variant.id);
+      } else {
+        // ── CREATE new variant ───────────────────────────────────────────────
+        // Check SKU uniqueness
+        const existing = await prisma.productVariant.findUnique({ where: { sku: variant.sku } });
+        if (existing) {
+          return reply.status(409).send({ success: false, message: `SKU "${variant.sku}" already exists` });
+        }
+
+        const created = await prisma.productVariant.create({
+          data: {
+            productId,
+            price: variant.price,
+            stock: variant.stock,
+            sku: variant.sku,
+            isActive: variant.isActive !== undefined ? (variant.isActive === true || variant.isActive === 'true') : true,
+            images: Array.isArray(variant.images) ? variant.images : []
+          }
+        });
+
+        for (const [attrName, attrData] of Object.entries(variant.attributes)) {
+          const attrValue = (attrData !== null && typeof attrData === 'object') ? attrData.value : attrData;
+          const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
+          const attributeValueId = resolvedAttributeValueIds[key];
+          if (attributeValueId) {
+            await prisma.variantAttributeValue.create({ data: { variantId: created.id, attributeValueId } });
+          }
+        }
+
+        savedVariants.push(created.id);
+      }
+    }
+
+    // Recalculate product stock
+    const { calculateVariableProductStock } = require('../utils/productVariantUtils');
+    const { totalStock } = await calculateVariableProductStock(productId);
+    await prisma.$executeRaw`UPDATE "products" SET stock = NULL WHERE id = ${productId}`;
+
+    // Auto-reactivate product if it now has stock
+    await autoReactivateIfStocked(productId);
+
+    return reply.status(200).send({
+      success: true,
+      message: `${savedVariants.length} variant(s) saved successfully`,
+      variantCount: savedVariants.length,
+      totalStock
+    });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return reply.status(409).send({ success: false, message: 'SKU already exists' });
+    }
+    console.error('bulkSaveVariants error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

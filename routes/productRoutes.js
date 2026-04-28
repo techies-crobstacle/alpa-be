@@ -8,6 +8,7 @@ const {
   getProductById,
   getProductVariants,
   updateVariant,
+  bulkSaveVariants,
   deleteProduct,
   updateProduct,
   getProductStock,
@@ -39,6 +40,9 @@ async function productRoutes(fastify, options) {
 
   // GET PRODUCT VARIANTS (Public - for VARIABLE products)
   fastify.get("/:id/variants", getProductVariants);
+
+  // BULK SAVE VARIANTS (Seller or Admin — replaces full variant set, handles attributes)
+  fastify.put("/:productId/variants/bulk", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, bulkSaveVariants);
 
   // UPDATE VARIANT (Seller or Admin — also auto-reactivates product if stock is restored)
   fastify.put("/:productId/variants/:variantId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, updateVariant);
