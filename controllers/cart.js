@@ -527,7 +527,7 @@ exports.removeFromCart = async (request, reply) => {
 /**
  * Calculate cart totals for guest checkout
  * POST /api/cart/calculate-guest
- * Body: { items: [{ productId, quantity }], shippingMethodId }
+ * Body: { items: [{ productId, variantId?, quantity }], shippingMethodId }
  */
 exports.calculateGuestCart = async (request, reply) => {
   try {
@@ -575,19 +575,39 @@ exports.calculateGuestCart = async (request, reply) => {
       });
     }
 
-    // Build cart items with product details
+    // Fetch variants for items that have a variantId
+    const variantIds = items.map(i => i.variantId).filter(Boolean);
+    const variants = variantIds.length > 0
+      ? await prisma.productVariant.findMany({
+          where: { id: { in: variantIds } },
+          include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } }
+        })
+      : [];
+
+    // Build cart items with product + variant details
     const cartItems = items.map(item => {
       const product = products.find(p => p.id === item.productId);
+      const productVariant = item.variantId ? variants.find(v => v.id === item.variantId) : null;
       return {
         productId: item.productId,
         quantity: item.quantity,
-        product
+        product,
+        productVariant: productVariant || null
       };
     });
 
     // Check stock availability
     for (const item of cartItems) {
-      if (item.quantity > item.product.stock) {
+      if (item.productVariant) {
+        // VARIABLE product — check variant stock
+        if (item.productVariant.stock < item.quantity) {
+          return reply.status(400).send({
+            success: false,
+            message: `Insufficient stock for ${item.product.title}. Available: ${item.productVariant.stock}`
+          });
+        }
+      } else if (item.product.stock !== null && item.quantity > item.product.stock) {
+        // SIMPLE product — check product stock (skip null)
         return reply.status(400).send({
           success: false,
           message: `Insufficient stock for ${item.product.title}. Available: ${item.product.stock}`

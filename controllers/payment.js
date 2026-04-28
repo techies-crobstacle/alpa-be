@@ -706,7 +706,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     const orderItems = [];
 
     for (const item of items) {
-      const { productId, quantity } = item;
+      const { productId, variantId, quantity } = item;
       if (!productId || !quantity || quantity < 1) {
         return reply.status(400).send({ success: false, message: "Invalid item in order" });
       }
@@ -715,15 +715,28 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       if (!product) {
         return reply.status(404).send({ success: false, message: `Product ${productId} not found` });
       }
-      if (product.stock < quantity) {
-        return reply.status(400).send({
-          success: false,
-          message: `Insufficient stock for: ${product.title}`,
+
+      let variant = null;
+      if (variantId) {
+        variant = await prisma.productVariant.findUnique({
+          where: { id: variantId },
+          include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } }
         });
+        if (!variant) {
+          return reply.status(404).send({ success: false, message: `Variant ${variantId} not found` });
+        }
+        if (variant.stock < quantity) {
+          return reply.status(400).send({ success: false, message: `Insufficient stock for: ${product.title}` });
+        }
+      } else {
+        if (product.stock < quantity) {
+          return reply.status(400).send({ success: false, message: `Insufficient stock for: ${product.title}` });
+        }
       }
 
-      cartItems.push({ product, quantity });
-      orderItems.push({ productId: product.id, quantity, price: Number(product.price) });
+      const itemPrice = variant ? Number(variant.price) : Number(product.price);
+      cartItems.push({ product, productVariant: variant, quantity });
+      orderItems.push({ productId: product.id, variantId: variantId || null, quantity, price: itemPrice });
     }
 
     // Calculate totals
@@ -802,10 +815,10 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     // Create PENDING guest order (stock deducted on payment success via webhook / confirm)
     // Build per-seller map — same logic as the logged-in flow
     const guestSellerMap = new Map();
-    for (const { product, quantity } of cartItems) {
+    for (const { product, productVariant, quantity } of cartItems) {
       const sid = product.sellerId;
       if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
-      guestSellerMap.get(sid).push({ product, quantity });
+      guestSellerMap.get(sid).push({ product, productVariant, quantity });
     }
     const guestIsMultiSeller = guestSellerMap.size > 1;
 
@@ -844,7 +857,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       order = await prisma.$transaction(async (tx) => {
         const parentOrder = await tx.order.create({ data: guestOrderBaseData });
         for (const [sellerId, sellerItems] of guestSellerMap) {
-          const productsSubtotal = sellerItems.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0);
+          const productsSubtotal = sellerItems.reduce((sum, i) => sum + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
           const subOrderSubtotal = productsSubtotal + perSellerShipping;
           const subOrder = await tx.subOrder.create({
             data: { parentOrderId: parentOrder.id, sellerId, subtotal: subOrderSubtotal, status: "CONFIRMED" }
@@ -853,8 +866,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
             data: sellerItems.map(i => ({
               subOrderId: subOrder.id,
               productId: i.product.id,
+              variantId: i.productVariant?.id || null,
               quantity: i.quantity,
-              price: Number(i.product.price)
+              price: i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)
             }))
           });
         }
