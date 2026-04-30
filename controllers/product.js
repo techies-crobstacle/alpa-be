@@ -1972,53 +1972,81 @@ exports.bulkSaveVariants = async (request, reply) => {
       if (typeof v.stock === 'string') v.stock = parseInt(v.stock);
     }
 
-    // ── Pre-resolve all attribute + attribute value IDs outside any transaction ──
+    // ── Pre-resolve all attribute + attribute value IDs (batched queries) ──────
     const resolvedAttributeValueIds = {}; // "attrName:attrValue" → attributeValueId
 
+    // Collect all unique attribute names and deduplicated (name, value) needs
+    const uniqueAttrNamesSet = new Set();
+    const seenKeys = new Set();
+    const uniqueAttrValueNeeds = [];
     for (const variant of variants) {
       for (const [attrName, attrData] of Object.entries(variant.attributes)) {
-        // attrData can be a plain value string/number OR an object { value, hexColor, valueType }
         const isObject = attrData !== null && typeof attrData === 'object';
         const attrValue = isObject ? attrData.value : attrData;
         const hexColor  = isObject ? (attrData.hexColor || null) : null;
         const valueType = isObject ? (attrData.valueType || 'text') : 'text';
-
         const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
-        if (resolvedAttributeValueIds[key]) continue;
-
-        // Find or create attribute
-        let attribute = await prisma.attribute.findUnique({ where: { name: attrName.toLowerCase() } });
-        if (!attribute) {
-          const resolvedValueType = ['text', 'number'].includes(valueType) ? valueType : 'text';
-          attribute = await prisma.attribute.create({
-            data: { name: attrName.toLowerCase(), displayName: attrName, valueType: resolvedValueType, isActive: true }
-          });
+        uniqueAttrNamesSet.add(attrName.toLowerCase());
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          uniqueAttrValueNeeds.push({ attrName, attrValue, hexColor, valueType, key });
         }
-
-        // Find or create attribute value; update hexColor if provided and missing
-        let attributeValue = await prisma.attributeValue.findUnique({
-          where: { attributeId_value: { attributeId: attribute.id, value: attrValue.toString() } }
-        });
-        if (!attributeValue) {
-          attributeValue = await prisma.attributeValue.create({
-            data: {
-              attributeId: attribute.id,
-              value: attrValue.toString(),
-              displayValue: attrValue.toString(),
-              hexColor,
-              isActive: true
-            }
-          });
-        } else if (hexColor && !attributeValue.hexColor) {
-          // Backfill missing hexColor if caller provides one
-          attributeValue = await prisma.attributeValue.update({
-            where: { id: attributeValue.id },
-            data: { hexColor }
-          });
-        }
-
-        resolvedAttributeValueIds[key] = attributeValue.id;
       }
+    }
+
+    const uniqueAttrNames = Array.from(uniqueAttrNamesSet);
+
+    // Batch fetch all existing attributes in one query
+    const existingAttrs = await prisma.attribute.findMany({ where: { name: { in: uniqueAttrNames } } });
+    const attrMap = {};
+    for (const attr of existingAttrs) attrMap[attr.name] = attr;
+
+    // Create any missing attributes (sequential, but typically none in production)
+    for (const name of uniqueAttrNames) {
+      if (!attrMap[name]) {
+        const hint = uniqueAttrValueNeeds.find(n => n.attrName.toLowerCase() === name);
+        const resolvedValueType = hint && ['text', 'number'].includes(hint.valueType) ? hint.valueType : 'text';
+        attrMap[name] = await prisma.attribute.create({
+          data: { name, displayName: hint ? hint.attrName : name, valueType: resolvedValueType, isActive: true }
+        });
+      }
+    }
+
+    // Attach resolved attributeId to each need
+    const attrValueLookups = uniqueAttrValueNeeds.map(n => ({
+      ...n,
+      attributeId: attrMap[n.attrName.toLowerCase()].id
+    }));
+
+    // Batch fetch all existing attribute values in one query
+    const existingAttrValues = await prisma.attributeValue.findMany({
+      where: { OR: attrValueLookups.map(l => ({ attributeId: l.attributeId, value: l.attrValue.toString() })) }
+    });
+    const attrValueMap = {};
+    for (const av of existingAttrValues) attrValueMap[`${av.attributeId}:${av.value}`] = av;
+
+    // Create missing attribute values + handle hexColor backfill (sequential for safety)
+    for (const need of attrValueLookups) {
+      const lookupKey = `${need.attributeId}:${need.attrValue.toString()}`;
+      let attributeValue = attrValueMap[lookupKey];
+      if (!attributeValue) {
+        attributeValue = await prisma.attributeValue.create({
+          data: {
+            attributeId: need.attributeId,
+            value: need.attrValue.toString(),
+            displayValue: need.attrValue.toString(),
+            hexColor: need.hexColor,
+            isActive: true
+          }
+        });
+      } else if (need.hexColor && !attributeValue.hexColor) {
+        // Backfill missing hexColor if caller provides one
+        attributeValue = await prisma.attributeValue.update({
+          where: { id: attributeValue.id },
+          data: { hexColor: need.hexColor }
+        });
+      }
+      resolvedAttributeValueIds[need.key] = attributeValue.id;
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -2029,17 +2057,32 @@ exports.bulkSaveVariants = async (request, reply) => {
     const existingIds = new Set(existingVariants.map(v => v.id));
 
     // Delete variants that are NOT in the incoming set
-    const toDelete = existingVariants.filter(v => !incomingIds.has(v.id));
-    for (const v of toDelete) {
-      await prisma.variantAttributeValue.deleteMany({ where: { variantId: v.id } });
-      await prisma.productVariant.delete({ where: { id: v.id } });
+    // onDelete: Cascade on VariantAttributeValue handles the junction table automatically
+    const toDeleteIds = existingVariants.filter(v => !incomingIds.has(v.id)).map(v => v.id);
+    if (toDeleteIds.length > 0) {
+      await prisma.productVariant.deleteMany({ where: { id: { in: toDeleteIds } } });
     }
 
     const savedVariants = [];
 
-    for (const variant of variants) {
-      if (variant.id && existingIds.has(variant.id)) {
-        // ── UPDATE existing variant ──────────────────────────────────────────
+    // ── Helper: build attribute link rows for createMany ─────────────────────
+    const buildAttrLinks = (variantId, attributes) =>
+      Object.entries(attributes)
+        .map(([attrName, attrData]) => {
+          const attrValue = (attrData !== null && typeof attrData === 'object') ? attrData.value : attrData;
+          const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
+          return resolvedAttributeValueIds[key]
+            ? { variantId, attributeValueId: resolvedAttributeValueIds[key] }
+            : null;
+        })
+        .filter(Boolean);
+
+    // ── Process UPDATEs and CREATEs in parallel ───────────────────────────────
+    const toUpdate = variants.filter(v => v.id && existingIds.has(v.id));
+    const toCreate = variants.filter(v => !v.id || !existingIds.has(v.id));
+
+    await Promise.all([
+      ...toUpdate.map(async (variant) => {
         await prisma.productVariant.update({
           where: { id: variant.id },
           data: {
@@ -2050,27 +2093,16 @@ exports.bulkSaveVariants = async (request, reply) => {
             ...(Array.isArray(variant.images) ? { images: variant.images } : {})
           }
         });
-
-        // Replace attribute links
+        // Replace attribute links: delete old, bulk insert new
         await prisma.variantAttributeValue.deleteMany({ where: { variantId: variant.id } });
-        for (const [attrName, attrData] of Object.entries(variant.attributes)) {
-          const attrValue = (attrData !== null && typeof attrData === 'object') ? attrData.value : attrData;
-          const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
-          const attributeValueId = resolvedAttributeValueIds[key];
-          if (attributeValueId) {
-            await prisma.variantAttributeValue.create({ data: { variantId: variant.id, attributeValueId } });
-          }
+        const attrLinks = buildAttrLinks(variant.id, variant.attributes);
+        if (attrLinks.length > 0) {
+          await prisma.variantAttributeValue.createMany({ data: attrLinks });
         }
-
         savedVariants.push(variant.id);
-      } else {
-        // ── CREATE new variant ───────────────────────────────────────────────
-        // Check SKU uniqueness
-        const existing = await prisma.productVariant.findUnique({ where: { sku: variant.sku } });
-        if (existing) {
-          return reply.status(409).send({ success: false, message: `SKU "${variant.sku}" already exists` });
-        }
-
+      }),
+      ...toCreate.map(async (variant) => {
+        // ── CREATE new variant (DB unique constraint on sku handles duplicates via P2002) ──
         const created = await prisma.productVariant.create({
           data: {
             productId,
@@ -2081,19 +2113,13 @@ exports.bulkSaveVariants = async (request, reply) => {
             images: Array.isArray(variant.images) ? variant.images : []
           }
         });
-
-        for (const [attrName, attrData] of Object.entries(variant.attributes)) {
-          const attrValue = (attrData !== null && typeof attrData === 'object') ? attrData.value : attrData;
-          const key = `${attrName.toLowerCase()}:${attrValue.toString()}`;
-          const attributeValueId = resolvedAttributeValueIds[key];
-          if (attributeValueId) {
-            await prisma.variantAttributeValue.create({ data: { variantId: created.id, attributeValueId } });
-          }
+        const attrLinks = buildAttrLinks(created.id, variant.attributes);
+        if (attrLinks.length > 0) {
+          await prisma.variantAttributeValue.createMany({ data: attrLinks });
         }
-
         savedVariants.push(created.id);
-      }
-    }
+      })
+    ]);
 
     // Recalculate product stock
     const { calculateVariableProductStock } = require('../utils/productVariantUtils');

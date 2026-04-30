@@ -15,24 +15,38 @@ const isAdminRole = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
 // For VARIABLE products, replaces price (null) with the variant price range string.
 // Used by admin product list endpoints.
 const enrichProductPrice = async (products) => {
-  return Promise.all(products.map(async (product) => {
+  // Collect all VARIABLE product IDs for a single batch query
+  const variableIds = products.filter(p => p.type === 'VARIABLE').map(p => p.id);
+
+  const variantStatsMap = {};
+  if (variableIds.length > 0) {
+    const rows = await prisma.$queryRaw`
+      SELECT "productId",
+             MIN(price::numeric) as min_price,
+             MAX(price::numeric) as max_price,
+             SUM(stock)::int as total_stock
+      FROM "product_variants"
+      WHERE "productId" = ANY(${variableIds}::text[])
+      GROUP BY "productId"
+    `;
+    for (const row of rows) {
+      variantStatsMap[row.productId] = row;
+    }
+  }
+
+  return products.map((product) => {
     if (product.type !== 'VARIABLE') {
       return { ...product, price: product.price ? parseFloat(product.price) : null };
     }
-    const rows = await prisma.$queryRaw`
-      SELECT MIN(price::numeric) as min_price, MAX(price::numeric) as max_price,
-             SUM(stock)::int as total_stock
-      FROM "product_variants"
-      WHERE "productId" = ${product.id}
-    `;
-    const min = rows[0]?.min_price ? parseFloat(rows[0].min_price) : null;
-    const max = rows[0]?.max_price ? parseFloat(rows[0].max_price) : null;
+    const stats = variantStatsMap[product.id];
+    const min = stats?.min_price ? parseFloat(stats.min_price) : null;
+    const max = stats?.max_price ? parseFloat(stats.max_price) : null;
     const priceRange = min !== null && max !== null
       ? (min === max ? `${min}` : `${min} - ${max}`)
       : null;
-    const totalStock = rows[0]?.total_stock ?? 0;
+    const totalStock = stats?.total_stock ?? 0;
     return { ...product, price: priceRange, stock: totalStock };
-  }));
+  });
 };
 
 // ── Order display-ID helpers (used by all admin order endpoints) ──────────────
@@ -81,19 +95,29 @@ const deriveMultiSellerStatus = (subOrderStatuses, fallback = 'CONFIRMED') => {
 };
 
 // Trim item objects — keep only fields the frontend needs
-const trimItems = (items = []) =>
-  items.map(item => ({
-    id:        item.id,
-    productId: item.productId,
-    quantity:  item.quantity,
-    price:     item.price,
-    product:   item.product ? {
-      id:            item.product.id,
-      title:         item.product.title,
-      featuredImage: item.product.featuredImage,
-      price:         item.product.price
-    } : null
-  }));
+const formatOrderItem = (item) => ({
+  id:        item.id,
+  productId: item.productId,
+  variantId: item.variantId || null,
+  quantity:  item.quantity,
+  price:     item.price,
+  product:   item.product ? {
+    id:            item.product.id,
+    title:         item.product.title,
+    featuredImage: item.product.featuredImage,
+    price:         item.product.price
+  } : null,
+  variantAttributes: item.productVariant
+    ? Object.fromEntries(
+        (item.productVariant.variantAttributeValues || []).map(vav => [
+          vav.attributeValue?.attribute?.displayName || vav.attributeValue?.attribute?.name,
+          vav.attributeValue?.displayValue || vav.attributeValue?.value
+        ])
+      )
+    : null
+});
+
+const trimItems = (items = []) => items.map(formatOrderItem);
 
 const {
   notifySellerApproved,
@@ -445,6 +469,13 @@ exports.getOrdersBySellerId = async (request, reply) => {
                   price: true,
                   sellerId: true
                 }
+              },
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
+                }
               }
             }
           },
@@ -483,6 +514,13 @@ exports.getOrdersBySellerId = async (request, reply) => {
                   featuredImage: true,
                   price: true,
                   sellerId: true
+                }
+              },
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
                 }
               }
             }
@@ -525,6 +563,13 @@ exports.getOrdersBySellerId = async (request, reply) => {
                   featuredImage: true,
                   price: true,
                   sellerId: true
+                }
+              },
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
                 }
               }
             }
@@ -1891,7 +1936,7 @@ exports.getProductsBySeller = async (request, reply) => {
     }
 
     const products = await prisma.$queryRaw`
-      SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
+      SELECT id, title, description, type, price, category, stock, "sellerId", "sellerName",
              "artistName", status, "isActive", featured, tags,
              "featuredImage", images AS "galleryImages",
              "rejectionReason", "createdAt", "updatedAt"
@@ -1940,7 +1985,7 @@ exports.getAllAdminProducts = async (request, reply) => {
     let products;
     if (dbStatus && sellerId) {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -1957,7 +2002,7 @@ exports.getAllAdminProducts = async (request, reply) => {
       `;
     } else if (dbStatus) {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -1973,7 +2018,7 @@ exports.getAllAdminProducts = async (request, reply) => {
       `;
     } else if (sellerId) {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -1989,7 +2034,7 @@ exports.getAllAdminProducts = async (request, reply) => {
       `;
     } else {
       products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
+        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
                p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
                p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
                p."rejectionReason", p."createdAt", p."updatedAt",
@@ -3299,7 +3344,7 @@ exports.getPendingProducts = async (request, reply) => {
     }
 
     const products = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.description, p.price, p.weight, p.category, p.stock,
+      SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
              p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
              p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
              p."rejectionReason", p."createdAt", p."updatedAt",
@@ -4404,6 +4449,13 @@ exports.getAllOrdersDetailed = async (request, reply) => {
                   seller: { select: { id: true, name: true, email: true } },
                 },
               },
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
+                }
+              },
             },
           },
           // Multi-seller sub-orders
@@ -4420,6 +4472,13 @@ exports.getAllOrdersDetailed = async (request, reply) => {
                 include: {
                   product: {
                     select: { id: true, title: true, featuredImage: true },
+                  },
+                  productVariant: {
+                    include: {
+                      variantAttributeValues: {
+                        include: { attributeValue: { include: { attribute: true } } }
+                      }
+                    }
                   },
                 },
               },
@@ -4515,14 +4574,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
               businessName: sub.sellerProfile?.businessName || null,
               storeLogo:    sub.sellerProfile?.storeLogo    || null,
             },
-            items: sub.items.map(item => ({
-              id:       item.id,
-              quantity: item.quantity,
-              price:    item.price,
-              product:  item.product
-                ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
-                : null,
-            })),
+            items: sub.items.map(formatOrderItem),
             itemCount:  sub.items.length,
             createdAt:  sub.createdAt,
             updatedAt:  sub.updatedAt,
@@ -4549,14 +4601,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
             : null,
           trackingNumber:    order.trackingNumber    || null,
           estimatedDelivery: order.estimatedDelivery || null,
-          items: order.items.map(item => ({
-            id:       item.id,
-            quantity: item.quantity,
-            price:    item.price,
-            product:  item.product
-              ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
-              : null,
-          })),
+          items: order.items.map(formatOrderItem),
           itemCount: order.items.length,
           subOrders: [],
         };
@@ -4575,14 +4620,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
             subtotal: 0,
           };
         }
-        sellerMap[sid].items.push({
-          id:       item.id,
-          quantity: item.quantity,
-          price:    item.price,
-          product:  item.product
-            ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
-            : null,
-        });
+        sellerMap[sid].items.push(formatOrderItem(item));
         sellerMap[sid].subtotal += parseFloat(item.price || 0) * item.quantity;
       });
 
@@ -4591,14 +4629,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         trackingNumber:    order.trackingNumber    || null,
         estimatedDelivery: order.estimatedDelivery || null,
         sellers:   Object.values(sellerMap),
-        items: order.items.map(item => ({
-          id:       item.id,
-          quantity: item.quantity,
-          price:    item.price,
-          product:  item.product
-            ? { id: item.product.id, title: item.product.title, featuredImage: item.product.featuredImage }
-            : null,
-        })),
+        items: order.items.map(formatOrderItem),
         itemCount: order.items.length,
         subOrders: [],
       };

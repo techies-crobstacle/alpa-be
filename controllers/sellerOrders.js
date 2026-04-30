@@ -33,6 +33,7 @@ const trimItems = (items = []) =>
   items.map(item => ({
     id:        item.id,
     productId: item.productId,
+    variantId: item.variantId || null,
     quantity:  item.quantity,
     price:     item.price,
     product:   item.product ? {
@@ -40,7 +41,15 @@ const trimItems = (items = []) =>
       title:  item.product.title,
       featuredImage: item.product.featuredImage,
       price:  item.product.price
-    } : null
+    } : null,
+    variantAttributes: item.productVariant
+      ? Object.fromEntries(
+          (item.productVariant.variantAttributeValues || []).map(vav => [
+            vav.attributeValue?.attribute?.displayName || vav.attributeValue?.attribute?.name,
+            vav.attributeValue?.displayValue || vav.attributeValue?.value
+          ])
+        )
+      : null
   }));
 
 // Helper function to map database status to display status
@@ -80,7 +89,14 @@ exports.getSellerOrders = async (request, reply) => {
         include: {
           items: {
             include: {
-              product: true
+              product: true,
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
+                }
+              }
             }
           },
           user: {
@@ -103,7 +119,14 @@ exports.getSellerOrders = async (request, reply) => {
         include: {
           items: {
             include: {
-              product: true
+              product: true,
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
+                }
+              }
             }
           },
           parentOrder: {
@@ -144,6 +167,13 @@ exports.getSellerOrders = async (request, reply) => {
                   featuredImage: true,
                   price: true,
                   sellerId: true
+                }
+              },
+              productVariant: {
+                include: {
+                  variantAttributeValues: {
+                    include: { attributeValue: { include: { attribute: true } } }
+                  }
                 }
               }
             }
