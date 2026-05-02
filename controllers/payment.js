@@ -2,7 +2,7 @@ const Stripe = require("stripe");
 const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
-const { generateInvoiceBuffer } = require("./orders");
+const { generateInvoiceBuffer, calcSellerCouponDiscount } = require("./orders");
 
 // ─── Short Display ID Generator ───────────────────────────────────────────────
 const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -748,27 +748,41 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     let discountAmount = 0;
 
     if (couponCode) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: couponCode.toUpperCase() },
-      });
-      if (!coupon) return reply.status(400).send({ success: false, message: "Invalid coupon code" });
-      if (!coupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
-      if (new Date() > coupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
-      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit)
-        return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
-      if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue)
-        return reply.status(400).send({
-          success: false,
-          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required`,
-        });
+      const upper   = couponCode.toUpperCase();
+      const gstRate = parseFloat(cartCalculations.gstPercentage) || 0;
 
-      if (coupon.discountType === "percentage") {
-        discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
-        if (coupon.maxDiscount !== null) discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+      // Try seller coupon first
+      const sellerCoupon = await prisma.sellerCoupon.findUnique({ where: { code: upper } });
+
+      if (sellerCoupon && !sellerCoupon.softDeletedAt) {
+        if (!sellerCoupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
+        if (new Date() > sellerCoupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
+        if (sellerCoupon.usageLimit !== null && sellerCoupon.usageCount >= sellerCoupon.usageLimit)
+          return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
+        discountAmount = calcSellerCouponDiscount(sellerCoupon, cartItems, gstRate);
+        appliedCoupon  = sellerCoupon;
       } else {
-        discountAmount = Math.min(coupon.discountValue, originalTotal);
+        // Fall back to legacy (admin) coupon
+        const coupon = await prisma.coupon.findUnique({ where: { code: upper } });
+        if (!coupon) return reply.status(400).send({ success: false, message: "Invalid coupon code" });
+        if (!coupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
+        if (new Date() > coupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
+        if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit)
+          return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
+        if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue)
+          return reply.status(400).send({
+            success: false,
+            message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required`,
+          });
+
+        if (coupon.discountType === "percentage") {
+          discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
+          if (coupon.maxDiscount !== null) discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+        } else {
+          discountAmount = Math.min(coupon.discountValue, originalTotal);
+        }
+        appliedCoupon = coupon;
       }
-      appliedCoupon = coupon;
     }
 
     const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));

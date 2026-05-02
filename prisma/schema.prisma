@@ -44,6 +44,7 @@ model User {
   addresses                       UserAddress[]
   userSessions                    UserSession[]
   wishlist                        Wishlist[]
+  sellerCoupons                   SellerCoupon[]      @relation("SellerCoupons")
 
   @@map("users")
 }
@@ -697,6 +698,39 @@ model AttributeValue {
   @@unique([attributeId, value])
   @@index([attributeId])
   @@map("attribute_values")
+}
+
+model SellerCoupon {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  sellerId      String    @map("seller_id")
+  productIds    String[]  @default([]) @map("product_ids")
+  couponType    String    @default("discount") @map("coupon_type")
+  discountType  String?   @map("discount_type")
+  discountValue Float?    @map("discount_value")
+  maxDiscount   Float?    @map("max_discount")
+  minQty        Int       @default(1) @map("min_qty")
+  bundleQty     Int?      @map("bundle_qty")
+  bundlePrice   Float?    @map("bundle_price")
+  expiresAt     DateTime  @map("expires_at")
+  usageLimit    Int?      @map("usage_limit")
+  usagePerUser  Int       @default(1) @map("usage_per_user")
+  usageCount    Int       @default(0) @map("usage_count")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdBy     String    @map("created_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  softDeletedAt DateTime? @map("soft_deleted_at")
+  softDeletedBy String?   @map("soft_deleted_by")
+  restoredAt    DateTime? @map("restored_at")
+  restoredBy    String?   @map("restored_by")
+  seller        User      @relation("SellerCoupons", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([sellerId])
+  @@index([code])
+  @@index([isActive])
+  @@index([softDeletedAt])
+  @@map("seller_coupons")
 }
 
 model VariantAttributeValue {

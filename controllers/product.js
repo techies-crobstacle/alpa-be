@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma");
+const { Prisma } = require('@prisma/client');
 const {
   notifySellerProductStatusChange,
   notifySellerLowStock,
@@ -1520,6 +1521,9 @@ exports.getBulkStock = async (request, reply) => {
 // GET ALL PRODUCTS (Public - only active sellers' products)
 exports.getAllProducts = async (request, reply) => {
   try {
+    const { sellerId } = request.query || {};
+    const sellerFilter = sellerId ? Prisma.sql`AND p."sellerId" = ${sellerId}` : Prisma.empty;
+
     const products = await prisma.$queryRaw`
       SELECT
         p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
@@ -1535,6 +1539,7 @@ exports.getAllProducts = async (request, reply) => {
       LEFT JOIN "ratings" r ON r."productId" = p.id
       WHERE p."isActive" = true AND sp.status = 'ACTIVE'
         AND p."deletedAt" IS NULL
+        ${sellerFilter}
       GROUP BY p.id, u.name
       ORDER BY p."createdAt" DESC
     `;

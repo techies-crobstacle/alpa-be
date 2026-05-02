@@ -23,7 +23,8 @@ async function productRoutes(fastify, options) {
   // ADD PRODUCT (Seller only - must be approved, with image upload)
   fastify.post("/add", { preHandler: [authenticateSeller, handleProductImagesUpload] }, addProduct);
 
-  // GET ALL PRODUCTS (Public)
+  // GET ALL PRODUCTS (Public) — also aliased at root for ?sellerId= support
+  fastify.get("/", getAllProducts);
   fastify.get("/all", getAllProducts);
 
   // BULK STOCK CHECK (Public) — must be registered before /:id to avoid route conflict

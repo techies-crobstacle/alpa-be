@@ -126,6 +126,76 @@ const handleLowStockAlerts = async (productIds) => {
 module.exports.handleLowStockAlerts = handleLowStockAlerts;
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Seller-coupon discount helper ─────────────────────────────────────────────
+// Calculates the GST-inclusive discount amount for a SellerCoupon applied to a
+// list of cart items.  Works for both createOrder (items from DB cart with
+// product + productVariant) and createGuestOrder (items with product only).
+function _calcSellerCouponDiscount(coupon, cartItems, gstRate) {
+  const rate = parseFloat(gstRate) || 0;
+
+  // Group qualifying items by productId
+  const groups = {};
+  for (const item of cartItems) {
+    const pid = item.product?.id || item.productId;
+    const sid = item.product?.sellerId;
+    const qty = item.quantity || 0;
+    const belongsToSeller = sid === coupon.sellerId;
+    const inList = coupon.productIds.length === 0 || coupon.productIds.includes(pid);
+    if (!belongsToSeller || !inList || qty <= 0) continue;
+
+    const unitPriceIncl = item.productVariant
+      ? Number(item.productVariant.price)
+      : Number(item.product?.price || 0);
+
+    if (!groups[pid]) groups[pid] = { totalQty: 0, totalInclSubtotal: 0 };
+    groups[pid].totalQty          += qty;
+    groups[pid].totalInclSubtotal += unitPriceIncl * qty;
+  }
+
+  let totalRegularExGST    = 0;
+  let totalDiscountedExGST = 0;
+
+  for (const g of Object.values(groups)) {
+    // Convert inclusive price to ex-GST
+    const regularExGST = rate > 0
+      ? (g.totalInclSubtotal * 100) / (100 + rate)
+      : g.totalInclSubtotal;
+    totalRegularExGST += regularExGST;
+
+    // minQty gate — no discount if group doesn't meet minimum
+    if (g.totalQty < coupon.minQty) {
+      totalDiscountedExGST += regularExGST;
+      continue;
+    }
+
+    let discountedExGST;
+    if (coupon.couponType === 'bundle') {
+      const bundles    = Math.floor(g.totalQty / coupon.bundleQty);
+      const remaining  = g.totalQty % coupon.bundleQty;
+      const avgPerItem = regularExGST / g.totalQty;
+      discountedExGST  = bundles * Number(coupon.bundlePrice) + remaining * avgPerItem;
+    } else {
+      let disc = 0;
+      if (coupon.discountType === 'percentage') {
+        disc = (regularExGST * Number(coupon.discountValue)) / 100;
+        if (coupon.maxDiscount) disc = Math.min(disc, Number(coupon.maxDiscount));
+      } else {
+        disc = Math.min(Number(coupon.discountValue), regularExGST);
+      }
+      discountedExGST = regularExGST - disc;
+    }
+    totalDiscountedExGST += discountedExGST;
+  }
+
+  if (totalRegularExGST === 0) return 0;
+
+  // Convert both sides back to GST-inclusive, return the savings
+  const regularIncl    = totalRegularExGST    * (1 + rate / 100);
+  const discountedIncl = totalDiscountedExGST * (1 + rate / 100);
+  return parseFloat((regularIncl - discountedIncl).toFixed(2));
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Stock Management and Inventory Alert with SMS Notification
 exports.createOrder = async (request, reply) => {
   try {
@@ -205,44 +275,64 @@ exports.createOrder = async (request, reply) => {
 
     // ── Coupon validation (server-side) ──────────────────────────────────────
     let appliedCoupon = null;
+    let couponModel   = null; // 'seller' | 'legacy'
     let discountAmount = 0;
 
     if (couponCode) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: couponCode.toUpperCase() }
-      });
+      const upper   = couponCode.toUpperCase();
+      const gstRate = parseFloat(cartCalculations.gstPercentage) || 0;
 
-      if (!coupon) {
-        return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
-      }
-      if (!coupon.isActive) {
-        return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
-      }
-      if (new Date() > coupon.expiresAt) {
-        return reply.status(400).send({ success: false, message: 'Coupon has expired' });
-      }
-      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
-        return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
-      }
-      if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue) {
-        return reply.status(400).send({
-          success: false,
-          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required for this coupon`
-        });
-      }
+      // Try seller coupon first
+      const sellerCoupon = await prisma.sellerCoupon.findUnique({ where: { code: upper } });
 
-      // Calculate discount
-      if (coupon.discountType === 'percentage') {
-        discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
-        if (coupon.maxDiscount !== null) {
-          discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+      if (sellerCoupon && !sellerCoupon.softDeletedAt) {
+        if (!sellerCoupon.isActive) {
+          return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
         }
+        if (new Date() > sellerCoupon.expiresAt) {
+          return reply.status(400).send({ success: false, message: 'Coupon has expired' });
+        }
+        if (sellerCoupon.usageLimit !== null && sellerCoupon.usageCount >= sellerCoupon.usageLimit) {
+          return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+        }
+        discountAmount = _calcSellerCouponDiscount(sellerCoupon, cart.items, gstRate);
+        appliedCoupon  = sellerCoupon;
+        couponModel    = 'seller';
       } else {
-        // fixed
-        discountAmount = Math.min(coupon.discountValue, originalTotal);
-      }
+        // Fall back to legacy (admin) coupon
+        const legacyCoupon = await prisma.coupon.findUnique({ where: { code: upper } });
 
-      appliedCoupon = coupon;
+        if (!legacyCoupon) {
+          return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
+        }
+        if (!legacyCoupon.isActive) {
+          return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
+        }
+        if (new Date() > legacyCoupon.expiresAt) {
+          return reply.status(400).send({ success: false, message: 'Coupon has expired' });
+        }
+        if (legacyCoupon.usageLimit !== null && legacyCoupon.usageCount >= legacyCoupon.usageLimit) {
+          return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+        }
+        if (legacyCoupon.minCartValue !== null && originalTotal < legacyCoupon.minCartValue) {
+          return reply.status(400).send({
+            success: false,
+            message: `Minimum cart value of $${legacyCoupon.minCartValue.toFixed(2)} required for this coupon`
+          });
+        }
+
+        if (legacyCoupon.discountType === 'percentage') {
+          discountAmount = parseFloat(((originalTotal * legacyCoupon.discountValue) / 100).toFixed(2));
+          if (legacyCoupon.maxDiscount !== null) {
+            discountAmount = Math.min(discountAmount, legacyCoupon.maxDiscount);
+          }
+        } else {
+          discountAmount = Math.min(legacyCoupon.discountValue, originalTotal);
+        }
+
+        appliedCoupon = legacyCoupon;
+        couponModel   = 'legacy';
+      }
     }
 
     const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
@@ -356,10 +446,17 @@ exports.createOrder = async (request, reply) => {
 
       // Increment coupon usageCount inside the transaction (atomic)
       if (appliedCoupon) {
-        await tx.coupon.update({
-          where: { id: appliedCoupon.id },
-          data: { usageCount: { increment: 1 } }
-        });
+        if (couponModel === 'seller') {
+          await tx.sellerCoupon.update({
+            where: { id: appliedCoupon.id },
+            data: { usageCount: { increment: 1 } }
+          });
+        } else {
+          await tx.coupon.update({
+            where: { id: appliedCoupon.id },
+            data: { usageCount: { increment: 1 } }
+          });
+        }
       }
 
       // Check if this is a single seller or multi-seller order
@@ -2676,42 +2773,64 @@ exports.createGuestOrder = async (request, reply) => {
 
     // ── Coupon validation (server-side) ──────────────────────────────────────
     let appliedCoupon = null;
+    let couponModel   = null; // 'seller' | 'legacy'
     let discountAmount = 0;
 
     if (couponCode) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: couponCode.toUpperCase() }
-      });
+      const upper   = couponCode.toUpperCase();
+      const gstRate = parseFloat(cartCalculations.gstPercentage) || 0;
 
-      if (!coupon) {
-        return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
-      }
-      if (!coupon.isActive) {
-        return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
-      }
-      if (new Date() > coupon.expiresAt) {
-        return reply.status(400).send({ success: false, message: 'Coupon has expired' });
-      }
-      if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
-        return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
-      }
-      if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue) {
-        return reply.status(400).send({
-          success: false,
-          message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required for this coupon`
-        });
-      }
+      // Try seller coupon first
+      const sellerCoupon = await prisma.sellerCoupon.findUnique({ where: { code: upper } });
 
-      if (coupon.discountType === 'percentage') {
-        discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
-        if (coupon.maxDiscount !== null) {
-          discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+      if (sellerCoupon && !sellerCoupon.softDeletedAt) {
+        if (!sellerCoupon.isActive) {
+          return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
         }
+        if (new Date() > sellerCoupon.expiresAt) {
+          return reply.status(400).send({ success: false, message: 'Coupon has expired' });
+        }
+        if (sellerCoupon.usageLimit !== null && sellerCoupon.usageCount >= sellerCoupon.usageLimit) {
+          return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+        }
+        discountAmount = _calcSellerCouponDiscount(sellerCoupon, cartItems, gstRate);
+        appliedCoupon  = sellerCoupon;
+        couponModel    = 'seller';
       } else {
-        discountAmount = Math.min(coupon.discountValue, originalTotal);
-      }
+        // Fall back to legacy (admin) coupon
+        const legacyCoupon = await prisma.coupon.findUnique({ where: { code: upper } });
 
-      appliedCoupon = coupon;
+        if (!legacyCoupon) {
+          return reply.status(400).send({ success: false, message: 'Invalid coupon code' });
+        }
+        if (!legacyCoupon.isActive) {
+          return reply.status(400).send({ success: false, message: 'This coupon is no longer active' });
+        }
+        if (new Date() > legacyCoupon.expiresAt) {
+          return reply.status(400).send({ success: false, message: 'Coupon has expired' });
+        }
+        if (legacyCoupon.usageLimit !== null && legacyCoupon.usageCount >= legacyCoupon.usageLimit) {
+          return reply.status(400).send({ success: false, message: 'Coupon usage limit has been reached' });
+        }
+        if (legacyCoupon.minCartValue !== null && originalTotal < legacyCoupon.minCartValue) {
+          return reply.status(400).send({
+            success: false,
+            message: `Minimum cart value of $${legacyCoupon.minCartValue.toFixed(2)} required for this coupon`
+          });
+        }
+
+        if (legacyCoupon.discountType === 'percentage') {
+          discountAmount = parseFloat(((originalTotal * legacyCoupon.discountValue) / 100).toFixed(2));
+          if (legacyCoupon.maxDiscount !== null) {
+            discountAmount = Math.min(discountAmount, legacyCoupon.maxDiscount);
+          }
+        } else {
+          discountAmount = Math.min(legacyCoupon.discountValue, originalTotal);
+        }
+
+        appliedCoupon = legacyCoupon;
+        couponModel   = 'legacy';
+      }
     }
 
     const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
@@ -2743,10 +2862,17 @@ exports.createGuestOrder = async (request, reply) => {
 
       // Increment coupon usageCount inside the transaction (atomic)
       if (appliedCoupon) {
-        await tx.coupon.update({
-          where: { id: appliedCoupon.id },
-          data: { usageCount: { increment: 1 } }
-        });
+        if (couponModel === 'seller') {
+          await tx.sellerCoupon.update({
+            where: { id: appliedCoupon.id },
+            data: { usageCount: { increment: 1 } }
+          });
+        } else {
+          await tx.coupon.update({
+            where: { id: appliedCoupon.id },
+            data: { usageCount: { increment: 1 } }
+          });
+        }
       }
 
       // Create order without userId (guest order) with shipping/GST details
@@ -3759,3 +3885,4 @@ exports.downloadPublicInvoice = async (request, reply) => {
 
 
 module.exports.generateInvoiceBuffer = generateInvoiceBuffer;
+module.exports.calcSellerCouponDiscount = _calcSellerCouponDiscount;

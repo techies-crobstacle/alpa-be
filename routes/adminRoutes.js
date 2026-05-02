@@ -2,6 +2,7 @@ const { isAdmin, authenticateUser } = require("../middlewares/authMiddleware");
 const authMiddleware = require("../middlewares/auth");
 const checkRole = require("../middlewares/checkRole");
 const adminController = require("../controllers/admin");
+const couponController = require("../controllers/coupon");
 const productController = require("../controllers/product");
 const feedbackController = require("../controllers/feedback");
 const commissionController = require("../controllers/commission");
@@ -180,6 +181,11 @@ async function adminRoutes(fastify, options) {
   fastify.get("/sponsored-sections", { preHandler: adminAuth }, adminController.getAllSponsoredSections);
   fastify.put("/sponsored-sections/:id", { preHandler: adminAuth }, adminController.updateSponsoredSection);
   fastify.delete("/sponsored-sections/:id", { preHandler: adminAuth }, adminController.deleteSponsoredSection);
+
+  // ---------------- SELLER COUPON MANAGEMENT ----------------
+  // GET /api/admin/seller-coupons — all seller coupons grouped by seller
+  // Query: sellerId, isActive, couponType, recycleBin, search, page, limit
+  fastify.get("/seller-coupons", { preHandler: adminAuth }, couponController.adminGetSellerCouponsBySeller);
 } 
 
 module.exports = adminRoutes;

@@ -15,11 +15,12 @@ const prisma = require('../config/prisma');
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const ENTITY_TYPES = {
-  PRODUCT:  'PRODUCT',
-  ORDER:    'ORDER',
-  USER:     'USER',
-  CATEGORY: 'CATEGORY',
-  COUPON:   'COUPON',
+  PRODUCT:       'PRODUCT',
+  ORDER:         'ORDER',
+  USER:          'USER',
+  CATEGORY:      'CATEGORY',
+  COUPON:        'COUPON',
+  SELLER_COUPON: 'SELLER_COUPON',
 };
 
 const AUDIT_ACTIONS = {
@@ -61,6 +62,13 @@ const AUDIT_ACTIONS = {
   COUPON_SOFT_DELETED: 'COUPON_SOFT_DELETED',  // Moved to recycle bin
   COUPON_RESTORED:     'COUPON_RESTORED',      // Recovered from recycle bin
   COUPON_HARD_DELETED: 'COUPON_HARD_DELETED',  // Permanently deleted (row gone; log entry remains)
+
+  // ── Seller coupon lifecycle ────────────────────────────────────────────────
+  SELLER_COUPON_CREATED:      'SELLER_COUPON_CREATED',
+  SELLER_COUPON_UPDATED:      'SELLER_COUPON_UPDATED',
+  SELLER_COUPON_SOFT_DELETED: 'SELLER_COUPON_SOFT_DELETED',
+  SELLER_COUPON_RESTORED:     'SELLER_COUPON_RESTORED',
+  SELLER_COUPON_HARD_DELETED: 'SELLER_COUPON_HARD_DELETED',
 
   // ── Future entities — add when ready ──────────────────────────────────────
   // ORDER_CREATED, ORDER_STATUS_CHANGED, ORDER_CANCELLED, ORDER_REFUNDED ...

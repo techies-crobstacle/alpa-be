@@ -258,3 +258,68 @@ exports.isAdmin = async (request, reply) => {
   }
 };
 
+// Authenticate Seller OR Admin (for seller-level coupon management)
+exports.authenticateSellerOrAdmin = async (request, reply) => {
+  try {
+    const header = request.headers.authorization;
+
+    if (!header || !header.startsWith('Bearer ')) {
+      return reply.status(401).send({ success: false, message: 'No token provided' });
+    }
+
+    const token = header.split(' ')[1];
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      if (decoded.jti && await isBlacklisted(decoded.jti)) {
+        return reply.status(401).send({
+          success: false,
+          message: 'Token has been invalidated. Please log in again.'
+        });
+      }
+
+      const userId = decoded.userId || decoded.uid || decoded.sellerId;
+      if (!userId) {
+        return reply.status(401).send({ success: false, message: 'Invalid token: user ID not found' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { sellerProfile: true }
+      });
+
+      if (!user) {
+        return reply.status(404).send({ success: false, message: 'User not found' });
+      }
+
+      if (user.isDeleted) {
+        return reply.status(403).send({
+          success: false,
+          message: 'Account has been deactivated. Please contact support.'
+        });
+      }
+
+      if (!['SELLER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+        return reply.status(403).send({
+          success: false,
+          message: 'Access denied. Seller or admin account required.'
+        });
+      }
+
+      request.user = {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        sellerProfile: user.sellerProfile || null
+      };
+
+    } catch (error) {
+      return reply.status(401).send({ success: false, message: 'Invalid or expired token' });
+    }
+  } catch (error) {
+    console.error('Seller-or-admin auth error:', error);
+    reply.status(401).send({ success: false, message: 'Authentication failed' });
+  }
+};
+
