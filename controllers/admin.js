@@ -100,12 +100,12 @@ const formatOrderItem = (item) => ({
   productId: item.productId,
   variantId: item.variantId || null,
   quantity:  item.quantity,
-  price:     item.price,
+  price:     item.price != null ? parseFloat(item.price) : null,
   product:   item.product ? {
     id:            item.product.id,
     title:         item.product.title,
     featuredImage: item.product.featuredImage,
-    price:         item.product.price
+    price:         item.product.price != null ? parseFloat(item.product.price) : null
   } : null,
   variantAttributes: item.productVariant
     ? Object.fromEntries(
@@ -4519,6 +4519,41 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         phone:   order.shippingPhone,
       };
 
+      // ── Order summary (subtotal, GST, shipping, coupon, total) ──
+      // Stored inside shippingAddress JSON at order-creation time
+      const rawSummary = (order.shippingAddress && typeof order.shippingAddress === 'object')
+        ? order.shippingAddress.orderSummary || null
+        : null;
+
+      const orderSummary = rawSummary
+        ? {
+            subtotal:          rawSummary.subtotal          ?? null,
+            shippingCost:      rawSummary.shippingCost       ?? null,
+            totalShippingCost: rawSummary.totalShippingCost  ?? null,
+            gstPercentage:     rawSummary.gstPercentage      ?? null,
+            gstAmount:         rawSummary.gstAmount          ?? null,
+            gstDetails:        rawSummary.gstDetails         || null,
+            couponCode:        rawSummary.couponCode         || order.couponCode || null,
+            discountAmount:    rawSummary.discountAmount     ?? (order.discountAmount != null ? parseFloat(order.discountAmount) : null),
+            grandTotal:        rawSummary.grandTotal         ?? null,
+            finalTotal:        rawSummary.finalTotal         ?? parseFloat(order.totalAmount),
+            shippingMethod:    rawSummary.shippingMethod     || null,
+          }
+        : {
+            // Fallback for older orders that pre-date orderSummary storage
+            subtotal:          order.originalTotal != null ? parseFloat(order.originalTotal) : parseFloat(order.totalAmount),
+            shippingCost:      null,
+            totalShippingCost: null,
+            gstPercentage:     null,
+            gstAmount:         null,
+            gstDetails:        null,
+            couponCode:        order.couponCode || null,
+            discountAmount:    order.discountAmount != null ? parseFloat(order.discountAmount) : null,
+            grandTotal:        null,
+            finalTotal:        parseFloat(order.totalAmount),
+            shippingMethod:    null,
+          };
+
       // ── Shared base fields ──
       // For MULTI_SELLER orders derive the real status live from sub-orders so stale
       // DB columns never cause a mismatch. For other types prefer status → overallStatus.
@@ -4535,11 +4570,12 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         overallStatus:         resolvedStatus,
         paymentStatus:         order.paymentStatus,
         paymentMethod:         order.paymentMethod || null,
-        totalAmount:           order.totalAmount,
-        originalTotal:         order.originalTotal  || null,
-        discountAmount:        order.discountAmount  || null,
+        totalAmount:           parseFloat(order.totalAmount),
+        originalTotal:         order.originalTotal  != null ? parseFloat(order.originalTotal)  : null,
+        discountAmount:        order.discountAmount  != null ? parseFloat(order.discountAmount)  : null,
         couponCode:            order.couponCode      || null,
         stripePaymentIntentId: order.stripePaymentIntentId || null,
+        orderSummary,
         customer,
         shippingAddress,
         createdAt:  order.createdAt,
@@ -4562,7 +4598,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
             sellerEmail:       sub.seller?.email || null,
             // Status & amounts
             status:            sub.status,
-            subtotal:          sub.subtotal,
+            subtotal:          parseFloat(sub.subtotal),
             trackingNumber:    sub.trackingNumber    || null,
             estimatedDelivery: sub.estimatedDelivery || null,
             // Full seller profile

@@ -584,7 +584,9 @@ exports.getMyCommissionEarned = async (request, reply) => {
     const rows = await prisma.$queryRawUnsafe(`
       SELECT
         ce.id,
-        ce.order_id           AS "orderId",
+        ce.order_id                                        AS "orderId",
+        ce.sub_order_id                                    AS "subOrderId",
+        COALESCE(o."displayId", so."subDisplayId")         AS "displayOrderId",
         ce.customer_name      AS "customerName",
         ce.order_value        AS "orderValue",
         ce.commission_rate    AS "commissionRate",
@@ -593,6 +595,8 @@ exports.getMyCommissionEarned = async (request, reply) => {
         ce.status::text       AS status,
         ce.created_at         AS "createdAt"
       FROM commission_earned ce
+      LEFT JOIN orders o  ON o.id  = ce.order_id
+      LEFT JOIN sub_orders so ON so.id = ce.sub_order_id
       ${whereClause}
       ORDER BY ce.created_at DESC
       LIMIT ${limitNum} OFFSET ${offset}

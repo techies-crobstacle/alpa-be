@@ -3394,6 +3394,25 @@ const generateInvoiceBuffer = (order) => {
     const perSellerShipping = storedSummary ? parseFloat(storedSummary.shippingCost || 0) : 0;
     const gstRate = parseFloat(storedSummary?.gstPercentage || 10); // default AU GST 10%
 
+    // ── Status stamp helpers ──────────────────────────────────────────────
+    const terminalStatus = order._resolvedStatus || order.overallStatus || order.status || '';
+    const isRefunded   = ['REFUND', 'PARTIAL_REFUND'].includes(terminalStatus);
+    const isCancelled  = terminalStatus === 'CANCELLED';
+    const stampText    = isRefunded ? 'REFUNDED' : isCancelled ? 'CANCELLED' : null;
+    const stampColor   = isRefunded ? '#1565C0' : '#C62828'; // blue for refund, red for cancel
+
+    const drawStatusStamp = () => {
+      if (!stampText) return;
+      doc.save();
+      doc.translate(doc.page.width / 2, doc.page.height / 2);
+      doc.rotate(-45);
+      doc.fontSize(72).font('Helvetica-Bold')
+         .fillOpacity(0.12).fillColor(stampColor)
+         .text(stampText, -200, -40, { width: 400, align: 'center', lineBreak: false });
+      doc.fillOpacity(1);
+      doc.restore();
+    };
+
     // ── Helper: draw a complete invoice page for one seller ───────────────
     // showOrderDiscount: true only on the last page (or single-seller) — coupon is order-level
     const drawPage = (sellerName, items, showOrderDiscount = true) => {
@@ -3415,6 +3434,21 @@ const generateInvoiceBuffer = (order) => {
       // Header divider
       doc.moveTo(L, y).lineTo(R, y).lineWidth(2).stroke(BRAND);
       y += 12;
+
+      // ── Status stamp (watermark) for refunded / cancelled orders ──
+      drawStatusStamp();
+
+      // ── Status badge (solid pill) shown below divider ──
+      if (stampText) {
+        const badgeW = 100;
+        const badgeH = 18;
+        const badgeX = R - badgeW;
+        const badgeY = y;
+        doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 4).fill(stampColor);
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(9)
+           .text(stampText, badgeX, badgeY + 4, { width: badgeW, align: 'center', lineBreak: false });
+        y += badgeH + 6;
+      }
 
       // ── Invoice meta ──
       const metaLabel = (txt, val, yy) => {
@@ -3686,13 +3720,14 @@ exports.downloadInvoice = async (request, reply) => {
       invoiceShape = buildSubOrderShape(subRecord);
     }
 
-    // Status guard
+    // Status guard — allow all statuses including REFUND/CANCELLED
     const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+    const ALLOWED_STATUSES = ['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED', 'REFUND', 'PARTIAL_REFUND', 'CANCELLED'];
+    if (!ALLOWED_STATUSES.includes(resolvedStatus)) {
       return reply.status(400).send({ success: false, message: `Invoice is not available for orders with status: ${resolvedStatus}` });
     }
 
-    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
+    const pdfBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: resolvedStatus });
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="invoice-${orderId}.pdf"`);
     return reply.send(pdfBuffer);
@@ -3735,7 +3770,8 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
     }
 
     const resolvedStatus = subRecord.status || 'CONFIRMED';
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+    const ALLOWED_STATUSES = ['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED', 'REFUND', 'PARTIAL_REFUND', 'CANCELLED'];
+    if (!ALLOWED_STATUSES.includes(resolvedStatus)) {
       return reply.status(400).send({ success: false, message: `Invoice is not available for sub-orders with status: ${resolvedStatus}` });
     }
 
@@ -3743,7 +3779,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
     // Override displayId to use subDisplayId so the PDF shows e.g. "#A4X9KR-A"
     invoiceShape.displayId = subRecord.subDisplayId || invoiceShape.displayId;
 
-    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
+    const pdfBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: resolvedStatus });
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="invoice-${subOrderId}.pdf"`);
     return reply.send(pdfBuffer);
@@ -3801,11 +3837,12 @@ exports.downloadGuestInvoice = async (request, reply) => {
     }
 
     const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+    const ALLOWED_STATUSES = ['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED', 'REFUND', 'PARTIAL_REFUND', 'CANCELLED'];
+    if (!ALLOWED_STATUSES.includes(resolvedStatus)) {
       return reply.status(400).send({ success: false, message: `Invoice is not available for orders with status: ${resolvedStatus}` });
     }
 
-    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
+    const pdfBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: resolvedStatus });
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="invoice-${orderId}.pdf"`);
     return reply.send(pdfBuffer);
@@ -3868,11 +3905,12 @@ exports.downloadPublicInvoice = async (request, reply) => {
     }
 
     const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
-    if (!['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED'].includes(resolvedStatus)) {
+    const ALLOWED_STATUSES = ['CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED', 'REFUND', 'PARTIAL_REFUND', 'CANCELLED'];
+    if (!ALLOWED_STATUSES.includes(resolvedStatus)) {
       return reply.status(400).send({ success: false, message: `Invoice is not available for orders with status: ${resolvedStatus}` });
     }
 
-    const pdfBuffer = await generateInvoiceBuffer(invoiceShape);
+    const pdfBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: resolvedStatus });
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="invoice-${orderId}.pdf"`);
     return reply.send(pdfBuffer);
