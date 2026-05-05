@@ -507,16 +507,19 @@ model Coupon {
 }
 
 model Wishlist {
-  id        String   @id @default(cuid())
-  userId    String
-  productId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String          @id @default(cuid())
+  userId         String
+  productId      String
+  variantId      String?         // Optional: for variable products with specific variant
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, productId])
+  @@unique([userId, productId, variantId])
   @@index([userId])
+  @@index([variantId])
   @@map("wishlists")
 }
 
@@ -659,6 +662,7 @@ model ProductVariant {
   product                Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
   cartItems              CartItem[]               @relation("VariantCartItems")
   orderItems             OrderItem[]              @relation("VariantOrderItems")
+  wishlist               Wishlist[]
   variantAttributeValues VariantAttributeValue[]
 
   @@index([productId])

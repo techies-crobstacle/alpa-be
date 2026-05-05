@@ -11,6 +11,9 @@ async function wishlistRoutes(fastify, options) {
   // Remove product from wishlist
   fastify.delete("/:productId", { preHandler: authenticateUser }, wishlistController.removeFromWishlist);
 
+  // Remove wishlist item by ID
+  fastify.delete("/item/:itemId", { preHandler: authenticateUser }, wishlistController.removeWishlistItemById);
+
   // Toggle product in wishlist (add/remove)
   fastify.put("/toggle/:productId", { preHandler: authenticateUser }, wishlistController.toggleWishlist);
 
@@ -22,6 +25,12 @@ async function wishlistRoutes(fastify, options) {
 
   // Move wishlist item to cart
   fastify.post("/move-to-cart/:productId", { preHandler: authenticateUser }, wishlistController.moveToCart);
+
+  // Move wishlist item to cart by item ID
+  fastify.post("/move-to-cart/item/:itemId", { preHandler: authenticateUser }, wishlistController.moveToCartById);
+
+  // Clean up invalid wishlist items (VARIABLE products without variants)
+  fastify.post("/cleanup", { preHandler: authenticateUser }, wishlistController.cleanupInvalidWishlistItems);
 }
 // fix
 module.exports = wishlistRoutes;
