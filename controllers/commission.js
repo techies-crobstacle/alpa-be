@@ -11,6 +11,20 @@ const findCommissionById = async (id) => {
   return rows[0] || null;
 };
 
+// ─── Helper: calculate current redeemable balance for a seller ──────────────
+const calculateRedeemableBalance = async (sellerId) => {
+  const result = await prisma.$queryRaw`
+    SELECT
+      COALESCE(SUM(CASE WHEN status = 'PENDING' THEN net_payable ELSE 0 END), 0)::float AS "redeemableAmount",
+      COALESCE(SUM(CASE WHEN status = 'PAID' THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
+      COUNT(CASE WHEN status = 'PENDING' THEN 1 END)::int AS "eligibleOrderCount"
+    FROM commission_earned
+    WHERE seller_id = ${sellerId}
+  `;
+  
+  return result[0] || { redeemableAmount: 0, totalPaid: 0, eligibleOrderCount: 0 };
+};
+
 // ─── CREATE ──────────────────────────────────────────────────────────────────
 // POST /api/admin/commissions
 exports.createCommission = async (request, reply) => {
@@ -606,17 +620,20 @@ exports.getMyCommissionEarned = async (request, reply) => {
       SELECT COUNT(*)::int AS total FROM commission_earned ce ${whereClause}
     `);
 
-    // Aggregate totals for the seller (includes 30-day redeemable split)
+    // Aggregate totals for the seller (properly handle CANCELLED status)
     const totalsRows = await prisma.$queryRawUnsafe(`
       SELECT
         COALESCE(SUM(order_value), 0)::float             AS "totalOrderValue",
         COALESCE(SUM(commission_amount), 0)::float       AS "totalCommissionDeducted",
-        COALESCE(SUM(net_payable), 0)::float             AS "totalNetPayable",
+        -- Total Net Payable should exclude CANCELLED orders
+        COALESCE(SUM(CASE WHEN status != 'CANCELLED' THEN net_payable ELSE 0 END), 0)::float AS "totalNetPayable",
         COALESCE(SUM(CASE WHEN status = 'PAID'    THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
         COALESCE(SUM(CASE WHEN status = 'PENDING' THEN net_payable ELSE 0 END), 0)::float AS "totalPending",
         -- Redeemable: All PENDING commissions are immediately available
         COALESCE(SUM(CASE WHEN status = 'PENDING'
                           THEN net_payable ELSE 0 END), 0)::float AS "redeemableAmount",
+        -- Show cancelled amount separately for transparency
+        COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN net_payable ELSE 0 END), 0)::float AS "cancelledAmount",
         -- Locked: No longer applicable - set to 0
         0::float AS "lockedAmount",
         COUNT(CASE WHEN status = 'PENDING' THEN 1 END)::int AS "eligibleOrderCount"
@@ -661,6 +678,9 @@ exports.getRedeemableSummary = async (request, reply) => {
         0::float AS "lockedAmount",
         COALESCE(SUM(CASE WHEN status = 'PAID'
                           THEN net_payable ELSE 0 END), 0)::float AS "totalPaid",
+        -- Show cancelled amount for transparency (not included in totals)
+        COALESCE(SUM(CASE WHEN status = 'CANCELLED'
+                          THEN net_payable ELSE 0 END), 0)::float AS "cancelledAmount",
         COUNT(CASE WHEN status = 'PENDING'
                    THEN 1 END)::int                               AS "eligibleOrderCount"
       FROM commission_earned
@@ -921,23 +941,178 @@ exports.updatePayoutRequestStatus = async (request, reply) => {
       WHERE id = ${id}
     `;
 
-    // When COMPLETED, automatically mark all eligible commission_earned records as PAID
+    // When COMPLETED, mark commission_earned records as PAID only up to the requested amount
     if (upperStatus === "COMPLETED") {
       const { sellerId } = rows[0];
+      
+      // Get the payout request details to know how much was actually paid
+      const payoutDetails = await prisma.$queryRaw`
+        SELECT requested_amount AS "requestedAmount"
+        FROM payout_requests
+        WHERE id = ${id}
+      `;
+      
+      const requestedAmount = parseFloat(payoutDetails[0]?.requestedAmount || 0);
+      
+      if (requestedAmount <= 0) {
+        console.log(`⚠️ Invalid requested amount: ${requestedAmount} for payout ${id}`);
+        return reply.status(400).send({ 
+          success: false, 
+          message: "Invalid payout amount" 
+        });
+      }
+      
+      // Get PENDING commission records for this seller, ordered by creation date (FIFO)
+      const pendingCommissions = await prisma.$queryRaw`
+        SELECT id, net_payable, order_id, created_at
+        FROM commission_earned
+        WHERE seller_id = ${sellerId}
+          AND status = 'PENDING'::"CommissionStatus"
+        ORDER BY created_at ASC
+      `;
+      
+      let remainingToPay = requestedAmount;
+      let recordsToUpdate = [];
+      let totalMarkedAsPaid = 0;
+      
+      // Mark records as PAID until we've covered the requested amount
+      for (const record of pendingCommissions) {
+        const netPayable = parseFloat(record.net_payable);
+        
+        if (remainingToPay <= 0.01) break; // Use small threshold to handle floating point precision
+        
+        if (netPayable <= remainingToPay + 0.01) {
+          // This entire record can be marked as PAID (with small tolerance for floating point)
+          recordsToUpdate.push(record.id);
+          totalMarkedAsPaid += netPayable;
+          remainingToPay -= netPayable;
+        } else {
+          // If we can't fit the whole record and we already have some records to pay,
+          // we'll only include this record if the difference is small (< 20% of requested)
+          const overpayment = netPayable - remainingToPay;
+          const overpaymentPercent = (overpayment / requestedAmount) * 100;
+          
+          if (recordsToUpdate.length === 0) {
+            // First record is larger than request - include it anyway to avoid empty payout
+            recordsToUpdate.push(record.id);
+            totalMarkedAsPaid += netPayable;
+            remainingToPay = 0;
+            break;
+          } else if (overpaymentPercent <= 20) {
+            // Small overpayment (< 20% of request) - include the record
+            recordsToUpdate.push(record.id);
+            totalMarkedAsPaid += netPayable;
+            remainingToPay = 0;
+            break;
+          } else {
+            // Large overpayment - stop here without including this record
+            break;
+          }
+        }
+      }
+      
+      if (recordsToUpdate.length === 0) {
+        console.log(`⚠️ No pending commissions found for seller ${sellerId}`);
+        return reply.status(400).send({ 
+          success: false, 
+          message: "No pending commissions available to mark as paid" 
+        });
+      }
+      
+      // Update only the selected commission records
       const updated = await prisma.$executeRaw`
         UPDATE commission_earned
         SET status     = 'PAID'::"CommissionStatus",
             updated_at = ${now}
-        WHERE seller_id = ${sellerId}
+        WHERE id = ANY(${recordsToUpdate})
+          AND seller_id = ${sellerId}
           AND status    = 'PENDING'::"CommissionStatus"
-
       `;
-      console.log(`💳 Payout completed for seller ${sellerId} — ${updated} commission record(s) marked PAID`);
+      
+      console.log(`💳 Payout completed for seller ${sellerId}:`);
+      console.log(`   - Requested amount: $${requestedAmount}`);
+      console.log(`   - Actually marked as paid: $${totalMarkedAsPaid.toFixed(2)}`);
+      console.log(`   - Commission records updated: ${updated}`);
+      console.log(`   - Record IDs: ${recordsToUpdate.join(', ')}`);
+      
+      // Verify the seller's remaining balance
+      const balanceAfterPayout = await calculateRedeemableBalance(sellerId);
+      console.log(`   - Remaining redeemable balance: $${balanceAfterPayout.redeemableAmount.toFixed(2)}`);
+      
+      // If there's a significant difference, log a warning
+      if (Math.abs(totalMarkedAsPaid - requestedAmount) > 0.01) {
+        console.log(`⚠️ Warning: Marked $${totalMarkedAsPaid.toFixed(2)} as paid, but requested was $${requestedAmount}`);
+      }
     }
 
     return reply.send({ success: true, message: `Payout request marked as ${upperStatus}` });
   } catch (err) {
     console.error("updatePayoutRequestStatus error:", err);
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ─── DEBUG: verify seller balance (for testing/debugging) ────────────────────
+// GET /api/commissions/debug/balance/:sellerId (admin only)
+exports.debugSellerBalance = async (request, reply) => {
+  try {
+    const { sellerId } = request.params;
+    
+    // Get detailed commission breakdown
+    const commissionDetails = await prisma.$queryRaw`
+      SELECT 
+        id,
+        order_id as "orderId",
+        net_payable as "netPayable",
+        status,
+        created_at as "createdAt",
+        updated_at as "updatedAt"
+      FROM commission_earned
+      WHERE seller_id = ${sellerId}
+      ORDER BY created_at DESC
+      LIMIT 50
+    `;
+    
+    // Get balance summary
+    const balance = await calculateRedeemableBalance(sellerId);
+    
+    // Get recent payout requests
+    const payoutRequests = await prisma.$queryRaw`
+      SELECT 
+        id,
+        requested_amount as "requestedAmount",
+        status,
+        created_at as "createdAt",
+        processed_at as "processedAt"
+      FROM payout_requests
+      WHERE seller_id = ${sellerId}
+      ORDER BY created_at DESC
+      LIMIT 10
+    `;
+    
+    return reply.send({
+      success: true,
+      sellerId,
+      balance,
+      commissionRecords: commissionDetails.map(record => ({
+        id: record.id,
+        orderId: record.orderId,
+        amount: parseFloat(record.netPayable),
+        status: record.status,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt
+      })),
+      recentPayouts: payoutRequests.map(req => ({
+        id: req.id,
+        amount: parseFloat(req.requestedAmount),
+        status: req.status,
+        createdAt: req.createdAt,
+        processedAt: req.processedAt
+      }))
+    });
+    
+  } catch (err) {
+    console.error("debugSellerBalance error:", err);
     return reply.status(500).send({ success: false, error: err.message });
   }
 };

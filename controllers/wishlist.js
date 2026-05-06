@@ -348,6 +348,17 @@ exports.getWishlist = async (request, reply) => {
         let displayPrice, displayStock, displayImage;
         let needsVariantSelection = false;
         
+        // Extract common variant attributes as direct properties for easy frontend access
+        const directVariantProps = {};
+        if (variantAttributes?.length) {
+          variantAttributes.forEach(attr => {
+            const key = attr.name?.toLowerCase(); // size, color, style, etc.
+            if (key && attr.displayValue) {
+              directVariantProps[key] = attr.displayValue;
+            }
+          });
+        }
+        
         if (item.product.type === 'VARIABLE') {
           if (item.productVariant && item.variantId) {
             // Has valid variant data
@@ -372,6 +383,7 @@ exports.getWishlist = async (request, reply) => {
           id: item.id,
           productId: item.productId,
           variantId: item.variantId,
+          ...directVariantProps, // ✅ Direct properties: size, color, etc.
           product: {
             ...item.product,
             displayPrice,

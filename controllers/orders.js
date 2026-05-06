@@ -1904,14 +1904,40 @@ exports.findOrderForRefund = async (request, reply) => {
         seller: { select: { id: true, name: true } },
         items: {
           include: {
-            product: { select: { id: true, title: true, featuredImage: true, price: true, sellerId: true } }
+            product: { select: { id: true, title: true, featuredImage: true, price: true, sellerId: true, type: true } },
+            productVariant: {
+              include: {
+                variantAttributeValues: {
+                  include: {
+                    attributeValue: {
+                      include: {
+                        attribute: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         subOrders: {
           include: {
             items: {
               include: {
-                product: { select: { id: true, title: true, featuredImage: true, price: true, sellerId: true } }
+                product: { select: { id: true, title: true, featuredImage: true, price: true, sellerId: true, type: true } },
+                productVariant: {
+                  include: {
+                    variantAttributeValues: {
+                      include: {
+                        attributeValue: {
+                          include: {
+                            attribute: true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             },
             seller: { select: { id: true, name: true } },
@@ -1947,14 +1973,38 @@ exports.findOrderForRefund = async (request, reply) => {
           sellerName: sellerName,
           status: sub.status,
           deliveredAt: sub.updatedAt,
-          items: sub.items.map(item => ({
-            orderItemId: item.id,
-            productId: item.product?.id,
-            title: item.product?.title || 'Product',
-            image: item.product?.featuredImage || null,
-            quantity: item.quantity,
-            price: item.price
-          }))
+          items: sub.items.map(item => {
+            const variantAttributes = formatVariantAttributes(item.productVariant);
+            const displayTitle = variantAttributes?.length 
+              ? `${item.product?.title} (${variantAttributes.map(a => `${a.name}: ${a.displayValue || a.value}`).join(', ')})`
+              : (item.product?.title || 'Product');
+
+            // Extract common variant attributes as direct properties for easy frontend access
+            const directVariantProps = {};
+            if (variantAttributes?.length) {
+              variantAttributes.forEach(attr => {
+                const key = attr.name.toLowerCase(); // size, color, style, etc.
+                directVariantProps[key] = attr.displayValue || attr.value;
+              });
+            }
+
+            return {
+              orderItemId: item.id,
+              productId: item.product?.id,
+              variantId: item.variantId,
+              ...directVariantProps, // ✅ Direct properties: size, color, etc.
+              title: item.product?.title || 'Product',
+              displayTitle,
+              image: item.product?.featuredImage || null,
+              quantity: item.quantity,
+              price: item.price,
+              variant: item.productVariant ? {
+                id: item.productVariant.id,
+                sku: item.productVariant.sku,
+                attributes: variantAttributes
+              } : null
+            };
+          })
         };
       });
     } else {
@@ -1970,14 +2020,38 @@ exports.findOrderForRefund = async (request, reply) => {
           sellerName: sellerName,
           status: status,
           deliveredAt: order.updatedAt,
-          items: order.items.map(item => ({
-            orderItemId: item.id,
-            productId: item.product?.id,
-            title: item.product?.title || 'Product',
-            image: item.product?.featuredImage || null,
-            quantity: item.quantity,
-            price: item.price
-          }))
+          items: order.items.map(item => {
+            const variantAttributes = formatVariantAttributes(item.productVariant);
+            const displayTitle = variantAttributes?.length 
+              ? `${item.product?.title} (${variantAttributes.map(a => `${a.name}: ${a.displayValue || a.value}`).join(', ')})`
+              : (item.product?.title || 'Product');
+
+            // Extract common variant attributes as direct properties for easy frontend access
+            const directVariantProps = {};
+            if (variantAttributes?.length) {
+              variantAttributes.forEach(attr => {
+                const key = attr.name.toLowerCase(); // size, color, style, etc.
+                directVariantProps[key] = attr.displayValue || attr.value;
+              });
+            }
+
+            return {
+              orderItemId: item.id,
+              productId: item.product?.id,
+              variantId: item.variantId,
+              ...directVariantProps, // ✅ Direct properties: size, color, etc.
+              title: item.product?.title || 'Product',
+              displayTitle,
+              image: item.product?.featuredImage || null,
+              quantity: item.quantity,
+              price: item.price,
+              variant: item.productVariant ? {
+                id: item.productVariant.id,
+                sku: item.productVariant.sku,
+                attributes: variantAttributes
+              } : null
+            };
+          })
         }];
       }
     }
@@ -3234,7 +3308,21 @@ exports.trackGuestOrder = async (request, reply) => {
                 id: true,
                 title: true,
                 featuredImage: true,
-                price: true
+                price: true,
+                type: true
+              }
+            },
+            productVariant: {
+              include: {
+                variantAttributeValues: {
+                  include: {
+                    attributeValue: {
+                      include: {
+                        attribute: true
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -3248,7 +3336,21 @@ exports.trackGuestOrder = async (request, reply) => {
                     id: true,
                     title: true,
                     featuredImage: true,
-                    price: true
+                    price: true,
+                    type: true
+                  }
+                },
+                productVariant: {
+                  include: {
+                    variantAttributeValues: {
+                      include: {
+                        attributeValue: {
+                          include: {
+                            attribute: true
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -3270,6 +3372,63 @@ exports.trackGuestOrder = async (request, reply) => {
       return reply.status(403).send({ success: false, message: "Email does not match order" });
     }
 
+    // Helper to format variant attributes for display
+    const formatVariantAttributes = (productVariant) => {
+      if (!productVariant?.variantAttributeValues?.length) return null;
+      
+      return productVariant.variantAttributeValues
+        .map(vav => ({
+          name: vav.attributeValue?.attribute?.name,
+          displayName: vav.attributeValue?.attribute?.displayName,
+          value: vav.attributeValue?.value,
+          displayValue: vav.attributeValue?.displayValue,
+          hexColor: vav.attributeValue?.hexColor
+        }))
+        .filter(attr => attr.name && attr.value);
+    };
+
+    // Helper to format item with variant data
+    const formatOrderItem = (item, sellerName = null) => {
+      const variantAttributes = formatVariantAttributes(item.productVariant);
+      const displayTitle = variantAttributes?.length 
+        ? `${item.product?.title} (${variantAttributes.map(a => `${a.name}: ${a.displayValue || a.value}`).join(', ')})`
+        : (item.product?.title || 'Product');
+
+      // Extract common variant attributes as direct properties for easy frontend access
+      const directVariantProps = {};
+      if (variantAttributes?.length) {
+        variantAttributes.forEach(attr => {
+          const key = attr.name.toLowerCase(); // size, color, style, etc.
+          directVariantProps[key] = attr.displayValue || attr.value;
+        });
+      }
+
+      return {
+        id: item.id,
+        quantity: item.quantity,
+        price: item.price,
+        variantId: item.variantId,
+        ...directVariantProps, // ✅ Direct properties: size, color, etc.
+        ...(sellerName && { sellerName }),
+        product: {
+          id: item.product?.id || null,
+          title: item.product?.title || 'Product',
+          displayTitle,
+          featuredImage: item.product?.featuredImage || null,
+          price: item.product?.price || item.price,
+          type: item.product?.type
+        },
+        variant: item.productVariant ? {
+          id: item.productVariant.id,
+          price: item.productVariant.price,
+          sku: item.productVariant.sku,
+          stock: item.productVariant.stock,
+          images: item.productVariant.images || [],
+          attributes: variantAttributes
+        } : null
+      };
+    };
+
     const isMultiSeller = order.orderType === 'MULTI_SELLER' ||
       (Array.isArray(order.subOrders) && order.subOrders.length > 0);
 
@@ -3285,37 +3444,16 @@ exports.trackGuestOrder = async (request, reply) => {
             id: sub.seller?.id || null,
             name: sub.seller?.name || 'Unknown Seller'
           },
-          items: sub.items.map(item => ({
-            id: item.id,
-            quantity: item.quantity,
-            price: item.price,
-            product: {
-              id: item.product?.id || null,
-              title: item.product?.title || 'Product',
-              featuredImage: item.product?.featuredImage || null,
-              price: item.product?.price || item.price
-            }
-          }))
+          items: sub.items.map(item => formatOrderItem(item))
         }))
       : undefined;
 
     // For MULTI_SELLER orders, items live on sub-orders — flatten for top-level items field
     const resolvedItems = isMultiSeller
       ? order.subOrders.flatMap(sub =>
-          sub.items.map(item => ({
-            id: item.id,
-            quantity: item.quantity,
-            price: item.price,
-            sellerName: sub.seller?.name || 'Unknown Seller',
-            product: {
-              id: item.product?.id || null,
-              title: item.product?.title || 'Product',
-              featuredImage: item.product?.featuredImage || null,
-              price: item.product?.price || item.price
-            }
-          }))
+          sub.items.map(item => formatOrderItem(item, sub.seller?.name || 'Unknown Seller'))
         )
-      : order.items;
+      : order.items.map(item => formatOrderItem(item));
 
     // Extract orderSummary from the stored shippingAddress JSON blob (kept for legacy storage)
     const storedShipping = order.shippingAddress || {};

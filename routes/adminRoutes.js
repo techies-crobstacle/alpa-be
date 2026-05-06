@@ -158,6 +158,9 @@ async function adminRoutes(fastify, options) {
   // Payout Requests (Admin)
   fastify.get("/commissions/payout-requests",                 { preHandler: adminAuth }, commissionController.getAllPayoutRequests);
   fastify.put("/commissions/payout-requests/:id/status",      { preHandler: adminAuth }, commissionController.updatePayoutRequestStatus);
+  
+  // Debug endpoint for troubleshooting commission/payout issues
+  fastify.get("/commissions/debug/balance/:sellerId",         { preHandler: adminAuth }, commissionController.debugSellerBalance);
 
   // ---------------- SITE FEEDBACK ----------------
   fastify.get("/feedback", { preHandler: adminAuth }, feedbackController.getAllFeedback);

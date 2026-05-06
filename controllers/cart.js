@@ -292,10 +292,23 @@ exports.getMyCart = async (request, reply) => {
       if (deduplicatedMap.has(key)) {
         deduplicatedMap.get(key).quantity += item.quantity;
       } else {
+        // Extract common variant attributes as direct properties for easy frontend access
+        const directVariantProps = {};
+        if (item.productVariant?.variantAttributeValues?.length) {
+          item.productVariant.variantAttributeValues.forEach(vav => {
+            const attrName = vav.attributeValue?.attribute?.name?.toLowerCase();
+            const attrValue = vav.attributeValue?.displayValue || vav.attributeValue?.value;
+            if (attrName && attrValue) {
+              directVariantProps[attrName] = attrValue; // size, color, etc.
+            }
+          });
+        }
+
         deduplicatedMap.set(key, {
           productId: item.productId,
           variantId: item.variantId || null,
           quantity: item.quantity,
+          ...directVariantProps, // ✅ Direct properties: size, color, etc.
           product: item.product,
           // Variant info: price + full attribute array (matches /all products format)
           variant: item.productVariant ? {
