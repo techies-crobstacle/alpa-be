@@ -32,6 +32,7 @@ const commissionRoutes = require("./routes/commissionRoute");
 const attributeRoutes = require("./routes/attributeRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const contactRoutes = require("./routes/contactRoutes");
+const newsletterRoutes = require("./routes/newsletterRoutes");
 const publicRoutes = require("./routes/publicRoutes");
 const { initializeSLAMonitoring } = require("./utils/slaScheduler");
 const { scheduleEmailVerificationReminder } = require("./utils/emailVerificationScheduler");
@@ -157,6 +158,7 @@ app.register(blogsRoutes,   { prefix: "/api/blogs" });
 app.register(commissionRoutes, { prefix: "/api/commissions" });
 app.register(attributeRoutes, { prefix: "/api" });
 app.register(contactRoutes, { prefix: "/api" });
+app.register(newsletterRoutes, { prefix: "/api" });
 app.register(publicRoutes, { prefix: "/api/public" });
 
 

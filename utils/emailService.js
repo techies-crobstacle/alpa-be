@@ -9,7 +9,6 @@
  * 3. Add to your .env file:
  *    SENDGRID_API_KEY=your_api_key_here
  *    SENDER_EMAIL=verified@yourdomain.com
- * 4. Verify your sender email in SendGrid dashboard
  * 5. Install: npm install @sendgrid/mail
  */
 
@@ -4654,6 +4653,43 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
   }
 };
 
+const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribedAt }) => {
+  const adminEmail = process.env.NEWSLETTER_ADMIN_EMAIL || process.env.SUPPORT_EMAIL || senderEmail;
+
+  if (!adminEmail) {
+    return { success: false, error: 'No admin email configured for newsletter alerts.' };
+  }
+
+  if (isDevelopmentMode) {
+    console.log('\n' + '='.repeat(50));
+    console.log('DEVELOPMENT MODE - Newsletter Admin Alert');
+    console.log(`To: ${adminEmail}`);
+    console.log(`Subscriber: ${subscribedEmail}`);
+    console.log('='.repeat(50) + '\n');
+    return { success: true };
+  }
+
+  const subscribedAtText = subscribedAt ? new Date(subscribedAt).toISOString() : new Date().toISOString();
+  const msg = {
+    to: adminEmail,
+    from: {
+      email: senderEmail,
+      name: senderName
+    },
+    subject: 'New Newsletter Subscription',
+    html: `
+      <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+        <h2 style="margin: 0 0 12px; color: #5A1E12;">New Newsletter Subscription</h2>
+        <p style="margin: 0 0 8px;">A user subscribed to the newsletter.</p>
+        <p style="margin: 0;"><strong>Email:</strong> ${subscribedEmail}</p>
+        <p style="margin: 4px 0 0;"><strong>Subscribed At:</strong> ${subscribedAtText}</p>
+      </div>
+    `
+  };
+
+  return sendWithFallback(msg, 'Newsletter Admin Alert');
+};
+
 module.exports = { 
   generateOTP,
   sendOTPEmail, 
@@ -4691,7 +4727,8 @@ module.exports = {
   sendRefundStatusUpdateEmail,
   sendSellerRefundStatusEmail,
   sendMonthlyGstReportEmail,
-  sendFinanceOrderInvoiceEmail
+  sendFinanceOrderInvoiceEmail,
+  sendNewsletterSubscriptionAlertEmail
 };
 
 
