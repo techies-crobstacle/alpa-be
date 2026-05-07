@@ -73,6 +73,44 @@ const mapStatusForDisplay = (dbStatus) => {
   return displayMap[dbStatus] || dbStatus.toLowerCase();
 };
 
+const normalizeTrackingNumber = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const ensureUniqueTrackingNumber = async ({ trackingNumber, excludeOrderId = null, excludeSubOrderId = null }) => {
+  const normalized = normalizeTrackingNumber(trackingNumber);
+  if (!normalized) return;
+
+  const [orderConflict, subOrderConflict] = await Promise.all([
+    prisma.order.findFirst({
+      where: {
+        trackingNumber: { equals: normalized, mode: 'insensitive' },
+        ...(excludeOrderId ? { id: { not: excludeOrderId } } : {})
+      },
+      select: { id: true, displayId: true }
+    }),
+    prisma.subOrder.findFirst({
+      where: {
+        trackingNumber: { equals: normalized, mode: 'insensitive' },
+        ...(excludeSubOrderId ? { id: { not: excludeSubOrderId } } : {})
+      },
+      select: { id: true, subDisplayId: true, parentOrderId: true }
+    })
+  ]);
+
+  if (!orderConflict && !subOrderConflict) return;
+
+  const conflictLabel = orderConflict
+    ? `order ${orderConflict.displayId || orderConflict.id}`
+    : `sub-order ${subOrderConflict.subDisplayId || subOrderConflict.id}`;
+
+  const err = new Error(`Tracking number \"${normalized}\" is already used by ${conflictLabel}. Please enter a different tracking number.`);
+  err.code = 'TRACKING_NUMBER_CONFLICT';
+  throw err;
+};
+
 
 // SELLER — VIEW ORDERS
 exports.getSellerOrders = async (request, reply) => {
@@ -508,13 +546,22 @@ exports.updateOrderStatus = async (request, reply) => {
       });
     }
 
+    const normalizedTrackingNumber = normalizeTrackingNumber(trackingNumber);
+    if (normalizedTrackingNumber) {
+      await ensureUniqueTrackingNumber({
+        trackingNumber: normalizedTrackingNumber,
+        excludeOrderId: (isDirectOrder || isLegacyOrder) ? orderId : null,
+        excludeSubOrderId: isSubOrder ? orderId : null
+      });
+    }
+
     // Prepare update data (only fields that exist on both Order and SubOrder)
     const updateData = {
       status: normalizedStatus,
       updatedAt: new Date()
     };
 
-    if (trackingNumber !== undefined) updateData.trackingNumber = trackingNumber;
+    if (trackingNumber !== undefined) updateData.trackingNumber = normalizedTrackingNumber;
     if (estimatedDelivery !== undefined) updateData.estimatedDelivery = estimatedDelivery ? new Date(estimatedDelivery) : null;
     if (statusReason !== undefined) updateData.statusReason = statusReason;
 
@@ -788,6 +835,9 @@ exports.updateOrderStatus = async (request, reply) => {
       }
     });
   } catch (error) {
+    if (error.code === 'TRACKING_NUMBER_CONFLICT') {
+      return reply.status(409).send({ success: false, message: error.message });
+    }
     console.error("Update order status error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
@@ -884,12 +934,21 @@ exports.updateTrackingInfo = async (request, reply) => {
       return reply.status(400).send({ success: false, message: transitionValidation.message });
     }
 
+    const normalizedTrackingNumber = normalizeTrackingNumber(trackingNumber);
+    if (normalizedTrackingNumber) {
+      await ensureUniqueTrackingNumber({
+        trackingNumber: normalizedTrackingNumber,
+        excludeOrderId: isSubOrder ? null : orderId,
+        excludeSubOrderId: isSubOrder ? orderId : null
+      });
+    }
+
     // ── Persist the update ────────────────────────────────────────────────
     if (isSubOrder) {
       await prisma.subOrder.update({
         where: { id: orderId },
         data: {
-          trackingNumber,
+          trackingNumber: normalizedTrackingNumber,
           estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
           status: "SHIPPED"
         }
@@ -925,7 +984,7 @@ exports.updateTrackingInfo = async (request, reply) => {
       await prisma.order.update({
         where: { id: orderId },
         data: {
-          trackingNumber,
+          trackingNumber: normalizedTrackingNumber,
           estimatedDelivery: estimatedDelivery ? new Date(estimatedDelivery) : null,
           status: "SHIPPED"
         }
@@ -941,7 +1000,7 @@ exports.updateTrackingInfo = async (request, reply) => {
       sendOrderStatusEmail(customerEmail, customerName, {
         displayId: order.displayId,
         status: "shipped",
-        trackingNumber,
+        trackingNumber: normalizedTrackingNumber,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
         orderDate: order.createdAt,
@@ -967,7 +1026,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
           totalAmount: order.totalAmount.toString(),
           itemCount: order.items.length,
-          trackingNumber
+          trackingNumber: normalizedTrackingNumber
         }).catch(error => { console.error("Customer notification error (non-blocking):", error.message); });
       }
 
@@ -975,7 +1034,7 @@ exports.updateTrackingInfo = async (request, reply) => {
         const seller = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
         notifyAdminOrderStatusChange(orderId, "shipped", {
           customerName, sellerName: seller?.name || 'Unknown',
-          totalAmount: order.totalAmount.toString(), itemCount: order.items.length, trackingNumber
+          totalAmount: order.totalAmount.toString(), itemCount: order.items.length, trackingNumber: normalizedTrackingNumber
         }).catch(err => console.error("Admin in-app notification error (non-blocking):", err.message));
         prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
           .then(admins => {
@@ -984,7 +1043,7 @@ exports.updateTrackingInfo = async (request, reply) => {
                 sendAdminOrderStatusEmail(admin.email, admin.name, {
                   displayId: order.displayId, status: 'shipped',
                   sellerName: seller?.name || 'Unknown', updatedBy: 'Seller',
-                  customerName, totalAmount: order.totalAmount, trackingNumber
+                  customerName, totalAmount: order.totalAmount, trackingNumber: normalizedTrackingNumber
                 }).catch(err => console.error("Admin order status email error (non-blocking):", err.message));
               }
             }
@@ -997,14 +1056,14 @@ exports.updateTrackingInfo = async (request, reply) => {
           : [...new Set(order.items.map(item => item.product?.sellerId).filter(Boolean))];
         for (const sellerId of sellerIds) {
           notifySellerOrderStatusChange(sellerId, orderId, "shipped", {
-            customerName, totalAmount: order.totalAmount.toString(), trackingNumber
+            customerName, totalAmount: order.totalAmount.toString(), trackingNumber: normalizedTrackingNumber
           }).catch(err => console.error("Seller in-app notification error (non-blocking):", err.message));
           prisma.user.findUnique({ where: { id: sellerId }, select: { email: true, name: true } })
             .then(sellerUser => {
               if (sellerUser?.email) {
                 sendSellerOrderStatusEmail(sellerUser.email, sellerUser.name || 'Seller', {
                   displayId: order.displayId, status: 'shipped', customerName,
-                  totalAmount: order.totalAmount, trackingNumber
+                  totalAmount: order.totalAmount, trackingNumber: normalizedTrackingNumber
                 }).catch(err => console.error("Seller order status email error (non-blocking):", err.message));
               }
             }).catch(err => console.error("Seller email lookup error (non-blocking):", err.message));
@@ -1015,6 +1074,9 @@ exports.updateTrackingInfo = async (request, reply) => {
     return reply.status(200).send({ success: true, message: "Tracking info updated successfully. Customer notified via email." });
 
   } catch (error) {
+    if (error.code === 'TRACKING_NUMBER_CONFLICT') {
+      return reply.status(409).send({ success: false, message: error.message });
+    }
     console.error("Update tracking info error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
@@ -1165,9 +1227,18 @@ exports.bulkUpdateOrderStatus = async (request, reply) => {
           continue;
         }
 
+        const normalizedEntryTracking = normalizeTrackingNumber(entryTracking);
+        if (normalizedEntryTracking) {
+          await ensureUniqueTrackingNumber({
+            trackingNumber: normalizedEntryTracking,
+            excludeOrderId: (isDirectOrder || isLegacyOrder) ? orderId : null,
+            excludeSubOrderId: isSubOrder ? orderId : null
+          });
+        }
+
         // ── Build update payload ──────────────────────────────────────────
         const updateData = { status: normalizedStatus, updatedAt: new Date() };
-        if (entryTracking          !== undefined) updateData.trackingNumber    = entryTracking;
+        if (entryTracking          !== undefined) updateData.trackingNumber    = normalizedEntryTracking;
         if (entryEstimatedDelivery !== undefined) updateData.estimatedDelivery = entryEstimatedDelivery ? new Date(entryEstimatedDelivery) : null;
         if (entryStatusReason      !== undefined) updateData.statusReason      = entryStatusReason;
 
@@ -1229,7 +1300,7 @@ exports.bulkUpdateOrderStatus = async (request, reply) => {
             displayId:         orderRecord.parentOrder?.displayId || orderRecord.id,
             status:            normalizedStatus.toLowerCase(),
             reason:            entryStatusReason || undefined,
-            trackingNumber:    entryTracking || orderRecord.trackingNumber,
+            trackingNumber:    normalizedEntryTracking || orderRecord.trackingNumber,
             estimatedDelivery: entryEstimatedDelivery || orderRecord.estimatedDelivery,
             totalAmount:       orderRecord.subtotal,
             paymentMethod:     orderRecord.parentOrder?.paymentMethod,
@@ -1247,7 +1318,7 @@ exports.bulkUpdateOrderStatus = async (request, reply) => {
             totalAmount: String(orderRecord.subtotal),
             itemCount:   orderRecord.items.length,
             reason:         entryStatusReason || undefined,
-            trackingNumber: entryTracking || updateData.trackingNumber
+            trackingNumber: normalizedEntryTracking || updateData.trackingNumber
           }).catch(err => console.error("Bulk customer notification error (non-blocking):", err.message));
         }
 

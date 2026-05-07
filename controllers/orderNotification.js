@@ -14,6 +14,41 @@ const {
   VALID_TARGET_STATUSES
 } = require("../utils/orderStatusRules");
 
+const normalizeTrackingNumber = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const ensureUniqueTrackingNumber = async ({ trackingNumber, excludeOrderId = null }) => {
+  const normalized = normalizeTrackingNumber(trackingNumber);
+  if (!normalized) return;
+
+  const [orderConflict, subOrderConflict] = await Promise.all([
+    prisma.order.findFirst({
+      where: {
+        trackingNumber: { equals: normalized, mode: 'insensitive' },
+        ...(excludeOrderId ? { id: { not: excludeOrderId } } : {})
+      },
+      select: { id: true, displayId: true }
+    }),
+    prisma.subOrder.findFirst({
+      where: { trackingNumber: { equals: normalized, mode: 'insensitive' } },
+      select: { id: true, subDisplayId: true }
+    })
+  ]);
+
+  if (!orderConflict && !subOrderConflict) return;
+
+  const conflictLabel = orderConflict
+    ? `order ${orderConflict.displayId || orderConflict.id}`
+    : `sub-order ${subOrderConflict.subDisplayId || subOrderConflict.id}`;
+
+  const err = new Error(`Tracking number \"${normalized}\" is already used by ${conflictLabel}. Please enter a different tracking number.`);
+  err.code = 'TRACKING_NUMBER_CONFLICT';
+  throw err;
+};
+
 // CREATE ORDER NOTIFICATION
 const createOrderNotification = async (orderId, sellerId, type, priority = 'MEDIUM', additionalData = {}) => {
   try {
@@ -294,7 +329,12 @@ exports.updateOrderStatus = async (request, reply) => {
     };
     
     if (normalizedStatus === 'SHIPPED') {
-      updateData.trackingNumber = trackingNumber.trim();
+      const normalizedTrackingNumber = normalizeTrackingNumber(trackingNumber);
+      await ensureUniqueTrackingNumber({
+        trackingNumber: normalizedTrackingNumber,
+        excludeOrderId: orderId
+      });
+      updateData.trackingNumber = normalizedTrackingNumber;
       updateData.estimatedDelivery = new Date(estimatedDelivery);
     }
 
@@ -334,6 +374,12 @@ exports.updateOrderStatus = async (request, reply) => {
     });
 
   } catch (error) {
+    if (error.code === 'TRACKING_NUMBER_CONFLICT') {
+      return reply.status(409).send({
+        success: false,
+        message: error.message
+      });
+    }
     console.error("Update order status error:", error);
     return reply.status(500).send({ 
       success: false, 
