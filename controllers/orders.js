@@ -194,6 +194,21 @@ function _calcSellerCouponDiscount(coupon, cartItems, gstRate) {
   const discountedIncl = totalDiscountedExGST * (1 + rate / 100);
   return parseFloat((regularIncl - discountedIncl).toFixed(2));
 }
+
+// Shared helper: normalize variant attributes for order/cart/refund responses.
+function formatVariantAttributes(productVariant) {
+  if (!productVariant?.variantAttributeValues?.length) return null;
+
+  return productVariant.variantAttributeValues
+    .map(vav => ({
+      name: vav.attributeValue?.attribute?.name,
+      displayName: vav.attributeValue?.attribute?.displayName,
+      value: vav.attributeValue?.value,
+      displayValue: vav.attributeValue?.displayValue,
+      hexColor: vav.attributeValue?.hexColor
+    }))
+    .filter(attr => attr.name && attr.value);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Stock Management and Inventory Alert with SMS Notification
@@ -2082,6 +2097,14 @@ exports.findOrderForRefund = async (request, reply) => {
 // - per-item reason/attachments override the top-level ones for that item
 exports.requestGuestRefund = async (request, reply) => {
   try {
+    const normalizeReasonInput = (obj = {}) => (
+      obj.reason ||
+      obj.refundReason ||
+      obj.statusReason ||
+      obj.message ||
+      ''
+    );
+
     let payloadOrderId, customerEmail, topLevelReason, requestedItems, topLevelAttachments = [], uploadedImageUrls = [];
 
     if (request.isMultipart()) {
@@ -2112,7 +2135,7 @@ exports.requestGuestRefund = async (request, reply) => {
         } else {
           if (part.fieldname === 'orderId')        payloadOrderId    = part.value;
           else if (part.fieldname === 'customerEmail') customerEmail  = part.value;
-          else if (part.fieldname === 'reason')    topLevelReason    = part.value;
+          else if (['reason', 'refundReason', 'statusReason', 'message'].includes(part.fieldname)) topLevelReason = part.value;
           else if (part.fieldname === 'attachments') {
             try { topLevelAttachments = JSON.parse(part.value); } catch { /* ignore */ }
           }
@@ -2138,7 +2161,7 @@ exports.requestGuestRefund = async (request, reply) => {
       const body = request.body || {};
       payloadOrderId     = body.orderId;
       customerEmail      = body.customerEmail;
-      topLevelReason     = body.reason;
+      topLevelReason     = normalizeReasonInput(body);
       requestedItems     = body.items;
       topLevelAttachments = Array.isArray(body.attachments) ? body.attachments
         : Array.isArray(body.images) ? body.images : [];
@@ -2242,7 +2265,7 @@ exports.requestGuestRefund = async (request, reply) => {
           errors.push(`Invalid quantity ${qty} for item "${oi.product?.title || ri.orderItemId}" (max: ${oi.quantity})`);
           continue;
         }
-        const itemReason = ((ri.reason || '').trim()) || finalTopReason;
+        const itemReason = (normalizeReasonInput(ri) || '').trim() || finalTopReason;
         if (!itemReason) {
           errors.push(`A reason is required for item "${oi.product?.title || ri.orderItemId}"`);
           continue;
@@ -3371,21 +3394,6 @@ exports.trackGuestOrder = async (request, reply) => {
     if (order.customerEmail?.toLowerCase() !== customerEmail?.toLowerCase()) {
       return reply.status(403).send({ success: false, message: "Email does not match order" });
     }
-
-    // Helper to format variant attributes for display
-    const formatVariantAttributes = (productVariant) => {
-      if (!productVariant?.variantAttributeValues?.length) return null;
-      
-      return productVariant.variantAttributeValues
-        .map(vav => ({
-          name: vav.attributeValue?.attribute?.name,
-          displayName: vav.attributeValue?.attribute?.displayName,
-          value: vav.attributeValue?.value,
-          displayValue: vav.attributeValue?.displayValue,
-          hexColor: vav.attributeValue?.hexColor
-        }))
-        .filter(attr => attr.name && attr.value);
-    };
 
     // Helper to format item with variant data
     const formatOrderItem = (item, sellerName = null) => {
