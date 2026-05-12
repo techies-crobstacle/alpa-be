@@ -183,9 +183,9 @@ exports.login = async (request, reply) => {
     
     // Override for Lane 2: Internal Staff
     if (isInternalStaff) {
-       sessionDuration = "15m";
-       cookieMaxAge = 15 * 60 * 1000;
-       console.log("🔒 Internal Staff Login (Lane 2): Configuring for 15m session and AuthPoint MFA bypass.");
+       sessionDuration = "60m";
+       cookieMaxAge = 60 * 60 * 1000;
+       console.log("🔒 Internal Staff Login (Lane 2): Configuring for 60m session and AuthPoint MFA bypass.");
     }
 
     console.log("🔍 Checking device session for:", { 
@@ -288,7 +288,7 @@ exports.login = async (request, reply) => {
       return reply.status(200).send({
         success: true,
         message: isInternalStaff 
-          ? "Login successful (Internal Session: 15m)" 
+          ? "Login successful (Internal Session: 60m)" 
           : "Login successful - device already verified",
         token,
         role: user.role,
@@ -986,9 +986,9 @@ exports.samlCallback = async (request, reply) => {
     
     console.log(`✅ SAML Login Success for ${user.email}`);
     
-    // Lane 2: Internal Admin Session -> 15 Minutes (Strict Requirement)
-    const sessionDuration = "15m";
-    const cookieMaxAge = 15 * 60 * 1000;
+    // Lane 2: Internal Admin Session -> 60 Minutes (Strict Requirement)
+    const sessionDuration = "60m";
+    const cookieMaxAge = 60 * 60 * 1000;
     
     const token = jwt.sign(
       { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },

@@ -134,7 +134,7 @@ Add the route in your router:
 | Property | Value |
 |---|---|
 | Token type | JWT |
-| Expiry | 15 minutes (admin SAML session) |
+| Expiry | 60 minutes (admin SAML session) |
 | Query param name | `token` |
 | Type identifier | `type=saml` |
 
