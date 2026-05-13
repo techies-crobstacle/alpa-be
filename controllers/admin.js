@@ -3348,16 +3348,19 @@ exports.getPendingProducts = async (request, reply) => {
              p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
              p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
              p."rejectionReason", p."createdAt", p."updatedAt",
-             u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email"
+             u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email",
+             sp.status AS "seller_profile_status"
       FROM "products" p
       JOIN "users" u ON p."sellerId" = u.id
+      LEFT JOIN "SellerProfile" sp ON u.id = sp."userId"
       WHERE p.status = 'PENDING'
       ORDER BY p."createdAt" DESC
     `;
 
-    const mapped = products.map(({ seller_id, seller_name, seller_email, ...p }) => ({
+    const mapped = products.map(({ seller_id, seller_name, seller_email, seller_profile_status, ...p }) => ({
       ...p,
-      seller: { id: seller_id, name: seller_name, email: seller_email }
+      seller: { id: seller_id, name: seller_name, email: seller_email },
+      sellerProfileStatus: seller_profile_status || 'UNKNOWN'
     }));
 
     const enriched = await enrichProductPrice(mapped);
@@ -3391,7 +3394,12 @@ exports.approveProduct = async (request, reply) => {
           select: {
             id: true,
             name: true,
-            email: true
+            email: true,
+            sellerProfile: {
+              select: {
+                status: true
+              }
+            }
           }
         }
       }
@@ -3401,6 +3409,14 @@ exports.approveProduct = async (request, reply) => {
       return reply.status(404).send({
         success: false,
         message: "Product not found"
+      });
+    }
+
+    const sellerStatus = product.seller?.sellerProfile?.status;
+    if (sellerStatus && sellerStatus !== 'ACTIVE') {
+      return reply.status(400).send({
+        success: false,
+        message: `Cannot approve product. The seller's account is currently '${sellerStatus}'. Please activate the Seller Account first!`
       });
     }
 
