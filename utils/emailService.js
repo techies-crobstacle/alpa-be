@@ -1,4 +1,5 @@
 ﻿const sgMail = require('@sendgrid/mail');
+const nodemailer = require('nodemailer');
 
 /**
  * SENDGRID EMAIL SERVICE (Works on Render.com!)
@@ -12,31 +13,72 @@
  * 5. Install: npm install @sendgrid/mail
  */
 
+// Initialize Duo Circle Nodemailer
+let duoCircleConfigured = false;
+const duoCircleTransporter = nodemailer.createTransport({
+  host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
+  port: process.env.DUO_CIRCLE_PORT || 587,
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.DUO_CIRCLE_USER,
+    pass: process.env.DUO_CIRCLE_PASS,
+  },
+});
+
+if (process.env.DUO_CIRCLE_USER && process.env.DUO_CIRCLE_PASS) {
+  duoCircleConfigured = true;
+  console.log("🟢 Duo Circle email service initialized");
+}
+
 // Initialize SendGrid
 let emailConfigured = false;
 
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   emailConfigured = true;
-  console.log("? SendGrid email service initialized");
+  console.log("🟢 SendGrid email service initialized");
   console.log("SendGrid senderEmail:", process.env.SENDER_EMAIL);
   console.log("SendGrid API Key present:", !!process.env.SENDGRID_API_KEY);
 } else {
-  console.log(" SendGrid API key not configured. Emails will be logged to console.");
+  console.log("🟡 SendGrid API key not configured. Emails will be logged to console.");
 }
 
-const isDevelopmentMode = !emailConfigured;
+const isDevelopmentMode = (!emailConfigured && !duoCircleConfigured);
 const senderEmail = process.env.SENDER_EMAIL || process.env.EMAIL_USER || 'noreply@yourapp.com';
 const senderName = process.env.SENDER_NAME || 'Made in Arnhem Land';
 
 /**
- * Helper function to handle SendGrid sending with quota error fallback
+ * Helper function to handle sending with quota error fallback
  */
 const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
   try {
-    await sgMail.send(msg);
-    console.log(`? ${context} sent successfully to:`, msg.to);
-    return { success: true };
+    // If Duo Circle is configured, prioritize it over SendGrid
+    if (duoCircleConfigured) {
+      const mailOptions = {
+        from: `"${msg.from.name || senderName}" <${msg.from.email || msg.from}>`,
+        to: msg.to.email || msg.to,
+        subject: msg.subject,
+        text: msg.text,
+        html: msg.html,
+      };
+      
+      if (msg.replyTo) {
+        mailOptions.replyTo = msg.replyTo.email || msg.replyTo;
+      }
+      
+      await duoCircleTransporter.sendMail(mailOptions);
+      console.log(`✅ [Duo Circle] ${context} sent successfully to:`, msg.to);
+      return { success: true };
+    } 
+    
+    // Otherwise fallback to SendGrid if configured
+    if (emailConfigured) {
+      await sgMail.send(msg);
+      console.log(`✅ [SendGrid] ${context} sent successfully to:`, msg.to);
+      return { success: true };
+    }
+
+    throw new Error('No email service configured');
   } catch (error) {
     console.error(`? SendGrid error for ${context}:`, error.response?.body || error.message);
     
@@ -345,9 +387,53 @@ const buildMsg = (msg) => {
 };
 
 // Wrap sgMail.send so every outgoing message automatically gets
-// plain-text body + Reply-To + List-Unsubscribe headers
+// plain-text body + Reply-To + List-Unsubscribe headers,
+// AND seamlessly routes to Duo Circle if configured
 const _sgMailSend = sgMail.send.bind(sgMail);
-sgMail.send = (msg, ...args) => _sgMailSend(buildMsg(msg), ...args);
+sgMail.send = async (rawMsg, ...args) => {
+  const msg = buildMsg(rawMsg);
+  
+  // Intercept and route to Duo Circle if enabled
+  if (duoCircleConfigured) {
+    const mailOptions = {
+      from: `"${msg.from?.name || senderName}" <${msg.from?.email || msg.from || senderEmail}>`,
+      to: msg.to?.email || msg.to,
+      subject: msg.subject,
+      text: msg.text,
+      html: msg.html,
+    };
+    
+    // Convert Array of to emails if needed
+    if (Array.isArray(msg.to)) {
+      mailOptions.to = msg.to.map(t => t.email || t).join(', ');
+    }
+    
+    // Attachments
+    if (msg.attachments && Array.isArray(msg.attachments)) {
+      mailOptions.attachments = msg.attachments.map(att => ({
+        filename: att.filename,
+        content: att.content,
+        encoding: 'base64', // SendGrid attachments are usually base64 strings
+        contentType: att.type
+      }));
+    }
+    
+    if (msg.replyTo) {
+      mailOptions.replyTo = msg.replyTo.email || msg.replyTo;
+    }
+    
+    try {
+      await duoCircleTransporter.sendMail(mailOptions);
+      return [{ statusCode: 202, body: '' }]; // Mock SendGrid success response format
+    } catch (err) {
+      console.error('❌ Duo Circle sending error (via sgMail interceptor):', err.message);
+      throw err; // Re-throw to be caught by the caller's catch block
+    }
+  }
+
+  // Fallback back to SendGrid if Duo Circle isn't used
+  return _sgMailSend(msg, ...args);
+};
 
 // Generate 6-digit OTP
 const generateOTP = () => {
