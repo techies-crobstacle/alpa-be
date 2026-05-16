@@ -3574,7 +3574,7 @@ const generateInvoiceBuffer = (order) => {
       doc.fillColor(BRAND).fontSize(22).font('Helvetica-Bold')
          .text('INVOICE', L, y, { align: 'right', width: R - L });
       doc.fillColor(BRAND_MID).fontSize(9.5).font('Helvetica')
-         .text('Alpa Marketplace', L, y + 27, { align: 'right', width: R - L });
+         .text('Made in Arnhem Land', L, y + 27, { align: 'right', width: R - L });
       y += 64;
 
       // Header divider
@@ -3759,9 +3759,9 @@ const generateInvoiceBuffer = (order) => {
       // ── Footer — fixed at bottom, well within page bounds ────────────────
       doc.moveTo(L, FOOTER_Y - 10).lineTo(R, FOOTER_Y - 10).lineWidth(0.5).stroke('#cccccc');
       doc.fillColor('#aaaaaa').font('Helvetica').fontSize(8.5)
-         .text('Thank you for shopping with Alpa Marketplace!', L, FOOTER_Y, { align: 'center', width: R - L, lineBreak: false });
+         .text('Thank you for shopping with Made in Arnhem Land!', L, FOOTER_Y, { align: 'center', width: R - L, lineBreak: false });
       doc.fillColor('#bbbbbb').font('Helvetica').fontSize(8)
-         .text('Support: support@alpa.com', L, FOOTER_Y + 14, { align: 'center', width: R - L, lineBreak: false });
+         .text('Support: support@madeinarnhemland.com.au', L, FOOTER_Y + 14, { align: 'center', width: R - L, lineBreak: false });
     };
 
     const hasSubOrders = Array.isArray(order.subOrders) && order.subOrders.length > 0;
@@ -3811,6 +3811,33 @@ const buildSubOrderShape = (sub) => ({
   subOrders:          null,
 });
 
+async function ensureSubDisplayId(prisma, subRecord, invoiceShape) {
+  // If the invoiceShape lacks a displayId, fetch it from parent
+  if (!invoiceShape.displayId && subRecord.parentOrderId) {
+    const parent = await prisma.order.findUnique({ where: { id: subRecord.parentOrderId }, select: { displayId: true } });
+    if (parent) invoiceShape.displayId = parent.displayId;
+  }
+  // Generate a subDisplayId dynamically if it is null
+  if (!subRecord.subDisplayId && subRecord.parentOrderId && invoiceShape.displayId) {
+    const parentWithStubs = await prisma.order.findUnique({
+      where: { id: subRecord.parentOrderId },
+      include: { subOrders: { orderBy: { createdAt: 'asc' }, select: { id: true } } }
+    });
+    if (parentWithStubs && parentWithStubs.subOrders) {
+      const idx = parentWithStubs.subOrders.findIndex(s => s.id === subRecord.id);
+      if (idx !== -1) {
+        let suffix = '', n = idx;
+        do {
+          suffix = String.fromCharCode(65 + (n % 26)) + suffix;
+          n = Math.floor(n / 26) - 1;
+        } while (n >= 0);
+        subRecord.subDisplayId = `${invoiceShape.displayId}-${suffix}`;
+      }
+    }
+  }
+  invoiceShape.displayId = subRecord.subDisplayId || invoiceShape.displayId || invoiceShape.id;
+}
+
 // Download Invoice as PDF (auth required)
 exports.downloadInvoice = async (request, reply) => {
   try {
@@ -3826,7 +3853,15 @@ exports.downloadInvoice = async (request, reply) => {
 
     // ── Try as a parent / direct / legacy order first ──
     let invoiceShape = null;
-    const orderRecord = await prisma.order.findFirst({ where: { displayId: orderId }, include: orderInclude });
+    const orderRecord = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: orderId },
+          { displayId: orderId }
+        ]
+      },
+      include: orderInclude
+    });
 
     if (orderRecord) {
       // Role-based access
@@ -3848,11 +3883,50 @@ exports.downloadInvoice = async (request, reply) => {
     } else {
       // ── Fall back: try as a SubOrder ID ──
       const subOrderInclude = {
-        parentOrder: { select: { userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
+        parentOrder: { select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
         items:       { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         seller:      { select: { name: true, email: true } },
       };
-      const subRecord = await prisma.subOrder.findUnique({ where: { id: orderId }, include: subOrderInclude });
+      let subRecord = await prisma.subOrder.findFirst({
+        where: {
+          OR: [
+            { id: orderId },
+            { subDisplayId: orderId }
+          ]
+        },
+        include: subOrderInclude
+      });
+
+      // Fallback: If DB 'subDisplayId' is null but frontend dynamically passed "PARENT_DISPLAY-A"
+      if (!subRecord && orderId.includes('-')) {
+        const [parentDisplayId] = orderId.split('-');
+        const parentOrder = await prisma.order.findFirst({
+          where: { displayId: parentDisplayId },
+          include: { subOrders: { orderBy: { createdAt: 'asc' } } }
+        });
+        
+        if (parentOrder && parentOrder.subOrders) {
+          const toSubDisplayId = (parentId, idx) => {
+            let suffix = '', n = idx;
+            do {
+              suffix = String.fromCharCode(65 + (n % 26)) + suffix;
+              n = Math.floor(n / 26) - 1;
+            } while (n >= 0);
+            return `${parentId}-${suffix}`;
+          };
+          
+          for (let i = 0; i < parentOrder.subOrders.length; i++) {
+            if (toSubDisplayId(parentDisplayId, i) === orderId) {
+              subRecord = await prisma.subOrder.findUnique({
+                where: { id: parentOrder.subOrders[i].id },
+                include: subOrderInclude
+              });
+              break;
+            }
+          }
+        }
+      }
+
       if (!subRecord) {
         return reply.status(404).send({ success: false, message: "Order not found or you don't have permission to access this order" });
       }
@@ -3864,6 +3938,7 @@ exports.downloadInvoice = async (request, reply) => {
         return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
       }
       invoiceShape = buildSubOrderShape(subRecord);
+      await ensureSubDisplayId(prisma, subRecord, invoiceShape);
     }
 
     // Status guard — allow all statuses including REFUND/CANCELLED
@@ -3892,16 +3967,53 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
     const userRole = request.user.role;
     const { subOrderId } = request.params;
 
-    const subRecord = await prisma.subOrder.findFirst({
-      where: { subDisplayId: subOrderId },
-      include: {
-        parentOrder: {
-          select: { userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } }
-        },
-        items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-        seller: { select: { name: true, email: true } },
+    const subOrderInclude = {
+      parentOrder: {
+        select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } }
       },
+      items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      seller: { select: { name: true, email: true } },
+    };
+
+    let subRecord = await prisma.subOrder.findFirst({
+      where: {
+        OR: [
+          { id: subOrderId },
+          { subDisplayId: subOrderId }
+        ]
+      },
+      include: subOrderInclude,
     });
+
+    // Fallback: If DB 'subDisplayId' is null but frontend dynamically passed "PARENT_DISPLAY-A"
+    if (!subRecord && subOrderId.includes('-')) {
+      const [parentDisplayId] = subOrderId.split('-');
+      const parentOrder = await prisma.order.findFirst({
+        where: { displayId: parentDisplayId },
+        include: { subOrders: { orderBy: { createdAt: 'asc' } } }
+      });
+      
+      if (parentOrder && parentOrder.subOrders) {
+        const toSubDisplayId = (parentId, idx) => {
+          let suffix = '', n = idx;
+          do {
+            suffix = String.fromCharCode(65 + (n % 26)) + suffix;
+            n = Math.floor(n / 26) - 1;
+          } while (n >= 0);
+          return `${parentId}-${suffix}`;
+        };
+        
+        for (let i = 0; i < parentOrder.subOrders.length; i++) {
+          if (toSubDisplayId(parentDisplayId, i) === subOrderId) {
+            subRecord = await prisma.subOrder.findUnique({
+              where: { id: parentOrder.subOrders[i].id },
+              include: subOrderInclude
+            });
+            break;
+          }
+        }
+      }
+    }
 
     if (!subRecord) {
       return reply.status(404).send({ success: false, message: 'Sub-order not found' });
@@ -3922,8 +4034,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
     }
 
     const invoiceShape = buildSubOrderShape(subRecord);
-    // Override displayId to use subDisplayId so the PDF shows e.g. "#A4X9KR-A"
-    invoiceShape.displayId = subRecord.subDisplayId || invoiceShape.displayId;
+    await ensureSubDisplayId(prisma, subRecord, invoiceShape);
 
     const pdfBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: resolvedStatus });
     reply.header('Content-Type', 'application/pdf');
@@ -3946,6 +4057,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
 
     const parentOrderSelect = {
       select: {
+        displayId: true,
         userId: true, customerName: true, customerEmail: true, customerPhone: true,
         shippingPhone: true, shippingAddressLine: true, shippingCity: true,
         shippingState: true, shippingZipCode: true, shippingCountry: true,
@@ -3980,6 +4092,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
         return reply.status(404).send({ success: false, message: "Order not found or email doesn't match" });
       }
       invoiceShape = buildSubOrderShape(subRecord);
+      await ensureSubDisplayId(prisma, subRecord, invoiceShape);
     }
 
     const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
@@ -4048,6 +4161,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
         return reply.status(404).send({ success: false, message: "Order not found" });
       }
       invoiceShape = buildSubOrderShape(subRecord);
+      await ensureSubDisplayId(prisma, subRecord, invoiceShape);
     }
 
     const resolvedStatus = invoiceShape.status || invoiceShape.overallStatus || 'CONFIRMED';
