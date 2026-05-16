@@ -17,13 +17,16 @@ const nodemailer = require('nodemailer');
 let duoCircleConfigured = false;
 const duoCircleTransporter = nodemailer.createTransport({
   host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
-  port: process.env.DUO_CIRCLE_PORT || 2525, // Fallback to 2525 which is rarely blocked by cloud providers
+  port: parseInt(process.env.DUO_CIRCLE_PORT) === 587 ? 2525 : (process.env.DUO_CIRCLE_PORT || 2525), // Forcibly circumvent port 587 blocks to prevent hanging
   secure: false, // true for 465, false for other ports
+  connectionTimeout: 5000, // Short 5-second timeout so it never hangs the checkout
+  greetingTimeout: 5000,
+  socketTimeout: 5000,
   auth: {
     user: process.env.DUO_CIRCLE_USER,
     pass: process.env.DUO_CIRCLE_PASS,
   },
-  pool: true, // Use pooled connections for better performance and reliability
+  pool: true,
   maxConnections: 5,
   maxMessages: 100,
 });

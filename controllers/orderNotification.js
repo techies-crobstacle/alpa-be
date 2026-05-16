@@ -170,12 +170,21 @@ exports.getSellerNotifications = async (request, reply) => {
         order: {
           select: {
             id: true,
+            displayId: true,
             totalAmount: true,
             status: true,
             createdAt: true,
             customerName: true,
             customerEmail: true,
             customerPhone: true,
+            subOrders: {
+              select: {
+                id: true,
+                status: true,
+                sellerId: true,
+                subtotal: true
+              }
+            },
             items: {
               include: {
                 product: {
@@ -202,10 +211,23 @@ exports.getSellerNotifications = async (request, reply) => {
     // Calculate SLA status for each notification
     const notificationsWithSLA = notifications.map(notification => {
       const slaStatus = calculateSLAStatus(notification);
+      
+      // Override the SLA indicator/status with the actual order/sub-order status 
+      // as per recent requirements to show current status directly
+      let actualStatus = notification.order?.status || 'PENDING';
+      
+      // If a seller is viewing this, show the specific sub-order status
+      if (notification.sellerId && !adminViewAll && notification.order?.subOrders) {
+        const relevantSubOrder = notification.order.subOrders.find(s => s.sellerId === notification.sellerId);
+        if (relevantSubOrder) {
+          actualStatus = relevantSubOrder.status;
+        }
+      }
+
       return {
         ...notification,
-        slaStatus: slaStatus.status,
-        slaIndicator: slaStatus.indicator,
+        slaStatus: actualStatus,       // Used by frontend to display status string
+        slaIndicator: actualStatus,    // Replacing RED/YELLOW with actual status
         timeRemaining: Math.round(slaStatus.timeRemaining * 100) / 100,
         timeElapsed: Math.round(slaStatus.timeElapsed * 100) / 100,
         isOverdue: slaStatus.isOverdue,
