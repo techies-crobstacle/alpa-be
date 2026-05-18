@@ -469,13 +469,78 @@ exports.resendOTP = async (request, reply) => {
     });
 
     if (!pendingData) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "No pending registration found. Please register first." 
+      // If no pending registration, check if the user is already registered and needs a login OTP
+      const existingUser = await prisma.user.findUnique({
+        where: { email: normalizedEmail }
+      });
+
+      if (!existingUser) {
+        return reply.status(404).send({ 
+          success: false, 
+          message: "No pending registration found. Please register first." 
+        });
+      }
+
+      // Check for an existing unverified login verification to verify rate limits and get deviceFingerprint
+      const recentLoginVerification = await prisma.loginVerification.findFirst({
+        where: { userId: existingUser.id, verified: false },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      if (recentLoginVerification) {
+        const now = new Date();
+        const timeSinceLastUpdate = now.getTime() - recentLoginVerification.updatedAt.getTime();
+        const oneMinute = 60 * 1000;
+
+        if (timeSinceLastUpdate < oneMinute) {
+          const waitTime = Math.ceil((oneMinute - timeSinceLastUpdate) / 1000);
+          return reply.status(429).send({ 
+            success: false, 
+            message: `Please wait ${waitTime} seconds before requesting a new OTP.`,
+            waitTime: waitTime
+          });
+        }
+      }
+
+      const df = request.body.deviceFingerprint || (recentLoginVerification ? recentLoginVerification.deviceFingerprint : "unknown-device");
+
+      // Generate new login OTP
+      const otp = generateOTP();
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Clear existing to keep it clean, as per login flow
+      await prisma.loginVerification.deleteMany({
+        where: { userId: existingUser.id }
+      });
+
+      await prisma.loginVerification.create({
+        data: {
+          userId: existingUser.id,
+          email: normalizedEmail,
+          otp: otp,
+          otpExpiry: otpExpiry,
+          deviceFingerprint: df,
+          verified: false
+        }
+      });
+
+      const emailResult = await sendOTPEmail(normalizedEmail, otp, existingUser.username || existingUser.email);
+      
+      if (!emailResult.success) {
+        return reply.status(500).send({ 
+          success: false, 
+          message: "Failed to send OTP email. Please try again." 
+        });
+      }
+
+      console.log(`✅ Login OTP resent to ${normalizedEmail}`);
+      return reply.send({
+        success: true,
+        message: "New OTP sent to your email.",
       });
     }
 
-    // Rate limiting: Check if OTP was updated recently (within 1 minute)
+    // Rate limiting for Registration OTP: Check if OTP was updated recently (within 1 minute)
     const now = new Date();
     const timeSinceLastUpdate = now.getTime() - pendingData.updatedAt.getTime();
     const oneMinute = 60 * 1000;
