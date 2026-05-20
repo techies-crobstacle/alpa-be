@@ -768,6 +768,66 @@ const notifyAdminProductSellerDeactivated = async (productId, productDetails = {
   return notifications;
 };
 
+// ── Variant Status Change Notifications ──────────────────────────────────────
+
+// Sent to all admins when ANY user (seller or admin) toggles a variant's status.
+// details: { productTitle, variantSku, variantAttributes, changedBy, changedByRole }
+const notifyAdminVariantStatusChange = async (productId, variantId, isActive, details = {}) => {
+  const { productTitle, variantSku, variantAttributes, changedBy, changedByRole } = details;
+
+  const action = isActive ? 'activated' : 'deactivated';
+  const attrText = variantAttributes ? ` (${variantAttributes})` : '';
+  const actor = (changedByRole === 'ADMIN' || changedByRole === 'SUPER_ADMIN')
+    ? `Admin ${changedBy || ''}`.trim()
+    : `Seller ${changedBy || 'Unknown'}`;
+
+  const title = `Variant ${isActive ? 'Activated' : 'Deactivated'}`;
+  const message = `${actor} has ${action} variant SKU "${variantSku || variantId}"${attrText} of product "${productTitle || 'Unknown'}".`;
+
+  const admins = await prisma.user.findMany({
+    where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    const notification = await createNotification(
+      admin.id,
+      title,
+      message,
+      'PRODUCT_STATUS_CHANGED',
+      productId,
+      'product',
+      { variantId, variantSku, variantAttributes, isActive, changedBy, changedByRole, productTitle }
+    );
+    if (notification) notifications.push(notification);
+  }
+
+  return notifications;
+};
+
+// Sent to the seller when an admin toggles one of their variant's status.
+// details: { productTitle, variantSku, variantAttributes }
+const notifySellerVariantStatusChange = async (sellerId, productId, variantId, isActive, details = {}) => {
+  const { productTitle, variantSku, variantAttributes } = details;
+
+  const action = isActive ? 'activated' : 'deactivated';
+  const attrText = variantAttributes ? ` (${variantAttributes})` : '';
+
+  const title = `Product Variant ${isActive ? 'Activated' : 'Deactivated'}`;
+  const message = `Your variant SKU "${variantSku || variantId}"${attrText} of product "${productTitle || 'Unknown'}" has been ${action} by an admin.`;
+
+  return await createNotification(
+    sellerId,
+    title,
+    message,
+    'PRODUCT_STATUS_CHANGED',
+    productId,
+    'product',
+    { variantId, variantSku, variantAttributes, isActive, productTitle }
+  );
+};
+
 // Export helper functions for use in other controllers
 module.exports = {
   ...module.exports,
@@ -794,5 +854,7 @@ module.exports = {
   notifyAdminProductSellerDeactivated,
   notifyBankChangeRequested,
   notifySellerBankChangeApproved,
-  notifySellerBankChangeRejected
+  notifySellerBankChangeRejected,
+  notifyAdminVariantStatusChange,
+  notifySellerVariantStatusChange
 };

@@ -7,7 +7,9 @@ const {
   notifyAdminProductPending,
   notifyAdminLowStockDeactivation,
   notifyAdminProductSubmitReview,
-  notifyAdminProductSellerDeactivated
+  notifyAdminProductSellerDeactivated,
+  notifyAdminVariantStatusChange,
+  notifySellerVariantStatusChange
 } = require("./notification");
 const {
   sendSellerLowStockEmail,
@@ -1898,6 +1900,9 @@ exports.updateVariant = async (request, reply) => {
     if (isActive !== undefined) updateData.isActive = isActive === true || isActive === 'true';
     if (Array.isArray(images)) updateData.images = images;
 
+    // Capture old isActive before updating (for notification comparison)
+    const isActiveChanging = isActive !== undefined && updateData.isActive !== variant.isActive;
+
     const updatedVariant = await prisma.productVariant.update({
       where: { id: variantId },
       data: updateData
@@ -1906,6 +1911,33 @@ exports.updateVariant = async (request, reply) => {
     // Auto-reactivate the parent product if stock was restored
     if (stock !== undefined) {
       await autoReactivateIfStocked(productId);
+    }
+
+    // Fire variant-status notifications only when isActive actually changed
+    if (isActiveChanging) {
+      // Resolve acting user's display name for the notification message
+      const actingUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } }
+      });
+      const changedByName = actingUser?.name
+        || actingUser?.sellerProfile?.storeName
+        || actingUser?.sellerProfile?.businessName
+        || userId;
+
+      const notificationDetails = {
+        productTitle: variant.product.title,
+        variantSku: updatedVariant.sku,
+        changedBy: changedByName,
+        changedByRole: userRole
+      };
+      notifyAdminVariantStatusChange(productId, variantId, updatedVariant.isActive, notificationDetails)
+        .catch(err => console.error('notifyAdminVariantStatusChange error (non-fatal):', err.message));
+      if ((userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && variant.product.sellerId) {
+        notifySellerVariantStatusChange(
+          variant.product.sellerId, productId, variantId, updatedVariant.isActive, notificationDetails
+        ).catch(err => console.error('notifySellerVariantStatusChange error (non-fatal):', err.message));
+      }
     }
 
     return reply.status(200).send({
@@ -1926,6 +1958,112 @@ exports.updateVariant = async (request, reply) => {
       return reply.status(409).send({ success: false, message: `SKU already exists` });
     }
     console.error('updateVariant error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// TOGGLE VARIANT STATUS (Seller/Admin)
+// PATCH /api/products/:productId/variants/:variantId/toggle-status
+// Body: { isActive: boolean }  — explicitly set, or omit to flip the current value
+exports.toggleVariantStatus = async (request, reply) => {
+  try {
+    const { productId, variantId } = request.params;
+    const userId = request.user.userId;
+    const userRole = request.user.role;
+
+    // Load variant + parent product + attributes for notification message
+    const variant = await prisma.productVariant.findUnique({
+      where: { id: variantId },
+      include: {
+        product: { select: { id: true, title: true, sellerId: true, type: true, status: true } },
+        variantAttributeValues: {
+          include: {
+            attributeValue: {
+              include: { attribute: { select: { displayName: true, name: true } } }
+            }
+          }
+        }
+      }
+    });
+
+    if (!variant || variant.productId !== productId) {
+      return reply.status(404).send({ success: false, message: 'Variant not found for this product' });
+    }
+
+    // Sellers can only toggle variants on their own products
+    if (userRole === 'SELLER' && variant.product.sellerId !== userId) {
+      return reply.status(403).send({ success: false, message: 'You do not have permission to update this variant' });
+    }
+
+    // Determine the new status — explicit body value or flip current
+    let newIsActive;
+    if (request.body && request.body.isActive !== undefined) {
+      newIsActive = request.body.isActive === true || request.body.isActive === 'true';
+    } else {
+      newIsActive = !variant.isActive;
+    }
+
+    // No-op if already in that state
+    if (newIsActive === variant.isActive) {
+      return reply.status(200).send({
+        success: true,
+        message: `Variant is already ${newIsActive ? 'active' : 'inactive'}`,
+        variant: { id: variantId, isActive: newIsActive }
+      });
+    }
+
+    await prisma.productVariant.update({
+      where: { id: variantId },
+      data: { isActive: newIsActive }
+    });
+
+    // When re-activating a variant, check if the parent product should also come back
+    if (newIsActive) {
+      await autoReactivateIfStocked(productId);
+    }
+
+    // Build a human-readable attribute label for notifications (e.g. "Red / Size 8")
+    const variantAttributes = variant.variantAttributeValues
+      .map(vav => vav.attributeValue.displayValue || vav.attributeValue.value)
+      .join(' / ') || null;
+
+    // Resolve acting user's display name for the notification message
+    const actingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } }
+    });
+    const changedByName = actingUser?.name
+      || actingUser?.sellerProfile?.storeName
+      || actingUser?.sellerProfile?.businessName
+      || userId;
+
+    const notificationDetails = {
+      productTitle: variant.product.title,
+      variantSku: variant.sku,
+      variantAttributes,
+      changedBy: changedByName,
+      changedByRole: userRole
+    };
+
+    // Notify admins whenever a variant status changes
+    await notifyAdminVariantStatusChange(productId, variantId, newIsActive, notificationDetails).catch(err =>
+      console.error('notifyAdminVariantStatusChange error (non-fatal):', err.message)
+    );
+
+    // If admin toggled a seller's variant, also notify the seller
+    if ((userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') && variant.product.sellerId) {
+      await notifySellerVariantStatusChange(
+        variant.product.sellerId, productId, variantId, newIsActive, notificationDetails
+      ).catch(err => console.error('notifySellerVariantStatusChange error (non-fatal):', err.message));
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: `Variant ${newIsActive ? 'activated' : 'deactivated'} successfully`,
+      variant: { id: variantId, productId, isActive: newIsActive }
+    });
+  } catch (error) {
+    console.error('toggleVariantStatus error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

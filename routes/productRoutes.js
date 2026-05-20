@@ -9,6 +9,7 @@ const {
   getProductVariants,
   updateVariant,
   bulkSaveVariants,
+  toggleVariantStatus,
   deleteProduct,
   updateProduct,
   getProductStock,
@@ -47,6 +48,9 @@ async function productRoutes(fastify, options) {
 
   // UPDATE VARIANT (Seller or Admin — also auto-reactivates product if stock is restored)
   fastify.put("/:productId/variants/:variantId", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, updateVariant);
+
+  // TOGGLE VARIANT STATUS (Seller or Admin — flip isActive without touching price/stock)
+  fastify.patch("/:productId/variants/:variantId/toggle-status", { preHandler: [authenticateUser, checkRole(['SELLER', 'ADMIN'])] }, toggleVariantStatus);
 
   // ── Seller: Self-Deactivate & Submit for Review ────────────────────────────
   // PUT  /products/:id/deactivate    — seller deactivates their ACTIVE product with a reason
