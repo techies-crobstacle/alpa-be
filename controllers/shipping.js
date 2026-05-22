@@ -1,4 +1,81 @@
 const prisma = require('../config/prisma');
+const { INTERNATIONAL_ZONES, lookupZone } = require('../utils/internationalShipping');
+
+/**
+ * PUBLIC - Get all international shipping zones with their countries
+ * GET /api/shipping/international/zones
+ */
+const getInternationalZones = async (request, reply) => {
+  try {
+    const zones = INTERNATIONAL_ZONES.map(({ zone, label, cost, countries }) => ({
+      zone,
+      label,
+      cost,
+      countries: countries.sort()
+    }));
+
+    return reply.status(200).send({
+      success: true,
+      data: zones
+    });
+  } catch (error) {
+    console.error('Error fetching international zones:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Failed to fetch international zones',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * PUBLIC - Get international shipping rate for a specific country
+ * GET /api/shipping/international/rate?country=<countryName>
+ */
+const getInternationalRate = async (request, reply) => {
+  try {
+    const { country } = request.query;
+
+    if (!country || !country.trim()) {
+      return reply.status(400).send({
+        success: false,
+        message: 'country query parameter is required'
+      });
+    }
+
+    const countryTrimmed = country.trim();
+
+    // Special case: Australia is handled by standard/express, not international
+    if (countryTrimmed.toLowerCase() === 'australia') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Use standard or express shipping for Australia'
+      });
+    }
+
+    const zoneEntry = lookupZone(countryTrimmed);
+
+    return reply.status(200).send({
+      success: true,
+      data: {
+        country: countryTrimmed,
+        zone: zoneEntry.zone,
+        zoneName: zoneEntry.label,
+        cost: zoneEntry.cost,
+        name: 'International',
+        estimatedDays: '10-20 business days',
+        description: `International shipping to ${countryTrimmed} (${zoneEntry.zone} – ${zoneEntry.label})`
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching international shipping rate:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Failed to fetch international shipping rate',
+      error: error.message
+    });
+  }
+};
 
 /**
  * ADMIN ONLY - Create a new shipping method
@@ -279,5 +356,7 @@ module.exports = {
   getShippingMethodById,
   updateShippingMethod,
   deleteShippingMethod,
-  toggleShippingMethodStatus
+  toggleShippingMethodStatus,
+  getInternationalZones,
+  getInternationalRate
 };

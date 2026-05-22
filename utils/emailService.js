@@ -72,12 +72,24 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
         mailOptions.replyTo = msg.replyTo.email || msg.replyTo;
       }
       
-      await duoCircleTransporter.sendMail(mailOptions);
-      console.log(`✅ [Duo Circle] ${context} sent successfully to:`, msg.to);
-      return { success: true };
+      try {
+        await duoCircleTransporter.sendMail(mailOptions);
+        console.log(`✅ [Duo Circle] ${context} sent successfully to:`, msg.to);
+        return { success: true };
+      } catch (duoErr) {
+        console.error(`❌ [Duo Circle] ${context} failed:`, duoErr.message);
+        // Fall through to SendGrid if available
+        if (emailConfigured) {
+          console.log(`⚠️ Falling back to SendGrid for ${context}...`);
+          await sgMail.send(msg);
+          console.log(`✅ [SendGrid fallback] ${context} sent successfully to:`, msg.to);
+          return { success: true };
+        }
+        throw duoErr;
+      }
     } 
     
-    // Otherwise fallback to SendGrid if configured
+    // Otherwise use SendGrid if configured
     if (emailConfigured) {
       await sgMail.send(msg);
       console.log(`✅ [SendGrid] ${context} sent successfully to:`, msg.to);
@@ -433,7 +445,12 @@ sgMail.send = async (rawMsg, ...args) => {
       return [{ statusCode: 202, body: '' }]; // Mock SendGrid success response format
     } catch (err) {
       console.error('❌ Duo Circle sending error (via sgMail interceptor):', err.message);
-      throw err; // Re-throw to be caught by the caller's catch block
+      // Fall back to SendGrid rather than silently dropping the email
+      if (emailConfigured) {
+        console.log('⚠️ Falling back to SendGrid for email delivery...');
+        return _sgMailSend(msg, ...args);
+      }
+      throw err;
     }
   }
 
@@ -797,7 +814,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
             <!-- Shipping row -->
             <tr style="background-color:#fdf5f3;">
               <td colspan="4" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
-                Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` � ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
+                Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` &mdash; ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
               </td>
               <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
                 orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0

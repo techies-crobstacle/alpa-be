@@ -1,13 +1,15 @@
 const prisma = require("../config/prisma");
+const { lookupZone } = require('../utils/internationalShipping');
 
 /**
  * Calculate cart totals with shipping and GST
  * @param {Array} cartItems - Array of cart items with product details
- * @param {String} shippingMethodId - Selected shipping method ID (optional)
+ * @param {String} shippingMethodId - Selected shipping method ID (optional, for AU domestic)
  * @param {String} gstId - Selected GST ID (optional)
+ * @param {Number|null} internationalShippingCost - Per-seller flat cost for international orders (optional)
  * @returns {Object} - Calculated totals
  */
-const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = null) => {
+const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = null, internationalShippingCost = null) => {
   try {
     // Calculate subtotal — use variant price for VARIABLE items, product price for SIMPLE
     const subtotal = cartItems.reduce((sum, item) => {
@@ -25,8 +27,11 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
     // Get shipping cost
     let shippingCost = 0;
     let selectedShipping = null;
-    
-    if (shippingMethodId) {
+
+    if (internationalShippingCost !== null) {
+      // International shipping: cost passed directly (server-validated from zone map)
+      shippingCost = parseFloat(internationalShippingCost);
+    } else if (shippingMethodId) {
       const shipping = await prisma.shippingMethod.findUnique({
         where: { id: shippingMethodId, isActive: true }
       });
@@ -219,7 +224,7 @@ exports.addToCart = async (request, reply) => {
 exports.getMyCart = async (request, reply) => {
   try {
     const userId = request.user.userId; // from auth middleware
-    const { shippingMethodId, gstId } = request.query; // Optional: selected shipping method and GST
+    const { shippingMethodId, gstId, internationalCountry } = request.query; // Optional: domestic method ID or international country
 
     console.log(`🛒 Fetching cart for user: ${userId}`);
 
@@ -377,9 +382,30 @@ exports.getMyCart = async (request, reply) => {
     }
 
     // If a specific shippingMethodId was requested use that, otherwise base (no shipping)
-    const calculations = shippingMethodId
-      ? await calculateCartTotals(cleanedCart, shippingMethodId, gstId)
-      : baseCalculations;
+    let calculations = baseCalculations;
+    let internationalShipping = null;
+
+    if (internationalCountry && internationalCountry.trim().toLowerCase() !== 'australia') {
+      const intlZoneEntry = lookupZone(internationalCountry.trim());
+      const intlCalc = await calculateCartTotals(cleanedCart, null, gstId, intlZoneEntry.cost);
+      // Override shippingCost → totalShippingCost so the frontend's shipping display line
+      // always shows the full charge (perSellerRate × sellerCount), not the per-seller rate.
+      calculations = {
+        ...intlCalc,
+        shippingCost: intlCalc.totalShippingCost
+      };
+      internationalShipping = {
+        country: internationalCountry.trim(),
+        zone: intlZoneEntry.zone,
+        zoneName: intlZoneEntry.label,
+        costPerSeller: intlZoneEntry.cost,
+        totalCost: parseFloat(intlCalc.totalShippingCost),
+        sellerCount: intlCalc.sellerCount,
+        estimatedDays: '10-20 business days'
+      };
+    } else if (shippingMethodId) {
+      calculations = await calculateCartTotals(cleanedCart, shippingMethodId, gstId);
+    }
 
     const cartItemCount = cleanedCart.length;
     const totalQuantity = cleanedCart.reduce((sum, item) => sum + item.quantity, 0);
@@ -392,7 +418,8 @@ exports.getMyCart = async (request, reply) => {
       availableShipping,
       gst: defaultGST,
       calculations,
-      shippingCalculations  // keyed by shippingMethodId — ready-to-use totals per option
+      shippingCalculations,  // keyed by shippingMethodId — ready-to-use totals per option
+      ...(internationalShipping && { internationalShipping })
     });
   } catch (error) {
     console.error("Get cart error:", error);
@@ -544,7 +571,7 @@ exports.removeFromCart = async (request, reply) => {
  */
 exports.calculateGuestCart = async (request, reply) => {
   try {
-    const { items, shippingMethodId, gstId } = request.body;
+    const { items, shippingMethodId, gstId, internationalCountry } = request.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return reply.status(400).send({
@@ -676,7 +703,30 @@ exports.calculateGuestCart = async (request, reply) => {
     }
 
     // Calculate totals for the selected method (or base if none selected)
-    const calculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
+    let calculations;
+    let internationalShipping = null;
+
+    if (internationalCountry && internationalCountry.trim().toLowerCase() !== 'australia') {
+      const intlZoneEntry = lookupZone(internationalCountry.trim());
+      const intlCalc = await calculateCartTotals(cartItems, null, gstId, intlZoneEntry.cost);
+      // Override shippingCost → totalShippingCost so the frontend's shipping display line
+      // always shows the full charge (perSellerRate × sellerCount), not the per-seller rate.
+      calculations = {
+        ...intlCalc,
+        shippingCost: intlCalc.totalShippingCost
+      };
+      internationalShipping = {
+        country: internationalCountry.trim(),
+        zone: intlZoneEntry.zone,
+        zoneName: intlZoneEntry.label,
+        costPerSeller: intlZoneEntry.cost,
+        totalCost: parseFloat(intlCalc.totalShippingCost),
+        sellerCount: intlCalc.sellerCount,
+        estimatedDays: '10-20 business days'
+      };
+    } else {
+      calculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
+    }
 
     return reply.status(200).send({
       success: true,
@@ -685,7 +735,8 @@ exports.calculateGuestCart = async (request, reply) => {
       availableGST,
       defaultGST,
       calculations,
-      shippingCalculations  // keyed by shippingMethodId — ready-to-use totals per option
+      shippingCalculations,  // keyed by shippingMethodId — ready-to-use totals per option
+      ...(internationalShipping && { internationalShipping })
     });
   } catch (error) {
     console.error("Calculate guest cart error:", error);

@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const { calculateCartTotals } = require("./cart");
 const { generateInvoiceBuffer, calcSellerCouponDiscount } = require("./orders");
+const { lookupZone } = require("../utils/internationalShipping");
 
 // ─── Short Display ID Generator ───────────────────────────────────────────────
 const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -41,6 +42,7 @@ exports.createPaymentIntent = async (request, reply) => {
     const {
       shippingAddress,
       shippingMethodId,
+      internationalCountry,
       gstId,
       country,
       city,
@@ -49,10 +51,13 @@ exports.createPaymentIntent = async (request, reply) => {
       mobileNumber,
     } = request.body;
 
-    if (!shippingAddress || !shippingMethodId) {
+    const effectiveIntlCountry = (internationalCountry || country || '').trim();
+    const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
+
+    if (!shippingAddress || (!shippingMethodId && !isInternational)) {
       return reply.status(400).send({
         success: false,
-        message: "shippingAddress and shippingMethodId are required",
+        message: "shippingAddress and a shipping method (or international destination country) are required",
       });
     }
 
@@ -72,15 +77,27 @@ exports.createPaymentIntent = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Cart is empty" });
     }
 
-    // Validate shipping method
-    const shippingMethod = await prisma.shippingMethod.findUnique({
-      where: { id: shippingMethodId, isActive: true },
-    });
-    if (!shippingMethod) {
-      return reply.status(400).send({
-        success: false,
-        message: "Invalid or inactive shipping method",
+    // Resolve shipping method — international uses zone lookup, domestic uses DB
+    let shippingMethod;
+    let intlZoneEntry = null;
+    if (isInternational) {
+      intlZoneEntry = lookupZone(effectiveIntlCountry);
+      shippingMethod = {
+        id: null,
+        name: `International (${effectiveIntlCountry})`,
+        cost: intlZoneEntry.cost,
+        estimatedDays: '10-20 business days',
+      };
+    } else {
+      shippingMethod = await prisma.shippingMethod.findUnique({
+        where: { id: shippingMethodId, isActive: true },
       });
+      if (!shippingMethod) {
+        return reply.status(400).send({
+          success: false,
+          message: "Invalid or inactive shipping method",
+        });
+      }
     }
 
     // Stock check — use variant stock for VARIABLE products
@@ -96,11 +113,12 @@ exports.createPaymentIntent = async (request, reply) => {
       }
     }
 
-    // Calculate totals
+    // Calculate totals — pass international cost as 4th arg when applicable
     const cartCalculations = await calculateCartTotals(
       cart.items,
-      shippingMethodId,
-      gstId
+      isInternational ? null : shippingMethodId,
+      gstId,
+      isInternational ? intlZoneEntry.cost : null
     );
     const totalAmount = parseFloat(cartCalculations.grandTotal);
 
@@ -669,6 +687,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       customerPhone,
       shippingAddress,
       shippingMethodId,
+      internationalCountry,
       gstId,
       country,
       city,
@@ -678,6 +697,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       couponCode,
     } = request.body;
 
+    const effectiveIntlCountry = (internationalCountry || country || '').trim();
+    const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
+
     // Basic validation
     if (!items || items.length === 0) {
       return reply.status(400).send({ success: false, message: "Order items are required" });
@@ -685,20 +707,32 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     if (!customerName || !customerEmail || !customerPhone) {
       return reply.status(400).send({ success: false, message: "Customer name, email, and phone are required" });
     }
-    if (!shippingAddress || !shippingMethodId) {
-      return reply.status(400).send({ success: false, message: "shippingAddress and shippingMethodId are required" });
+    if (!shippingAddress || (!shippingMethodId && !isInternational)) {
+      return reply.status(400).send({ success: false, message: "shippingAddress and a shipping method (or international destination country) are required" });
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customerEmail)) {
       return reply.status(400).send({ success: false, message: "Invalid email address" });
     }
 
-    // Validate shipping method
-    const shippingMethod = await prisma.shippingMethod.findUnique({
-      where: { id: shippingMethodId, isActive: true },
-    });
-    if (!shippingMethod) {
-      return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+    // Resolve shipping method — international uses zone lookup, domestic uses DB
+    let shippingMethod;
+    let intlZoneEntry = null;
+    if (isInternational) {
+      intlZoneEntry = lookupZone(effectiveIntlCountry);
+      shippingMethod = {
+        id: null,
+        name: `International (${effectiveIntlCountry})`,
+        cost: intlZoneEntry.cost,
+        estimatedDays: '10-20 business days',
+      };
+    } else {
+      shippingMethod = await prisma.shippingMethod.findUnique({
+        where: { id: shippingMethodId, isActive: true },
+      });
+      if (!shippingMethod) {
+        return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+      }
     }
 
     // Fetch and validate products + build cart-like structure
@@ -739,8 +773,13 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       orderItems.push({ productId: product.id, variantId: variantId || null, quantity, price: itemPrice });
     }
 
-    // Calculate totals
-    const cartCalculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
+    // Calculate totals — pass international cost as 4th arg when applicable
+    const cartCalculations = await calculateCartTotals(
+      cartItems,
+      isInternational ? null : shippingMethodId,
+      gstId,
+      isInternational ? intlZoneEntry.cost : null
+    );
     const originalTotal = parseFloat(cartCalculations.grandTotal);
 
     // ── Coupon validation ──────────────────────────────────────────────────

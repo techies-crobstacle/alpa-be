@@ -46,6 +46,7 @@ const { createOrderNotification } = require("./orderNotification");
 const { calculateCartTotals } = require("./cart");
 const { normalizeOrderStatus, validateStatusTransition } = require("../utils/orderStatusRules");
 const { createCommissionEarned } = require("./commission");
+const { lookupZone } = require("../utils/internationalShipping");
 const PDFDocument = require('pdfkit');
 
 // ─── Low Stock Alert Helper ───────────────────────────────────────────────────
@@ -218,7 +219,8 @@ exports.createOrder = async (request, reply) => {
     const { 
       shippingAddress, 
       paymentMethod, 
-      shippingMethodId, 
+      shippingMethodId,     // Required for Australia (domestic) shipping
+      internationalCountry, // Required for international shipping (mutually exclusive with shippingMethodId)
       gstId,
       country,
       city,
@@ -228,8 +230,32 @@ exports.createOrder = async (request, reply) => {
       couponCode
     } = request.body;
 
-    if (!shippingAddress || !paymentMethod || !shippingMethodId) {
-      return reply.status(400).send({ success: false, message: "All fields including shipping method are required" });
+    // Treat the order as international when either internationalCountry or the top-level
+    // country field is non-Australia. This covers frontends that store the destination
+    // country in the address object (as 'country') rather than a separate param.
+    const effectiveIntlCountry = (internationalCountry || country || '').trim();
+    const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
+
+    if (!shippingAddress || !paymentMethod || (!shippingMethodId && !isInternational)) {
+      return reply.status(400).send({ success: false, message: "All fields including shipping method (or international country) are required" });
+    }
+
+    // Validate international country
+    let intlZoneEntry = null;
+    let shippingMethod = null;
+
+    if (isInternational) {
+      const intlCountry = effectiveIntlCountry;
+      intlZoneEntry = lookupZone(intlCountry);
+      shippingMethod = {
+        id: null,
+        name: `International (${intlCountry})`,
+        cost: intlZoneEntry.cost,
+        estimatedDays: '10-20 business days',
+        zone: intlZoneEntry.zone,
+        zoneName: intlZoneEntry.label,
+        country: intlCountry
+      };
     }
 
     // Only Stripe is accepted — COD is not supported
@@ -274,15 +300,22 @@ exports.createOrder = async (request, reply) => {
     }
 
     // Calculate proper cart totals including shipping and GST
-    const cartCalculations = await calculateCartTotals(cart.items, shippingMethodId, gstId);
-    
-    // Get shipping method details
-    const shippingMethod = await prisma.shippingMethod.findUnique({
-      where: { id: shippingMethodId, isActive: true }
-    });
+    const cartCalculations = await calculateCartTotals(
+      cart.items,
+      isInternational ? null : shippingMethodId,
+      gstId,
+      isInternational ? intlZoneEntry.cost : null
+    );
 
-    if (!shippingMethod) {
-      return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+    // Get domestic shipping method details (international already resolved above)
+    if (!isInternational) {
+      const domesticMethod = await prisma.shippingMethod.findUnique({
+        where: { id: shippingMethodId, isActive: true }
+      });
+      if (!domesticMethod) {
+        return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+      }
+      shippingMethod = domesticMethod;
     }
 
     // Use grand total from cart calculations
@@ -2758,15 +2791,22 @@ exports.createGuestOrder = async (request, reply) => {
       customerPhone,
       shippingAddress,
       paymentMethod,
-      shippingMethodId, // Add shipping method ID
-      gstId, // Add GST ID
+      shippingMethodId,     // Required for Australia (domestic) shipping
+      internationalCountry, // Required for international shipping (mutually exclusive with shippingMethodId)
+      gstId,
       country,
       city,
       zipCode,
       state,
       mobileNumber,
-      couponCode        // Optional coupon code
+      couponCode            // Optional coupon code
     } = request.body;
+
+    // Treat the order as international when either internationalCountry or the top-level
+    // country field is non-Australia. This covers frontends that store the destination
+    // country in the address object (as 'country') rather than a separate param.
+    const effectiveIntlCountry = (internationalCountry || country || '').trim();
+    const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
 
     // Validation
     if (!items || items.length === 0) {
@@ -2777,8 +2817,26 @@ exports.createGuestOrder = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "Customer name, email, and phone are required" });
     }
 
-    if (!shippingAddress || !paymentMethod || !shippingMethodId) {
-      return reply.status(400).send({ success: false, message: "Shipping address, payment method, and shipping method are required" });
+    if (!shippingAddress || !paymentMethod || (!shippingMethodId && !isInternational)) {
+      return reply.status(400).send({ success: false, message: "Shipping address, payment method, and shipping method (or international country) are required" });
+    }
+
+    // Validate international country
+    let intlZoneEntry = null;
+    let shippingMethod = null;
+
+    if (isInternational) {
+      const intlCountry = effectiveIntlCountry;
+      intlZoneEntry = lookupZone(intlCountry);
+      shippingMethod = {
+        id: null,
+        name: `International (${intlCountry})`,
+        cost: intlZoneEntry.cost,
+        estimatedDays: '10-20 business days',
+        zone: intlZoneEntry.zone,
+        zoneName: intlZoneEntry.label,
+        country: intlCountry
+      };
     }
 
     // state and country are optional for now (will be required after migration)
@@ -2855,15 +2913,22 @@ exports.createGuestOrder = async (request, reply) => {
     }
 
     // Calculate proper totals including shipping and GST
-    const cartCalculations = await calculateCartTotals(cartItems, shippingMethodId, gstId);
-    
-    // Get shipping method details
-    const shippingMethod = await prisma.shippingMethod.findUnique({
-      where: { id: shippingMethodId, isActive: true }
-    });
+    const cartCalculations = await calculateCartTotals(
+      cartItems,
+      isInternational ? null : shippingMethodId,
+      gstId,
+      isInternational ? intlZoneEntry.cost : null
+    );
 
-    if (!shippingMethod) {
-      return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+    // Get domestic shipping method details (international already resolved above)
+    if (!isInternational) {
+      const domesticMethod = await prisma.shippingMethod.findUnique({
+        where: { id: shippingMethodId, isActive: true }
+      });
+      if (!domesticMethod) {
+        return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+      }
+      shippingMethod = domesticMethod;
     }
 
     const originalTotal = parseFloat(cartCalculations.grandTotal);
@@ -3093,7 +3158,7 @@ exports.createGuestOrder = async (request, reply) => {
             totalAmount,
             itemCount: order.items.length,
             products: order.items.map(item => ({
-              title: item.product.title,
+              title: item.product?.title || 'Product',
               quantity: item.quantity,
               price: item.price
             })),
@@ -3140,7 +3205,7 @@ exports.createGuestOrder = async (request, reply) => {
                   totalAmount,
                   itemCount: order.items.length,
                   products: order.items.map(item => ({
-                    title: item.product.title,
+                    title: item.product?.title || 'Product',
                     quantity: item.quantity,
                     price: item.price
                   })),
@@ -3537,7 +3602,13 @@ const generateInvoiceBuffer = (order) => {
     const storedSummary = (typeof order.shippingAddress === 'object' && order.shippingAddress?.orderSummary)
       ? order.shippingAddress.orderSummary
       : null;
-    const perSellerShipping = storedSummary ? parseFloat(storedSummary.shippingCost || 0) : 0;
+    // Guest orders have no sub-orders — one invoice page covers ALL sellers, so use the
+    // total shipping cost. Authenticated multi-seller orders have one page per seller,
+    // so use the per-seller rate (each seller's page shows their own $20, etc.).
+    const orderHasSubOrders = Array.isArray(order.subOrders) && order.subOrders.length > 0;
+    const perSellerShipping = storedSummary
+      ? parseFloat((orderHasSubOrders ? storedSummary.shippingCost : storedSummary.totalShippingCost) || 0)
+      : 0;
     const gstRate = parseFloat(storedSummary?.gstPercentage || 10); // default AU GST 10%
 
     // ── Status stamp helpers ──────────────────────────────────────────────
@@ -3621,14 +3692,14 @@ const generateInvoiceBuffer = (order) => {
          .text('SHIP TO', box2X + 7, y + 5, { width: boxW - 14 });
 
       doc.fillColor('#333').font('Helvetica').fontSize(9);
-      doc.text(order.customerName  || '', L + 7,     y + 22, { width: boxW - 14, ellipsis: true });
-      doc.text(order.customerEmail || '', L + 7,     y + 34, { width: boxW - 14, ellipsis: true });
-      doc.text(order.shippingPhone || order.customerPhone || '', L + 7, y + 46, { width: boxW - 14 });
+      doc.text(order.customerName  || '', L + 7,     y + 22, { width: boxW - 14, ellipsis: true, lineBreak: false });
+      doc.text(order.customerEmail || '', L + 7,     y + 34, { width: boxW - 14, ellipsis: true, lineBreak: false });
+      doc.text(order.shippingPhone || order.customerPhone || '', L + 7, y + 46, { width: boxW - 14, lineBreak: false });
 
       if (order.shippingAddressLine || order.shippingCity) {
-        doc.text(order.shippingAddressLine || '', box2X + 7, y + 22, { width: boxW - 14, ellipsis: true });
-        doc.text([order.shippingCity, order.shippingState].filter(Boolean).join(', '), box2X + 7, y + 34, { width: boxW - 14, ellipsis: true });
-        doc.text([order.shippingZipCode, order.shippingCountry].filter(Boolean).join(' '), box2X + 7, y + 46, { width: boxW - 14 });
+        doc.text(order.shippingAddressLine || '', box2X + 7, y + 22, { width: boxW - 14, ellipsis: true, lineBreak: false });
+        doc.text([order.shippingCity, order.shippingState].filter(Boolean).join(', '), box2X + 7, y + 34, { width: boxW - 14, ellipsis: true, lineBreak: false });
+        doc.text([order.shippingZipCode, order.shippingCountry].filter(Boolean).join(' '), box2X + 7, y + 46, { width: boxW - 14, lineBreak: false });
       }
       y += boxH + 16;
 
@@ -3692,8 +3763,24 @@ const generateInvoiceBuffer = (order) => {
       y += 14;
 
       // ── Summary block ──────────────────────────────────────────────────
+      // On the last page of an authenticated multi-seller order, replace per-seller
+      // figures with stored order-level totals so the Grand Total is accurate.
+      const isMultiSubOrder = Array.isArray(order.subOrders) && order.subOrders.length > 1;
+      const useOrderTotals  = showOrderDiscount && isMultiSubOrder;
+
+      const displaySubtotal = useOrderTotals
+        ? parseFloat(storedSummary?.subtotal || subtotal)
+        : subtotal;
+      const displayShipping = useOrderTotals
+        ? parseFloat(storedSummary?.totalShippingCost || perSellerShipping)
+        : perSellerShipping;
+      const displayGstAmt   = useOrderTotals
+        ? parseFloat(storedSummary?.gstAmount || 0)
+        : displaySubtotal * gstRate / (100 + gstRate);
+      const displayNetExGst = displaySubtotal - displayGstAmt;
+
       // Ensure summary block fits before the footer
-      const summaryLines  = 3 + (perSellerShipping > 0 ? 1 : 0) + (parseFloat(order.discountAmount || 0) > 0 ? 1 : 0);
+      const summaryLines  = 3 + (displayShipping > 0 ? 1 : 0) + (parseFloat(order.discountAmount || 0) > 0 ? 1 : 0);
       const summaryHeight = summaryLines * 17 + 30; // rows + total line
       const summaryY      = y + summaryHeight > MAX_CONTENT_Y ? MAX_CONTENT_Y - summaryHeight : y;
 
@@ -3708,27 +3795,27 @@ const generateInvoiceBuffer = (order) => {
       let sy = summaryY;
 
       // 1. Products subtotal (inc. GST)
-      sumRow('Products Subtotal (inc. GST):', `$${subtotal.toFixed(2)}`, sy);
+      const subtotalLabel = useOrderTotals ? 'Order Subtotal (inc. GST):' : 'Products Subtotal (inc. GST):';
+      sumRow(subtotalLabel, `$${displaySubtotal.toFixed(2)}`, sy);
       sy += 17;
 
       // 2. GST included (extracted from subtotal: GST = subtotal × rate / (100 + rate))
-      const gstAmt  = subtotal * gstRate / (100 + gstRate);
-      const netExGst = subtotal - gstAmt;
       doc.fillColor('#888').font('Helvetica').fontSize(8.5)
          .text(`  GST included (${gstRate.toFixed(0)}%):`, 330, sy, { width: 150 });
       doc.fillColor('#888').fontSize(8.5)
-         .text(`$${gstAmt.toFixed(2)}`, 330, sy, { width: R - 330, align: 'right' });
+         .text(`$${displayGstAmt.toFixed(2)}`, 330, sy, { width: R - 330, align: 'right' });
       sy += 14;
       doc.fillColor('#aaa').font('Helvetica').fontSize(8.5)
          .text('  Net amount (ex. GST):', 330, sy, { width: 150 });
       doc.fillColor('#aaa').fontSize(8.5)
-         .text(`$${netExGst.toFixed(2)}`, 330, sy, { width: R - 330, align: 'right' });
+         .text(`$${displayNetExGst.toFixed(2)}`, 330, sy, { width: R - 330, align: 'right' });
       sy += 16;
 
       // 3. Shipping
-      if (perSellerShipping > 0) {
-        const shippingLabel = storedSummary?.shippingMethod?.name || 'Shipping';
-        sumRow(`${shippingLabel}:`, `$${perSellerShipping.toFixed(2)}`, sy);
+      if (displayShipping > 0) {
+        const methodName = storedSummary?.shippingMethod?.name;
+        const shippingLabel = methodName || 'Shipping';
+        sumRow(`${shippingLabel}:`, `$${displayShipping.toFixed(2)}`, sy);
         sy += 17;
       }
 
@@ -3739,7 +3826,7 @@ const generateInvoiceBuffer = (order) => {
       const discCode = order.couponCode || storedSummary?.couponCode || null;
       if (discAmt > 0) {
         sumRow(
-          `Coupon Discount${discCode ? ` (${discCode})` : ''}:`,  
+          `Coupon Discount${discCode ? ` (${discCode})` : ''}:`,
           `-$${discAmt.toFixed(2)}`,
           sy,
           { color: '#2e7d32', valueColor: '#2e7d32' }
@@ -3750,8 +3837,11 @@ const generateInvoiceBuffer = (order) => {
       // 5. Total line
       doc.moveTo(330, sy).lineTo(R, sy).lineWidth(1.5).stroke(BRAND);
       sy += 8;
-      const pageTotal = subtotal + perSellerShipping - discAmt;
-      sumRow('Total:', `$${pageTotal.toFixed(2)}`, sy, { bold: true, size: 12, color: BRAND, valueColor: BRAND });
+      const pageTotal = useOrderTotals
+        ? parseFloat(order.totalAmount || (displaySubtotal + displayShipping - discAmt))
+        : (displaySubtotal + displayShipping - discAmt);
+      const totalLabel = useOrderTotals ? 'Grand Total:' : 'Total:';
+      sumRow(totalLabel, `$${pageTotal.toFixed(2)}`, sy, { bold: true, size: 12, color: BRAND, valueColor: BRAND });
       sy += 16;
       doc.fillColor('#999999').font('Helvetica-Oblique').fontSize(7.5)
          .text('All applicable taxes are included in the total.', 330, sy, { width: R - 330, align: 'right', lineBreak: false });

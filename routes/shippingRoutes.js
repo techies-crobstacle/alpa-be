@@ -5,7 +5,9 @@ const {
   getShippingMethodById,
   updateShippingMethod,
   deleteShippingMethod,
-  toggleShippingMethodStatus
+  toggleShippingMethodStatus,
+  getInternationalZones,
+  getInternationalRate
 } = require('../controllers/shipping');
 const { isAdmin } = require('../middlewares/authMiddleware');
 
@@ -13,8 +15,14 @@ async function shippingRoutes(fastify, options) {
   /**
    * PUBLIC ROUTES - For customers to view available shipping options
    */
-  // GET /api/shipping/active - Get all active shipping methods
+  // GET /api/shipping/active - Get all active shipping methods (Australia: standard + express)
   fastify.get('/active', getActiveShippingMethods);
+
+  // GET /api/shipping/international/zones - Get all international zones + country lists
+  fastify.get('/international/zones', getInternationalZones);
+
+  // GET /api/shipping/international/rate?country=<name> - Get rate for a specific country
+  fastify.get('/international/rate', getInternationalRate);
 
   /**
    * ADMIN ONLY ROUTES - For managing shipping methods
