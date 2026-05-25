@@ -926,3 +926,25 @@ model ContactMessage {
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 }
+
+enum CampaignStatus {
+  DRAFT
+  SENDING
+  SENT
+}
+
+model NewsletterCampaign {
+  id              String         @id @default(uuid())
+  subject         String
+  content         String         @db.Text
+  bannerImage     String?
+  buttonText      String?
+  buttonLink      String?
+  status          CampaignStatus @default(DRAFT)
+  totalRecipients Int            @default(0)
+  sentCount       Int            @default(0)
+  failedCount     Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  sentAt          DateTime?
+}

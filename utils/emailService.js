@@ -31,6 +31,24 @@ const duoCircleTransporter = nodemailer.createTransport({
   maxMessages: 100,
 });
 
+// Separate transporter for bulk/campaign sends — longer timeouts so a slow
+// SMTP handshake doesn't kill individual newsletter emails.
+const duoCircleCampaignTransporter = nodemailer.createTransport({
+  host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
+  port: parseInt(process.env.DUO_CIRCLE_PORT) === 587 ? 2525 : (process.env.DUO_CIRCLE_PORT || 2525),
+  secure: false,
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 30000,
+  auth: {
+    user: process.env.DUO_CIRCLE_USER,
+    pass: process.env.DUO_CIRCLE_PASS,
+  },
+  pool: true,
+  maxConnections: 2,  // conservative — 1 connection at a time for bulk
+  maxMessages: 500,
+});
+
 if (process.env.DUO_CIRCLE_USER && process.env.DUO_CIRCLE_PASS) {
   duoCircleConfigured = true;
   console.log("🟢 Duo Circle email service initialized");
@@ -4762,6 +4780,81 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
   }
 };
 
+const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerImage, buttonText, buttonLink }) => {
+  if (isDevelopmentMode) {
+    console.log('\n' + '='.repeat(50));
+    console.log('DEVELOPMENT MODE - Newsletter Campaign Email');
+    console.log(`To: ${toEmail}`);
+    console.log(`Subject: ${subject}`);
+    console.log('='.repeat(50) + '\n');
+    return { success: true };
+  }
+
+  const bannerHtml = bannerImage
+    ? `<img src="${bannerImage}" alt="Campaign Banner" style="width:100%;max-width:600px;display:block;margin:0 auto 24px;" />`
+    : '';
+
+  const buttonHtml = buttonText && buttonLink
+    ? `<div style="text-align:center;margin:24px 0;">
+        <a href="${buttonLink}" style="background-color:#5A1E12;color:#fff;padding:12px 28px;text-decoration:none;border-radius:4px;font-size:15px;display:inline-block;">${buttonText}</a>
+       </div>`
+    : '';
+
+  const unsubscribeNote = `
+    <p style="font-size:12px;color:#999;text-align:center;margin-top:32px;">
+      You are receiving this email because you subscribed to our newsletter.<br/>
+      If you no longer wish to receive these emails, you can unsubscribe by contacting us.
+    </p>`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#333;max-width:600px;margin:0 auto;line-height:1.6;">
+      ${bannerHtml}
+      <div style="padding:0 16px;">
+        <div style="font-size:15px;">${content}</div>
+        ${buttonHtml}
+        ${unsubscribeNote}
+      </div>
+    </div>
+  `;
+
+  // For bulk campaign sends, prefer SendGrid (HTTP API) over Duo Circle (SMTP).
+  // Duo Circle has a hard 5-second socketTimeout that causes failures under background load.
+  if (emailConfigured) {
+    try {
+      await sgMail.send({
+        to: toEmail,
+        from: { email: senderEmail, name: senderName },
+        subject,
+        html
+      });
+      console.log(`✅ [SendGrid] Newsletter Campaign Email sent to: ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error(`❌ [SendGrid] Newsletter Campaign Email failed for ${toEmail}:`, error.response?.body || error.message);
+      return { success: false, error: error.response?.body?.errors?.[0]?.message || error.message };
+    }
+  }
+
+  // Fallback: Duo Circle (use the campaign transporter with longer timeouts)
+  if (duoCircleConfigured) {
+    try {
+      await duoCircleCampaignTransporter.sendMail({
+        from: `"${senderName}" <${senderEmail}>`,
+        to: toEmail,
+        subject,
+        html
+      });
+      console.log(`✅ [Duo Circle] Newsletter Campaign Email sent to: ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error(`❌ [Duo Circle] Newsletter Campaign Email failed for ${toEmail}:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  return { success: false, error: 'No email service configured' };
+};
+
 const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribedAt }) => {
   const adminEmail = process.env.NEWSLETTER_ADMIN_EMAIL || process.env.SUPPORT_EMAIL || senderEmail;
 
@@ -4837,7 +4930,8 @@ module.exports = {
   sendSellerRefundStatusEmail,
   sendMonthlyGstReportEmail,
   sendFinanceOrderInvoiceEmail,
-  sendNewsletterSubscriptionAlertEmail
+  sendNewsletterSubscriptionAlertEmail,
+  sendNewsletterCampaignEmail
 };
 
 
