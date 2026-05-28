@@ -1363,7 +1363,10 @@ exports.submitSellerOnboarding = async (request, reply) => {
     const storeLogoParts = uploadedParts.filter(f => f.fieldname === 'storeLogo');
     const kycFileParts = uploadedParts.filter(f => f.fieldname !== 'storeLogo');
 
-    // Validate all required fields
+    // Validate required fields
+    // Bank details (bankName, accountName, bsb, accountNumber) are NOT required here
+    // — they are collected by Stripe Connect during seller payout onboarding.
+    // KYC documents are also NOT required here — Stripe handles identity verification.
     const missingFields = [];
     if (!businessName) missingFields.push("businessName");
     if (!abn) missingFields.push("abn");
@@ -1372,10 +1375,15 @@ exports.submitSellerOnboarding = async (request, reply) => {
     if (!storeName) missingFields.push("storeName");
     if (!storeDescription) missingFields.push("storeDescription");
     if (!storeLogo && storeLogoParts.length === 0) missingFields.push("storeLogo");
-    if (!bankName) missingFields.push("bankName");
-    if (!accountName) missingFields.push("accountName");
-    if (!bsb) missingFields.push("bsb");
-    if (!accountNumber) missingFields.push("accountNumber");
+
+    // Reject placeholder ABN values
+    const abnPlaceholders = ["n/a", "na", "none", "nil", "-", "0"];
+    if (abn && abnPlaceholders.includes(abn.trim().toLowerCase())) {
+      return reply.status(400).send({
+        success: false,
+        message: "Please enter a valid ABN. If you don't have one yet, leave the field blank."
+      });
+    }
 
     if (missingFields.length > 0) {
       return reply.status(400).send({
@@ -1415,16 +1423,10 @@ exports.submitSellerOnboarding = async (request, reply) => {
       });
     }
 
-    // Upload KYC files to Cloudinary
-    if (!documentType) return reply.status(400).send({ success: false, message: "documentType is required" });
-    if (!kycFirstName) return reply.status(400).send({ success: false, message: "firstName is required" });
-    if (!kycLastName) return reply.status(400).send({ success: false, message: "lastName is required" });
-    if (!dateOfBirth) return reply.status(400).send({ success: false, message: "dateOfBirth is required" });
-    if (!kycFileParts || kycFileParts.length === 0) {
-      return reply.status(400).send({ success: false, message: "At least one KYC document file (idDocument) is required" });
-    }
-
+    // KYC upload is optional — Stripe Connect handles identity verification.
+    // If KYC files are provided, upload them; otherwise skip.
     const kycDocuments = [];
+    if (kycFileParts && kycFileParts.length > 0) {
     for (const file of kycFileParts) {
       // Write buffer to a tmp file, upload to Cloudinary, then delete tmp
       const tmpPath = path.join(os.tmpdir(), `kyc-${Date.now()}-${file.filename || 'doc'}`);
@@ -1447,6 +1449,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
         await fs.unlink(tmpPath).catch(() => {});
       }
     }
+    } // end optional KYC upload block
 
     // Generate OTP
     const otp = generateOTP();
@@ -1496,7 +1499,13 @@ exports.submitSellerOnboarding = async (request, reply) => {
     });
 
     // Send OTP email
-    await sendOTPEmail(normalizedEmail, otp, contactPerson);
+    const emailResult = await sendOTPEmail(normalizedEmail, otp, contactPerson);
+    if (!emailResult?.success) {
+      return reply.status(500).send({
+        success: false,
+        message: "Failed to send OTP email. Please try again later."
+      });
+    }
 
     return reply.status(200).send({
       success: true,
@@ -1609,9 +1618,26 @@ exports.verifyAndSubmit = async (request, reply) => {
       console.error('Admin notification email failed:', e.message);
     }
 
+    // Generate JWT so the seller can immediately call authenticated routes
+    // (e.g. Stripe Connect onboarding) without needing a separate login step.
+    const token = generateSellerToken(result.user.id);
+
     return reply.status(200).send({
       success: true,
       message: "Application submitted successfully! Your account is under review. We'll notify you once an admin approves your application.",
+      token,
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+      },
+      sellerProfile: {
+        id: result.sellerProfile.id,
+        applicationNumber: result.sellerProfile.id,
+        status: result.sellerProfile.status,
+        onboardingStep: result.sellerProfile.onboardingStep,
+      },
     });
   } catch (error) {
     console.error("verifyAndSubmit error:", error);

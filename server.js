@@ -138,6 +138,7 @@ app.register(cartRoutes, { prefix: "/api/cart" });
 app.register(orderRoutes, { prefix: "/api/orders" });
 app.register(sellerOrderRoutes, { prefix: "/api/seller/orders" });
 app.register(sellerOnboardingRoutes, { prefix: "/api/sellers" });
+app.register(sellerOnboardingRoutes, { prefix: "/api/seller-onboarding" }); // alias for frontend compatibility
 app.register(supportRoutes, { prefix: "/api/support" });
 app.register(adminRoutes, { prefix: "/api/admin" });
 app.register(ratingRoutes, { prefix: "/api/ratings" });

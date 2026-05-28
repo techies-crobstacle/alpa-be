@@ -154,6 +154,13 @@ model SellerProfile {
   artistName              String?
   artistDescription       String?
   commissionId            String?             @map("commission_id")
+  stripeAccountId         String?             @map("stripe_account_id")
+  stripeOnboardingComplete Boolean            @default(false) @map("stripe_onboarding_complete")
+  stripeChargesEnabled    Boolean             @default(false) @map("stripe_charges_enabled")
+  stripePayoutsEnabled    Boolean             @default(false) @map("stripe_payouts_enabled")
+  stripeKycStatus         String?             @map("stripe_kyc_status")   // 'unverified' | 'pending' | 'verified'
+  stripeAbnProvided       Boolean             @default(false) @map("stripe_abn_provided")  // ABN submitted to Stripe (actual value is masked)
+  stripeBankConnected     Boolean             @default(false) @map("stripe_bank_connected") // at least one bank account added
   bankChangeRequests      BankChangeRequest[]
   commission              Commission?         @relation(fields: [commissionId], references: [id])
   user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -364,10 +371,11 @@ model SupportTicket {
   response    String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
-  orderId     String?
-  guestEmail  String?
-  requestType String?
-  user        User?        @relation(fields: [userId], references: [id])
+  orderId        String?
+  guestEmail     String?
+  requestType    String?
+  stripeRefundId String?  @map("stripe_refund_id")
+  user           User?        @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([orderId])
@@ -447,11 +455,18 @@ model CommissionEarned {
   orderValue       Decimal          @map("order_value") @db.Decimal(10, 2)
   commissionRate   Decimal          @map("commission_rate") @db.Decimal(5, 2)
   commissionAmount Decimal          @map("commission_amount") @db.Decimal(10, 2)
-  status           CommissionStatus @default(PENDING)
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  netPayable       Decimal          @map("net_payable") @db.Decimal(10, 2)
-  subOrderId       String?          @map("sub_order_id")
+  status               CommissionStatus @default(PENDING)
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  netPayable           Decimal          @map("net_payable") @db.Decimal(10, 2)
+  subOrderId           String?          @map("sub_order_id")
+  // GST + shipping breakdown (added for Stripe Connect payout accuracy)
+  productValueExGST    Decimal?         @map("product_value_ex_gst") @db.Decimal(10, 2)
+  gstAmount            Decimal?         @map("gst_amount") @db.Decimal(10, 2)
+  shippingAmount       Decimal?         @map("shipping_amount") @db.Decimal(10, 2)
+  // Stripe Connect transfer tracking
+  stripeTransferId     String?          @map("stripe_transfer_id")
+  stripeTransferStatus String?          @map("stripe_transfer_status") // pending | transferred | failed | reversed
   customer         User?            @relation("CustomerCommissions", fields: [customerId], references: [id])
   order            Order?           @relation(fields: [orderId], references: [id])
   seller           User             @relation("SellerCommissions", fields: [sellerId], references: [id], onDelete: Cascade)

@@ -333,76 +333,112 @@ exports.getCommissionForSeller = async (sellerId) => {
 
 const DEFAULT_COMMISSION_RATE = 10; // % fallback when seller has no commission assigned
 
+const { calculateSellerPayout } = require("../utils/commissionCalculator");
+
 /**
- * Internal helper — called by ordersController after every successful order.
+ * Internal helper — called by payment/order controllers after every successful order.
  * Creates one CommissionEarned row per seller that appears in the order.
+ *
+ * Commission is calculated on the GST-EXCLUSIVE product price only.
+ * Shipping is excluded from commission (seller keeps 100% of shipping).
  *
  * @param {Object} params
  * @param {string}  params.orderId
  * @param {string}  params.sellerId
- * @param {number}  params.orderValue  – seller's slice of the order (sum of their items)
+ * @param {number}  params.orderValue      – GST-inclusive product total for this seller (NO shipping)
+ * @param {number}  [params.shippingAmount=0] – shipping allocated to this seller
  * @param {string}  params.customerName
  * @param {string}  params.customerEmail
  * @param {string|null} params.customerId  – null for guest orders
  * @param {string|null} params.sellerName
+ * @param {string|null} [params.subOrderId]
+ * @returns {Promise<string>} The new CommissionEarned id
  */
 exports.createCommissionEarned = async ({
   orderId,
   sellerId,
   orderValue,
+  shippingAmount = 0,
   customerName,
   customerEmail,
   customerId = null,
-  sellerName = null
+  sellerName = null,
+  subOrderId = null,
 }) => {
   try {
-    // Always use the platform default commission ("Standard Commission" document).
-    // Fall back to hardcoded 10 % only if no default is configured.
-    const defaultCommission = await exports.getDefaultCommission();
+    // Prefer seller-specific commission rate; fall back to platform default; then hardcoded 10%
+    const sellerCommission  = await exports.getCommissionForSeller(sellerId);
+    const defaultCommission = sellerCommission || (await exports.getDefaultCommission());
 
-    let commissionRate = DEFAULT_COMMISSION_RATE;
-    let commissionAmount = parseFloat(((orderValue * DEFAULT_COMMISSION_RATE) / 100).toFixed(2));
+    let commissionRatePct = DEFAULT_COMMISSION_RATE;
+    let isFixedRate       = false;
 
     if (defaultCommission) {
       const rateValue = parseFloat(defaultCommission.value);
-      if (defaultCommission.type === "PERCENTAGE") {
-        commissionRate = rateValue;
-        commissionAmount = parseFloat(((orderValue * rateValue) / 100).toFixed(2));
+      if (defaultCommission.type === "FIXED") {
+        isFixedRate       = true;
+        commissionRatePct = rateValue; // stored as flat dollar amount
       } else {
-        // FIXED — flat fee regardless of order size
-        commissionRate = rateValue;
-        commissionAmount = parseFloat(rateValue.toFixed(2));
+        commissionRatePct = rateValue; // PERCENTAGE
       }
     }
 
-    const netPayable = parseFloat((orderValue - commissionAmount).toFixed(2));
+    let payout;
+    let commissionAmount;
+    let netPayable;
+
+    if (isFixedRate) {
+      // Flat fee — no GST extraction needed
+      commissionAmount = parseFloat(commissionRatePct.toFixed(2));
+      netPayable       = parseFloat((orderValue - commissionAmount + shippingAmount).toFixed(2));
+      payout           = null; // no breakdown for flat fees
+    } else {
+      payout           = calculateSellerPayout(orderValue, shippingAmount, commissionRatePct);
+      commissionAmount = payout.commissionAmount;
+      netPayable       = payout.sellerTotalPayout;
+    }
+
+    const newId = require("cuid")();
 
     await prisma.$executeRaw`
       INSERT INTO commission_earned
-        (id, order_id, seller_id, customer_id, customer_name, customer_email,
+        (id, order_id, sub_order_id, seller_id, customer_id, customer_name, customer_email,
          seller_name, order_value, commission_rate, commission_amount, net_payable,
+         product_value_ex_gst, gst_amount, shipping_amount,
          status, created_at, updated_at)
       VALUES (
-        ${require("cuid")()},
+        ${newId},
         ${orderId},
+        ${subOrderId},
         ${sellerId},
         ${customerId},
         ${customerName},
         ${customerEmail},
         ${sellerName},
         ${parseFloat(orderValue.toFixed(2))},
-        ${commissionRate},
+        ${commissionRatePct},
         ${commissionAmount},
         ${netPayable},
+        ${payout ? payout.productValueExGST : null},
+        ${payout ? payout.gstAmount : null},
+        ${parseFloat(shippingAmount.toFixed(2))},
         'PENDING'::"CommissionStatus",
         NOW(), NOW()
       )
     `;
 
-    console.log(`💰 Commission recorded — order: ${orderId}, seller: ${sellerId}, orderValue: $${orderValue.toFixed(2)}, commission: $${commissionAmount}, netPayable: $${netPayable}`);
+    console.log(
+      `💰 Commission recorded — order: ${orderId}, seller: ${sellerId}, ` +
+      `productGSTIncl: $${orderValue.toFixed(2)}, ` +
+      (payout ? `productExGST: $${payout.productValueExGST}, gst: $${payout.gstAmount}, ` : '') +
+      `commission: $${commissionAmount}, shipping: $${shippingAmount}, netPayable: $${netPayable}`
+    );
+
+    return newId;
   } catch (err) {
     // Non-fatal — log but never crash the order flow
     console.error("createCommissionEarned error (non-fatal):", err.message);
+    return null;
   }
 };
 
@@ -436,6 +472,7 @@ exports.getAllCommissionEarned = async (request, reply) => {
       SELECT
         ce.id,
         ce.order_id       AS "orderId",
+        o."displayId"     AS "orderDisplayId",
         ce.seller_id      AS "sellerId",
         ce.customer_id    AS "customerId",
         ce.customer_name  AS "customerName",
@@ -454,6 +491,7 @@ exports.getAllCommissionEarned = async (request, reply) => {
       FROM commission_earned ce
       LEFT JOIN users u          ON u.id = ce.seller_id
       LEFT JOIN seller_profiles sp ON sp."userId" = ce.seller_id
+      LEFT JOIN orders o         ON o.id = ce.order_id
       ${whereClause}
       ORDER BY ce.created_at DESC
       LIMIT ${limitNum} OFFSET ${offset}
@@ -522,6 +560,7 @@ exports.getCommissionEarnedByOrder = async (request, reply) => {
       SELECT
         ce.id,
         ce.order_id       AS "orderId",
+        o."displayId"     AS "orderDisplayId",
         ce.seller_id      AS "sellerId",
         ce.customer_id    AS "customerId",
         ce.customer_name  AS "customerName",
@@ -535,6 +574,7 @@ exports.getCommissionEarnedByOrder = async (request, reply) => {
         ce.created_at     AS "createdAt",
         ce.updated_at     AS "updatedAt"
       FROM commission_earned ce
+      LEFT JOIN orders o ON o.id = ce.order_id
       WHERE ce.order_id = ${orderId}
       ORDER BY ce.created_at ASC
     `;

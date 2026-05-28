@@ -27,7 +27,8 @@ const {
   notifySellerNewOrder,
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
-const { createCommissionEarned } = require("./commission");
+const { createCommissionEarned, getCommissionForSeller, getDefaultCommission } = require("./commission");
+const { calculateSellerPayout } = require("../utils/commissionCalculator");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -375,6 +376,46 @@ exports.stripeWebhook = async (request, reply) => {
         console.log(`⚠️ Payment failed for PaymentIntent: ${pi.id}`);
         break;
       }
+      case "charge.refunded": {
+        // When a charge is fully or partially refunded, reverse any Stripe transfers
+        // that were created for the order so sellers don't keep funds for cancelled orders.
+        const charge = event.data.object;
+        const piId   = charge.payment_intent;
+        if (!piId) break;
+
+        const refundedOrder = await prisma.order.findFirst({
+          where: { stripePaymentIntentId: piId },
+          select: { id: true },
+        });
+        if (!refundedOrder) break;
+
+        const commissionsToReverse = await prisma.$queryRaw`
+          SELECT id, stripe_transfer_id
+          FROM commission_earned
+          WHERE order_id             = ${refundedOrder.id}
+            AND stripe_transfer_id   IS NOT NULL
+            AND stripe_transfer_status = 'transferred'
+        `;
+
+        for (const rec of commissionsToReverse) {
+          try {
+            await stripe.transfers.createReversal(rec.stripe_transfer_id, {
+              metadata: { reason: "order_refunded", orderId: refundedOrder.id },
+            });
+            await prisma.$executeRaw`
+              UPDATE commission_earned
+              SET stripe_transfer_status = 'reversed',
+                  status                 = 'CANCELLED'::"CommissionStatus",
+                  updated_at             = NOW()
+              WHERE id = ${rec.id}
+            `;
+            console.log(`↩️  Transfer reversed — commissionId: ${rec.id}, transferId: ${rec.stripe_transfer_id}`);
+          } catch (reverseErr) {
+            console.error(`❌ Transfer reversal failed (commissionId: ${rec.id}):`, reverseErr.message);
+          }
+        }
+        break;
+      }
       default:
         console.log(`Unhandled Stripe event: ${event.type}`);
     }
@@ -445,6 +486,15 @@ async function handlePaymentSucceeded(paymentIntentId) {
   if (claimed.count === 0) {
     console.log(`ℹ️  handlePaymentSucceeded: ${paymentIntentId} already processed — skipping`);
     return false;
+  }
+
+  // Retrieve PaymentIntent from Stripe to get latest_charge (needed for transfers)
+  let latestChargeId = null;
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    latestChargeId = pi.latest_charge || null;
+  } catch (e) {
+    console.warn(`⚠️  Could not retrieve PaymentIntent for charge ID: ${e.message}`);
   }
 
   // Fetch the now-PAID order for stock deduction, email, and notifications.
@@ -619,6 +669,11 @@ async function handlePaymentSucceeded(paymentIntentId) {
     }).catch(e => console.error('Error fetching admins for order emails:', e.message));
 
   // ── Create SLA + in-app notifications for each seller ──────────────────
+  // Per-seller shipping: stored as orderSummary.shippingCost at order creation time
+  const perSellerShipping = parseFloat(
+    order.shippingAddress?.orderSummary?.shippingCost || 0
+  );
+
   for (const sid of sellerIdSet) {
     const sellerItems = allItems.filter(i => i.product?.sellerId === sid);
     const itemCount = sellerItems.reduce((s, i) => s + i.quantity, 0);
@@ -657,15 +712,87 @@ async function handlePaymentSucceeded(paymentIntentId) {
       }).catch(e => console.error('Error fetching seller for order email:', e.message));
 
     // ── Commission Earned ───────────────────────────────────────────────────
-    createCommissionEarned({
-      orderId:       order.id,
-      sellerId:      sid,
-      orderValue:    itemTotal,
-      customerName:  toName,
-      customerEmail: order.customerEmail,
-      customerId:    order.userId || null,
-      sellerName:    sellerDisplayNames[sellerIdSet.indexOf(sid)] || null
-    }).catch((e) => console.error('Commission earned error (non-blocking):', e.message));
+    // Records commission using GST-exclusive product price only (shipping excluded).
+    const sellerSubOrderId = order.subOrders?.find(
+      sub => sub.sellerId === sid || sub.seller?.id === sid
+    )?.id || null;
+
+    const commissionEarnedId = await createCommissionEarned({
+      orderId:        order.id,
+      subOrderId:     sellerSubOrderId,
+      sellerId:       sid,
+      orderValue:     itemTotal,
+      shippingAmount: perSellerShipping,
+      customerName:   toName,
+      customerEmail:  order.customerEmail,
+      customerId:     order.userId || null,
+      sellerName:     sellerDisplayNames[sellerIdSet.indexOf(sid)] || null,
+    }).catch((e) => { console.error('Commission earned error (non-blocking):', e.message); return null; });
+
+    // ── Stripe Transfer (Separate Charges + Transfers) ─────────────────────
+    // Customer already paid platform the full amount. Now transfer the seller's
+    // net payout (product ex-GST minus commission + shipping) to their connected
+    // Stripe Express account. If they have no Stripe account yet, the
+    // CommissionEarned record stays PENDING for manual payout later.
+    (async () => {
+      try {
+        const sellerProfile = await prisma.sellerProfile.findUnique({
+          where:  { userId: sid },
+          select: { stripeAccountId: true, stripePayoutsEnabled: true },
+        });
+
+        if (!sellerProfile?.stripeAccountId || !sellerProfile?.stripePayoutsEnabled) {
+          console.log(`⏳ Seller ${sid} has no active Stripe account — transfer skipped, manual payout required`);
+          return;
+        }
+
+        // Resolve commission rate (seller-specific first, then platform default, then 10%)
+        const sellerCommission  = await getCommissionForSeller(sid);
+        const resolvedCommission = sellerCommission || (await getDefaultCommission());
+        const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
+
+        const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+
+        if (payout.sellerTotalPayoutCents <= 0) {
+          console.warn(`⚠️  Seller ${sid} payout would be ≤ $0 — transfer skipped`);
+          return;
+        }
+
+        const transfer = await stripe.transfers.create({
+          amount:      payout.sellerTotalPayoutCents,
+          currency:    "aud",
+          destination: sellerProfile.stripeAccountId,
+          // source_transaction links this transfer to the specific charge so Stripe
+          // routes the funds correctly without requiring platform balance.
+          ...(latestChargeId && { source_transaction: latestChargeId }),
+          description: `Order ${order.displayId || order.id} — seller payout`,
+          metadata: {
+            orderId:            order.id,
+            sellerId:           sid,
+            commissionAmount:   payout.commissionAmount.toString(),
+            gstAmount:          payout.gstAmount.toString(),
+            shippingAmount:     payout.shippingAmount.toString(),
+            sellerTotalPayout:  payout.sellerTotalPayout.toString(),
+          },
+        });
+
+        console.log(`💸 Transfer created — seller: ${sid}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
+
+        // Persist transfer ID back to CommissionEarned
+        if (commissionEarnedId) {
+          await prisma.$executeRaw`
+            UPDATE commission_earned
+            SET stripe_transfer_id     = ${transfer.id},
+                stripe_transfer_status = 'transferred',
+                updated_at             = NOW()
+            WHERE id = ${commissionEarnedId}
+          `;
+        }
+      } catch (transferErr) {
+        console.error(`❌ Stripe transfer failed for seller ${sid} (non-fatal):`, transferErr.message);
+        // CommissionEarned stays PENDING — admin can trigger manual payout
+      }
+    })();
     // ───────────────────────────────────────────────────────────────────────
   }
 

@@ -19,9 +19,9 @@ const duoCircleTransporter = nodemailer.createTransport({
   host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
   port: parseInt(process.env.DUO_CIRCLE_PORT) === 587 ? 2525 : (process.env.DUO_CIRCLE_PORT || 2525), // Forcibly circumvent port 587 blocks to prevent hanging
   secure: false, // true for 465, false for other ports
-  connectionTimeout: 5000, // Short 5-second timeout so it never hangs the checkout
-  greetingTimeout: 5000,
-  socketTimeout: 5000,
+  connectionTimeout: 20000, // 20-second timeout — Render.com SMTP connections can be slow
+  greetingTimeout: 20000,
+  socketTimeout: 20000,
   auth: {
     user: process.env.DUO_CIRCLE_USER,
     pass: process.env.DUO_CIRCLE_PASS,

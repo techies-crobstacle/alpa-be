@@ -63,8 +63,17 @@ async function adminRoutes(fastify, options) {
   // Update seller notes
   fastify.put("/sellers/notes/:id", { preHandler: adminAuth }, adminController.updateSellerNotes);
 
+  // Update seller profile fields (abn, businessName, etc.)
+  fastify.put("/sellers/:sellerId/profile", { preHandler: adminAuth }, adminController.updateSellerProfile);
+
   // Activate seller (Go Live - SOW Requirement)
   fastify.post("/sellers/activate/:id", { preHandler: adminAuth }, adminController.activateSeller);
+
+  // Sync seller Stripe KYC status → auto-approves platform status if charges_enabled
+  fastify.post("/sellers/stripe-sync/:id", { preHandler: adminAuth }, adminController.syncSellerStripeStatus);
+
+  // Retry pending Stripe transfers for a seller (for orders where transfer was skipped)
+  fastify.post("/sellers/retry-transfers/:id", { preHandler: adminAuth }, adminController.retrySellerTransfers);
 
   // ---------------- CATEGORY MANAGEMENT ----------------
   // Get all categories with product counts (Admin & Seller)

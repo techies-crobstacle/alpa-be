@@ -1,5 +1,6 @@
 const { authenticateUser } = require("../middlewares/authMiddleware");
 const paymentController = require("../controllers/payment");
+const stripeConnectController = require("../controllers/stripeConnect");
 
 async function paymentRoutes(fastify, options) {
   // ─── Webhook — must use a buffer content-type parser so Stripe signature
@@ -35,6 +36,17 @@ async function paymentRoutes(fastify, options) {
      *   stripe listen --forward-to localhost:5000/api/payments/webhook
      */
     fastify.post("/webhook", paymentController.stripeWebhook);
+
+    /**
+     * POST /api/payments/connect-webhook
+     * Stripe Connect account events (account.updated, etc.)
+     * Register in Stripe Dashboard → Webhooks → "Connect" webhook.
+     * Events: account.updated
+     *
+     * For local testing:
+     *   stripe listen --forward-to localhost:5000/api/payments/connect-webhook
+     */
+    fastify.post("/connect-webhook", stripeConnectController.stripeConnectWebhook);
   });
 
   // ─── Authenticated payment routes ────────────────────────────────────────

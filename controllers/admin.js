@@ -1,4 +1,6 @@
 const prisma = require("../config/prisma");
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { generateSalesReportCSV } = require("../utils/csvExport");
 const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail } = require("../utils/emailService");
 const { uploadToCloudinary } = require("../config/cloudinary");
@@ -1873,6 +1875,26 @@ exports.getSellerDetails = async (request, reply) => {
         // Bank Details
         bankDetails: seller.bankDetails,
         
+        // Stripe Connect — synced from Stripe after seller completes onboarding
+        stripeConnect: seller.stripeAccountId ? {
+          accountId: seller.stripeAccountId,
+          onboardingComplete: seller.stripeOnboardingComplete,
+          chargesEnabled: seller.stripeChargesEnabled,
+          payoutsEnabled: seller.stripePayoutsEnabled,
+          // KYC: derive from charges_enabled when DB value is stale/missing
+          kycStatus: seller.stripeKycStatus && seller.stripeKycStatus !== "unverified"
+            ? seller.stripeKycStatus
+            : seller.stripeChargesEnabled
+              ? "verified"
+              : seller.stripeOnboardingComplete
+                ? "pending"
+                : "unverified",
+          // ABN: actual value masked by Stripe — only whether it was submitted
+          abnProvided: seller.stripeAbnProvided,
+          // Whether seller added a bank account in Stripe
+          bankConnected: seller.stripeBankConnected,
+        } : null,
+        
         // Commission
         commission: commission || null,
         
@@ -2313,6 +2335,36 @@ exports.suspendSeller = async (request, reply) => {
 };
 
 // UPDATE SELLER NOTES
+exports.updateSellerProfile = async (request, reply) => {
+  try {
+    const { sellerId } = request.params;
+    const { abn, businessName, businessAddress, businessType, storeName, storeDescription, contactPerson, artistName, artistDescription } = request.body;
+
+    const seller = await prisma.sellerProfile.findUnique({ where: { userId: sellerId } });
+    if (!seller) {
+      return reply.status(404).send({ success: false, message: "Seller not found" });
+    }
+
+    const updateData = {};
+    if (abn !== undefined) updateData.abn = abn;
+    if (businessName !== undefined) updateData.businessName = businessName;
+    if (businessAddress !== undefined) updateData.businessAddress = businessAddress;
+    if (businessType !== undefined) updateData.businessType = businessType;
+    if (storeName !== undefined) updateData.storeName = storeName;
+    if (storeDescription !== undefined) updateData.storeDescription = storeDescription;
+    if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
+    if (artistName !== undefined) updateData.artistName = artistName;
+    if (artistDescription !== undefined) updateData.artistDescription = artistDescription;
+
+    await prisma.sellerProfile.update({ where: { userId: sellerId }, data: updateData });
+
+    return reply.status(200).send({ success: true, message: "Seller profile updated successfully" });
+  } catch (error) {
+    console.error("updateSellerProfile error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
 exports.updateSellerNotes = async (request, reply) => {
   try {
     const sellerId = request.params.id;
@@ -2420,6 +2472,211 @@ exports.activateSeller = async (request, reply) => {
   } catch (error) {
     console.error("Activate seller error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SYNC SELLER STRIPE STATUS
+// POST /admin/sellers/stripe-sync/:id
+// Fetches the latest status from Stripe for a seller's connected account and
+// syncs it to the platform DB.  If charges_enabled = true the seller's
+// platform status is also set to APPROVED (if not already APPROVED/ACTIVE).
+// ─────────────────────────────────────────────────────────────────────────────
+exports.syncSellerStripeStatus = async (request, reply) => {
+  try {
+    const { id } = request.params;
+
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: id },
+      include: { user: true },
+    });
+
+    if (!seller) {
+      return reply.status(404).send({ success: false, message: "Seller not found" });
+    }
+
+    if (!seller.stripeAccountId) {
+      return reply.status(400).send({
+        success: false,
+        message: "This seller has not connected a Stripe account yet",
+      });
+    }
+
+    // Fetch live data from Stripe
+    const account = await stripe.accounts.retrieve(seller.stripeAccountId);
+
+    // For Express accounts, charges_enabled is the real KYC indicator
+    let stripeKycStatus;
+    if (account.charges_enabled) {
+      stripeKycStatus = "verified";
+    } else if (account.details_submitted) {
+      stripeKycStatus = "pending";
+    } else {
+      stripeKycStatus = "unverified";
+    }
+
+    // Only sync Stripe fields — admin must manually approve on the platform
+    const stripeUpdates = {
+      stripeOnboardingComplete: account.details_submitted,
+      stripeChargesEnabled: account.charges_enabled,
+      stripePayoutsEnabled: account.payouts_enabled,
+      stripeKycStatus,
+      stripeAbnProvided: account.company?.tax_id_provided || false,
+      stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
+    };
+
+    await prisma.sellerProfile.update({
+      where: { userId: id },
+      data: stripeUpdates,
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: account.charges_enabled
+        ? "Stripe KYC verified. You can now approve the seller on the platform."
+        : "Stripe status synced. Stripe KYC is not yet complete.",
+      stripeAccountId: seller.stripeAccountId,
+      stripeKycStatus,
+      stripeChargesEnabled: account.charges_enabled,
+      stripePayoutsEnabled: account.payouts_enabled,
+      stripeOnboardingComplete: account.details_submitted,
+      stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
+      platformStatus: shouldApprove ? "APPROVED" : seller.status,
+      requirements: account.requirements?.currently_due || [],
+      errors: account.requirements?.errors || [],
+    });
+  } catch (error) {
+    console.error("syncSellerStripeStatus error:", error);
+    return reply.status(500).send({ success: false, message: "Failed to sync Stripe status", detail: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RETRY PENDING STRIPE TRANSFERS FOR A SELLER
+// POST /api/admin/sellers/retry-transfers/:id
+// Finds all commission_earned records for this seller that are PENDING with no
+// stripeTransferId and retries the Stripe transfer for each one.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.retrySellerTransfers = async (request, reply) => {
+  try {
+    const { id: sellerId } = request.params;
+    const { calculateSellerPayout } = require("../utils/commissionCalculator");
+    const { getCommissionForSeller, getDefaultCommission } = require("./commission");
+
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      select: { stripeAccountId: true, stripePayoutsEnabled: true, stripeChargesEnabled: true },
+    });
+
+    if (!sellerProfile) {
+      return reply.status(404).send({ success: false, message: "Seller not found" });
+    }
+
+    if (!sellerProfile.stripeAccountId) {
+      return reply.status(400).send({ success: false, message: "Seller has no connected Stripe account" });
+    }
+
+    if (!sellerProfile.stripeChargesEnabled) {
+      return reply.status(400).send({ success: false, message: "Seller Stripe account is not yet enabled — run Stripe sync first" });
+    }
+
+    // Find all PENDING commission_earned rows with no transfer yet
+    const pending = await prisma.$queryRaw`
+      SELECT id, order_id, order_value, shipping_amount, commission_rate
+      FROM commission_earned
+      WHERE seller_id = ${sellerId}
+        AND status = 'PENDING'::"CommissionStatus"
+        AND (stripe_transfer_id IS NULL OR stripe_transfer_id = '')
+    `;
+
+    if (pending.length === 0) {
+      return reply.status(200).send({ success: true, message: "No pending transfers found", retried: 0 });
+    }
+
+    // Resolve commission rate once
+    const sellerCommission = await getCommissionForSeller(sellerId).catch(() => null);
+    const defaultCommission = await getDefaultCommission().catch(() => null);
+    const commissionRatePct = sellerCommission
+      ? parseFloat(sellerCommission.value)
+      : defaultCommission
+        ? parseFloat(defaultCommission.value)
+        : 10;
+
+    const results = [];
+
+    for (const row of pending) {
+      try {
+        const productTotal = parseFloat(row.order_value);
+        const shippingAmount = parseFloat(row.shipping_amount || 0);
+        const payout = calculateSellerPayout(productTotal, shippingAmount, commissionRatePct);
+
+        if (payout.sellerTotalPayoutCents <= 0) {
+          results.push({ id: row.id, status: "skipped", reason: "payout <= 0" });
+          continue;
+        }
+
+        // Get the charge ID from the order's PaymentIntent (needed for source_transaction)
+        let latestChargeId = null;
+        if (row.order_id) {
+          try {
+            const order = await prisma.order.findUnique({
+              where: { id: row.order_id },
+              select: { stripePaymentIntentId: true },
+            });
+            if (order?.stripePaymentIntentId) {
+              const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
+              latestChargeId = pi.latest_charge || null;
+            }
+          } catch (e) {
+            console.warn(`Could not retrieve charge ID for order ${row.order_id}: ${e.message}`);
+          }
+        }
+
+        const transfer = await stripe.transfers.create({
+          amount: payout.sellerTotalPayoutCents,
+          currency: "aud",
+          destination: sellerProfile.stripeAccountId,
+          ...(latestChargeId && { source_transaction: latestChargeId }),
+          description: `Retry payout — order ${row.order_id}`,
+          metadata: {
+            orderId: row.order_id || "",
+            sellerId,
+            commissionAmount: payout.commissionAmount.toString(),
+            sellerTotalPayout: payout.sellerTotalPayout.toString(),
+            retried: "true",
+          },
+        });
+
+        await prisma.$executeRaw`
+          UPDATE commission_earned
+          SET stripe_transfer_id     = ${transfer.id},
+              stripe_transfer_status = 'transferred',
+              status                 = 'PAID'::"CommissionStatus",
+              updated_at             = NOW()
+          WHERE id = ${row.id}
+        `;
+
+        results.push({ id: row.id, status: "transferred", transferId: transfer.id, amount: payout.sellerTotalPayout });
+        console.log(`💸 Retry transfer — seller: ${sellerId}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
+      } catch (err) {
+        results.push({ id: row.id, status: "failed", error: err.message });
+        console.error(`❌ Retry transfer failed for commission ${row.id}:`, err.message);
+      }
+    }
+
+    const transferred = results.filter(r => r.status === "transferred").length;
+    const failed = results.filter(r => r.status === "failed").length;
+
+    return reply.status(200).send({
+      success: true,
+      message: `${transferred} transfer(s) sent, ${failed} failed`,
+      retried: transferred,
+      failed,
+      results,
+    });
+  } catch (error) {
+    console.error("retrySellerTransfers error:", error);
+    return reply.status(500).send({ success: false, message: "Server error", detail: error.message });
   }
 };
 
@@ -5321,24 +5578,7 @@ exports.updateRefundRequestStatus = async (request, reply) => {
       });
     }
 
-    // Update the ticket
-    const updatedTicket = await prisma.supportTicket.update({
-      where: { id },
-      data: {
-        status:   REFUND_DISPLAY_TO_DB[status],
-        response: message?.trim() || ticket.response || null
-      }
-    });
-
-    // On COMPLETED: cancel CommissionEarned for this order — the refund reverses revenue
-    if (status === 'COMPLETED' && ticket.orderId) {
-      await prisma.commissionEarned.updateMany({
-        where: { orderId: ticket.orderId, status: { not: 'CANCELLED' } },
-        data:  { status: 'CANCELLED' }
-      });
-    }
-
-    // ── Fetch order + involved sellers ────────────────────────────────────────
+    // ── Fetch order + involved sellers early (needed for Stripe refund + emails) ──
     let order = null;
     let sellerIds = [];
     if (ticket.orderId) {
@@ -5361,6 +5601,71 @@ exports.updateRefundRequestStatus = async (request, reply) => {
           ...order.items.map(i => i.product?.sellerId)
         ].filter(Boolean))];
       }
+    }
+
+    // ── Parse ticket items early (needed for partial refund amount calculation) ──
+    let ticketRequestedItems = null;
+    try {
+      const itemMatch = (ticket.message || '').match(/---ITEMS_JSON---\n([\s\S]+)/);
+      if (itemMatch) {
+        const parsed = JSON.parse(itemMatch[1].trim());
+        if (Array.isArray(parsed) && parsed.length > 0) ticketRequestedItems = parsed;
+      }
+    } catch { /* ignore */ }
+
+    // ── Stripe Refund on APPROVED ─────────────────────────────────────────────
+    // Stripe is called BEFORE the ticket DB update so the ticket status stays
+    // unchanged if Stripe fails (admin can retry).
+    // The charge.refunded webhook automatically reverses any seller transfers.
+    let stripeRefundId = null;
+    if (status === 'APPROVED' && order?.stripePaymentIntentId) {
+      try {
+        const refundParams = {
+          payment_intent: order.stripePaymentIntentId,
+          reason:         'requested_by_customer',
+          metadata: {
+            orderId:   order.id,
+            ticketId:  ticket.id,
+            adminNote: message?.trim() || '',
+          },
+        };
+        // Partial refund — calculate amount only from the specific requested items
+        if (ticket.requestType !== 'REFUND' && ticketRequestedItems?.length) {
+          const partialAmount = ticketRequestedItems.reduce(
+            (sum, item) => sum + parseFloat(item.price || 0) * (item.quantity || 1), 0
+          );
+          const amountCents = Math.round(partialAmount * 100);
+          if (amountCents > 0) refundParams.amount = amountCents;
+        }
+        const stripeRefund = await stripe.refunds.create(refundParams);
+        stripeRefundId = stripeRefund.id;
+        console.log(`💳 Stripe refund created: ${stripeRefundId} for order ${order?.displayId}`);
+      } catch (stripeErr) {
+        console.error('Stripe refund failed:', stripeErr.message);
+        return reply.status(502).send({
+          success: false,
+          message: `Stripe refund failed: ${stripeErr.message}. Refund request status unchanged — please retry.`,
+        });
+      }
+    }
+
+    // Update the ticket status (only reaches here if Stripe call succeeded or was not needed)
+    const updatedTicket = await prisma.supportTicket.update({
+      where: { id },
+      data: {
+        status:        REFUND_DISPLAY_TO_DB[status],
+        response:      message?.trim() || ticket.response || null,
+        stripeRefundId: stripeRefundId || undefined,
+      }
+    });
+
+    // On APPROVED or COMPLETED: cancel CommissionEarned for this order.
+    // Seller transfer reversal is handled automatically by the charge.refunded webhook.
+    if (['APPROVED', 'COMPLETED'].includes(status) && ticket.orderId) {
+      await prisma.commissionEarned.updateMany({
+        where: { orderId: ticket.orderId, status: { not: 'CANCELLED' } },
+        data:  { status: 'CANCELLED' }
+      });
     }
 
     const displayId     = order ? `#${order.displayId}` : `#${id.slice(-6).toUpperCase()}`;
@@ -5400,16 +5705,7 @@ exports.updateRefundRequestStatus = async (request, reply) => {
     if (notifRows.length) await prisma.notification.createMany({ data: notifRows });
 
     // ── Emails (non-blocking) ─────────────────────────────────────────────────
-    // Parse requested items from the ticket for inclusion in the email
-    let ticketRequestedItems = null;
-    try {
-      const itemMatch = (ticket.message || '').match(/---ITEMS_JSON---\n([\s\S]+)/);
-      if (itemMatch) {
-        const parsed = JSON.parse(itemMatch[1].trim());
-        if (Array.isArray(parsed) && parsed.length > 0) ticketRequestedItems = parsed;
-      }
-    } catch { /* ignore */ }
-
+    // ticketRequestedItems already parsed above (before Stripe call)
     const refundEmailPayload = {
       displayId:      order?.displayId,
       status,
@@ -5453,9 +5749,20 @@ exports.updateRefundRequestStatus = async (request, reply) => {
       success: true,
       message: `Refund request ${statusLabel.toLowerCase()} successfully`,
       request: {
-        id:           updatedTicket.id,
+        id:                   updatedTicket.id,
         status,
-        adminMessage: updatedTicket.response
+        adminMessage:         updatedTicket.response,
+        stripeRefundProcessed: !!(stripeRefundId || updatedTicket.stripeRefundId),
+        stripeRefundId:        stripeRefundId || updatedTicket.stripeRefundId || null,
+        stripeNote: status === 'APPROVED'
+          ? (stripeRefundId
+              ? 'Stripe refund initiated — money is on its way to the customer.'
+              : (order?.stripePaymentIntentId
+                  ? 'Stripe refund was triggered.'
+                  : 'No Stripe payment found for this order — process refund manually outside the platform.'))
+          : (updatedTicket.stripeRefundId
+              ? `Stripe refund ${updatedTicket.stripeRefundId} was previously processed.`
+              : undefined),
       }
     });
   } catch (error) {

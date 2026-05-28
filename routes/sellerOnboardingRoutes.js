@@ -1,4 +1,5 @@
 const sellerController = require("../controllers/sellerOnboarding");
+const stripeConnectController = require("../controllers/stripeConnect");
 const { handleSellerDocsUpload } = require("../middlewares/upload");
 const { authenticateSeller, isAdmin } = require("../middlewares/authMiddleware");
 
@@ -64,6 +65,17 @@ async function sellerOnboardingRoutes(fastify, options) {
 
   // Dashboard: full history of bank change requests for this seller
   fastify.get("/bank-change-requests", { preHandler: authenticateSeller }, sellerController.getBankChangeHistory);
+
+  // ==================== STRIPE CONNECT ROUTES (Auth Required) ====================
+
+  // Step 7 (Stripe path): Create Stripe Express account for seller (AU)
+  fastify.post("/stripe/connect", { preHandler: authenticateSeller }, stripeConnectController.createConnectAccount);
+
+  // Get fresh Stripe-hosted onboarding URL (AccountLink expires ~24h)
+  fastify.post("/stripe/onboarding-link", { preHandler: authenticateSeller }, stripeConnectController.getOnboardingLink);
+
+  // Check current Stripe Connect status (live-synced with Stripe)
+  fastify.get("/stripe/status", { preHandler: authenticateSeller }, stripeConnectController.getConnectStatus);
 
   // Submit Application for Review
   fastify.post("/submit-for-review", { preHandler: authenticateSeller }, sellerController.submitForReview);
